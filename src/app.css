@@ -3,131 +3,73 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================================================
- * HYPER NEO-BRUTALISM × ARK UI THEME SPECIFICATION (TAILWIND CSS V4)
+ * KAIROS DESIGN SYSTEM (ARK UI × SVELTE 5)
+ * Modern Minimalist High-Tech Craftsmanship (Linear / Vercel Aesthetic)
  * ============================================================================ */
 
 @theme {
-  /* Font Families with Native Vietnamese Diacritic Precision */
-  --font-sans: "Be Vietnam Pro", "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
-  --font-display: "Be Vietnam Pro", "Space Grotesk", sans-serif;
+  --font-display: "Space Grotesk", "Be Vietnam Pro", sans-serif;
 
-  /* Border Strokes */
-  --border-hairline: 1.5px;
-  --border-thin: 2px;
-  --border-medium: 3px;
-  --border-thick: 4px;
-  --border-heavy: 5px;
-
-  /* Radii */
-  --radius-none: 0px;
-  --radius-micro: 2px;
-  --radius-punchy: 4px;
-
-  /* Transitions */
-  --ease-snappy: cubic-bezier(0.16, 1, 0.3, 1);
-  --duration-instant: 80ms;
-  --duration-snappy: 120ms;
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 100ms;
+  --duration-normal: 180ms;
 }
 
 /* ============================================================================
- * EXHAUSTIVE LIGHT & DARK MODE CSS CUSTOM PROPERTIES
+ * CSS CUSTOM PROPERTIES (LIGHT / DARK MULTI-TIER DEPTH)
  * ============================================================================ */
 
 :root,
 [data-theme="light"] {
-  --nb-canvas-base: #FFFDEB;
-  --nb-canvas-dot: rgba(0, 0, 0, 0.12);
-  
-  --nb-surface-card: #FFFFFF;
-  --nb-surface-warm: #FFFDF0;
-  --nb-surface-muted: #F4F4EE;
-
-  --nb-ink-radical: #000000;
-  --nb-ink-muted: #333333;
-  --nb-ink-subtle: #666666;
-
-  --nb-border: #000000;
-  --nb-shadow: #000000;
-
-  --nb-shadow-sm: 2px 2px 0px #000000;
-  --nb-shadow-md: 4px 4px 0px #000000;
-  --nb-shadow-lg: 6px 6px 0px #000000;
-  --nb-shadow-xl: 8px 8px 0px #000000;
-  --nb-shadow-modal: 12px 12px 0px #000000;
-
-  /* High-Energy Pop Pigments */
-  --nb-accent-yellow: #FFE600;
-  --nb-accent-magenta: #FF007A;
-  --nb-accent-lime: #00FF66;
-  --nb-accent-cyan: #00F0FF;
-  --nb-accent-purple: #7928CA;
-  --nb-accent-orange: #FF5C00;
+  --kr-canvas: #fafafa;
+  --kr-card: #ffffff;
+  --kr-subtle: #f4f4f5;
+  --kr-interactive: #e4e4e7;
+  --kr-border: #e4e4e7;
+  --kr-border-highlight: rgba(0, 0, 0, 0.06);
+  --kr-text-primary: #09090b;
+  --kr-text-secondary: #52525b;
+  --kr-text-muted: #a1a1aa;
+  --kr-glow: rgba(16, 185, 129, 0.12);
+  --kr-code-bg: #f4f4f5;
 }
 
 [data-theme="dark"],
 .dark {
-  --nb-canvas-base: #000000; /* Pure OLED Pitch Black */
-  --nb-canvas-dot: rgba(255, 255, 255, 0.08);
-  
-  /* Deep Charcoal & Obsidian Multi-tier Surfaces */
-  --nb-surface-card: #0E0E10;
-  --nb-surface-warm: #18181B;
-  --nb-surface-muted: #27272A;
-
-  --nb-ink-radical: #FFFFFF;
-  --nb-ink-muted: #D4D4D8;
-  --nb-ink-subtle: #71717A;
-
-  /* In Dark Mode: Crisp High-Contrast Pure White Neo-Brutalist Extrusion */
-  --nb-border: #FFFFFF;
-  --nb-shadow: #FFFFFF;
-
-  --nb-shadow-sm: 2px 2px 0px #FFFFFF;
-  --nb-shadow-md: 4px 4px 0px #FFFFFF;
-  --nb-shadow-lg: 6px 6px 0px #FFFFFF;
-  --nb-shadow-xl: 8px 8px 0px #FFFFFF;
-  --nb-shadow-modal: 12px 12px 0px #FFFFFF;
-
-  /* Luminescent Pigments */
-  --nb-accent-yellow: #FFE600;
-  --nb-accent-magenta: #FF007A;
-  --nb-accent-lime: #00FF7F;
-  --nb-accent-cyan: #00F0FF;
-  --nb-accent-purple: #A855F7;
-  --nb-accent-orange: #FF6B00;
+  --kr-canvas: #09090b;       /* Pure Nocturnal OLED Pitch Black */
+  --kr-card: #121215;         /* Deep Multi-tier Surface */
+  --kr-subtle: #18181b;       /* Elevated Section */
+  --kr-interactive: #27272a;  /* Control Surface */
+  --kr-border: #27272a;       /* Crisp Hairline 1px Border */
+  --kr-border-highlight: rgba(255, 255, 255, 0.08); /* Ambient Top Glow */
+  --kr-text-primary: #f4f4f5;
+  --kr-text-secondary: #a1a1aa;
+  --kr-text-muted: #71717a;
+  --kr-glow: rgba(16, 185, 129, 0.18);
+  --kr-code-bg: #121214;
 }
 
 /* ============================================================================
- * UNIFIED NEO-BRUTALIST UTILITY PATTERNS (AUTOMATIC DARK MODE INVERSION)
+ * UNIVERSAL VIEWPORT & ACCESSIBILITY SAFEGUARDS
  * ============================================================================ */
 
-/* Reserve scrollbar track permanently: opening a dialog never shifts layout */
+/* Rule 10: Permanent scrollbar gutter: opening a dialog never shifts page layout */
 html {
   scrollbar-gutter: stable;
   overflow-x: hidden;
-}
-html.nb-scroll-locked {
-  overflow: hidden;
+  background-color: var(--kr-canvas);
+  color: var(--kr-text-primary);
 }
 
 body {
   overflow-x: hidden;
   max-width: 100vw;
+  background-color: var(--kr-canvas);
 }
 
-/* Universal Vietnamese Diacritic Safety: Prevent upper/lower accent clipping & collisions */
-h1, h2, h3, h4, h5, h6 {
-  line-height: 1.25;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-/* ============================================================================
- * RULE 20: ZERO MOBILE INPUT AUTO-ZOOM (iOS Safari & WebKit Focus Discipline)
- * iOS Safari forcibly zooms the page whenever an input, select, or textarea
- * with font-size < 16px is focused. Forcing 16px min on mobile prevents zoom blowout.
- * ============================================================================ */
+/* Rule 04: Zero Mobile Input Auto-Zoom on iOS Safari & WebKit */
 @media screen and (max-width: 767px) {
   input,
   select,
@@ -136,76 +78,113 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* Eliminate 300ms tap delay and prevent double-tap zoom distortion */
+/* Remove 300ms tap delay and prevent double-tap distortion */
 button,
 a,
 input,
 select,
 textarea {
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Halftone / Dot Matrix Background */
-.bg-brutal-dots {
-  background-color: var(--nb-canvas-base);
-  background-image: radial-gradient(var(--nb-canvas-dot) 1.5px, transparent 1.5px);
-  background-size: 24px 24px;
+/* Safe Area Insets for Mobile Notches & Dynamic Island */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 16px);
+}
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top), 16px);
 }
 
-/* Base Border Class */
-.brutal-border {
-  border-width: 3px;
-  border-style: solid;
-  border-color: var(--nb-border);
+/* Hide scrollbar for mobile carousels while keeping smooth swipe */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-@media (min-width: 768px) {
-  .brutal-border {
-    border-width: 4px;
-  }
+/* Rule 05: Universal Vietnamese Diacritic Safety (No clipping, no upper accent overlap) */
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.25;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
-/* Base Tactile Interactive Button */
-.btn-tactile {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  line-height: 1.35;
-  border: var(--border-medium) solid var(--nb-border);
-  box-shadow: var(--nb-shadow-md);
-  transition: transform var(--duration-instant) var(--ease-snappy),
-              box-shadow var(--duration-instant) var(--ease-snappy),
-              background-color var(--duration-instant) var(--ease-snappy);
+/* ============================================================================
+ * HIGH-TECH CRAFTSMANSHIP UTILITY CLASSES (LINEAR / VERCEL STYLE)
+ * ============================================================================ */
+
+/* Ambient Grid Background */
+.bg-grid-ambient {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
 }
 
-.btn-tactile:hover {
-  transform: translate(2px, 2px);
-  box-shadow: var(--nb-shadow-sm);
+.dark .bg-grid-ambient,
+[data-theme="dark"] .bg-grid-ambient {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
 }
 
-.btn-tactile:active {
-  transform: translate(4px, 4px);
-  box-shadow: 0px 0px 0px transparent;
+/* Subtle Hairline Card with Top Ambient Highlight */
+.card-kairos {
+  background-color: var(--kr-card);
+  border: 1px solid var(--kr-border);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+  position: relative;
+  transition: all var(--duration-normal) var(--ease-spring);
 }
 
-/* Elevated Card */
-.card-brutal {
-  background: var(--nb-surface-card);
-  border: var(--border-thick) solid var(--nb-border);
-  box-shadow: var(--nb-shadow-lg);
-  color: var(--nb-ink-radical);
+.card-kairos::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--kr-border-highlight), transparent);
+  pointer-events: none;
 }
 
-/* Custom Scrollbar */
+.card-kairos:hover {
+  border-color: #a1a1aa;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+}
+
+.dark .card-kairos:hover,
+[data-theme="dark"] .card-kairos:hover {
+  border-color: #3f3f46;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+/* Glowing Accent Border */
+.border-glow-emerald {
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+.border-glow-cyan {
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.15);
+}
+
+/* Custom Sleek Scrollbar */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--nb-canvas-base);
-  border-left: 2px solid var(--nb-border);
+  background: var(--kr-canvas);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--nb-accent-yellow);
-  border: 2px solid var(--nb-border);
+  background: #3f3f46;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
 }
