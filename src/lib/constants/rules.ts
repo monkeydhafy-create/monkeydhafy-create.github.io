@@ -153,4 +153,40 @@ export const DESIGN_SYSTEM_RULES = [
     badCode: '<div class="overflow-x-auto whitespace-nowrap">...</div> giấu nút ARENA và WORDS ra ngoài mép màn hình, bắt người dùng phải cuộn ngang mò mẫm.',
     goodCode: '<div class="grid grid-cols-2 gap-2 mb-2">...</div><div class="grid grid-cols-3 gap-2">...</div> hiển thị trọn vẹn 5 tính năng tức thì trên mọi màn hình từ 375px-390px.',
   },
+  {
+    ruleNumber: 17,
+    name: 'VIETNAMESE_DIACRITIC_BREATHING_LAW',
+    title: 'Kỷ Luật Khoảng Thở Dấu Tiếng Việt & Chống Chèn Đè Băng Chữ',
+    description: 
+      'Chữ tiếng Việt viết hoa có hệ thống dấu thanh đôi bên trên (Ấ, Ắ, Ẩ, Ế, Ố, Ớ, Ễ, Ữ) và dấu nặng/móc bên dưới (Ặ, Ệ, Ộ, Ự). TUYỆT ĐỐI CẤM dùng leading-[0.xx] hoặc leading-none trên các tiêu đề tiếng Việt nhiều dòng, vì dấu của dòng dưới sẽ chèn đè trực tiếp lên chân chữ dòng trên. Mọi heading và tiêu đề tiếng Việt bắt buộc line-height tối thiểu 1.25 đến 1.35 (leading-[1.25] hoặc leading-snug), và tracking không được co quá -0.01em.',
+    badCode: '<h1 class="text-6xl uppercase leading-[0.96] tracking-tight">KIẾN TRÚC HỆ THỐNG</h1> khiến dấu Ố của dòng 2 chèn thẳng vào chân chữ Ệ của dòng 1.',
+    goodCode: '<h1 class="text-2xl sm:text-5xl lg:text-7xl uppercase leading-[1.28] tracking-normal break-words">KIẾN TRÚC HỆ THỐNG</h1> bảo đảm khoảng thở thoáng đãng, dấu thanh không bao giờ chạm nhau.',
+  },
+  {
+    ruleNumber: 18,
+    name: 'ZERO_VIEWPORT_OVERFLOW_LAW',
+    title: 'Kỷ Luật Chống Tràn Mép Màn Hình Di Động (Zero Horizontal Blowout)',
+    description: 
+      'Mọi khối nội dung, tiêu đề lớn, huy hiệu và thẻ gắn nhãn inline-block trên di động PHẢI tự động co giãn theo chiều rộng màn hình, không bao giờ được đẩy phình khung chứa vượt quá 100vw làm mất viền hoặc phát sinh thanh cuộn ngang ngoài ý muốn. Mọi khối văn bản lớn phải có break-words, max-w-full; các span inline-block phải có padding dọc/ngang cân đối và line-height tự co giãn; các container gốc phải có overflow-x-hidden.',
+    badCode: '<h1 class="text-4xl"><span class="inline-block px-2">THỰC CHIẾN GỐC RỄ.</span></h1> trên màn hình 375px làm tiêu đề phình rộng 440px đẩy viền trang bay ra khỏi mép phải màn hình.',
+    goodCode: '<h1 class="text-2xl sm:text-5xl break-words max-w-full"><span class="inline-block max-w-full break-words px-2.5 py-1 leading-snug">THỰC CHIẾN GỐC RỄ.</span></h1> co giãn hoàn hảo trong khung nhìn.',
+  },
+  {
+    ruleNumber: 19,
+    name: 'FEEDBACK_VISIBILITY_AND_TOP_TOAST_LAW',
+    title: 'Kỷ Luật Tương Phản Loader Dark Mode & Neo Đỉnh Cho Toast Di Động',
+    description: 
+      'Các linh kiện phản hồi trạng thái (Feedback UI) phải đảm bảo khả năng nhận diện thị giác tức thời: (1) Thanh tiến trình Loader/Progress trong Dark Mode PHẢI giữ nguyên màu pigment neon gốc (#FFE600, #00F0FF, #FF007A) kết hợp lớp vân sọc cơ học bán trong suốt rgba(0,0,0,0.42), rãnh chạy (track) đặt màu trầm phân tầng (#18181B) để người dùng thấy rõ độ đầy %. Cấm để fill bar màu đen trên nền đen làm tàng hình tiến trình. Khung xương (Skeleton) phải nổi rõ sọc chuyển động tương phản. (2) Thông báo Toast trên Web Mobile PHẢI neo ở đỉnh màn hình (top-4 left-4 right-4) chuẩn Dynamic Island/Push Banner, tuyệt đối không đặt đáy màn hình vì xung đột ngón cái cuộn trang và thanh URL của trình duyệt di động.',
+    badCode: '<div style="background-image: repeating-linear-gradient(... #000 ...)"> làm tiến trình đen xì chìm vào nền tối; đặt Toast fixed bottom-6 trên mobile bị thanh Safari che mất.',
+    goodCode: 'background-color: #FFE600 với lớp sọc rgba(0,0,0,0.42) trên track #18181B; Toast neo top-4 left-4 right-4 lướt từ trên xuống trực quan.',
+  },
+  {
+    ruleNumber: 20,
+    name: 'ZERO_MOBILE_INPUT_AUTO_ZOOM_LAW',
+    title: 'Kỷ Luật Triệt Tiêu Phóng To Màn Hình Khi Chạm Ô Nhập Liệu (Zero Mobile Auto-Zoom)',
+    description: 
+      'Trên hệ điều hành di động (đặc biệt là iOS Safari và WebKit), trình duyệt sẽ TỰ ĐỘNG CƯỠNG CHẾ PHÓNG TO (Auto-Zoom) toàn bộ khung nhìn trang web mỗi khi người dùng chạm focus vào bất kỳ ô nhập liệu (input, select, textarea) có cỡ chữ (font-size) nhỏ hơn 16px (1rem). Hiện tượng này làm bể bố cục, dịch chuyển khung nhìn và gây mất phương hướng nghiêm trọng. BẮT BUỘC: (1) Mọi thẻ input, select, textarea trên màn hình di động (< 768px) phải có font-size tối thiểu 16px (text-base hoặc CSS global rule font-size: 16px !important). (2) Thẻ viewport trong index.html phải khai báo đầy đủ maximum-scale=1.0, user-scalable=no, viewport-fit=cover. (3) Bổ sung touch-action: manipulation trên toàn bộ nút bấm và ô nhập liệu để triệt tiêu độ trễ 300ms và chặn phóng to kép (double-tap zoom).',
+    badCode: '<input class="text-xs" ... /> (font 12px) khiến iOS Safari tự động phóng to 133% làm méo mó toàn bộ trang web khi người dùng gõ lệnh.',
+    goodCode: 'CSS global @media (max-width: 767px) { input, select, textarea { font-size: 16px !important; } } kết hợp viewport chuẩn khóa phóng to ngoài ý muốn.',
+  },
 ] as const;

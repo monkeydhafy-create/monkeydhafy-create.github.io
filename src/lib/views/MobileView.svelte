@@ -234,9 +234,9 @@
         <Badge variant="cyan">STREAK #{streakDays}</Badge>
       </div>
 
-      <h2 class="font-sans font-black text-3xl uppercase leading-[1.02] tracking-tight mb-2">
+      <h2 class="font-sans font-black text-2xl xs:text-3xl uppercase leading-[1.25] tracking-normal mb-2 break-words max-w-full">
         LEARN FAST.<br>
-        <span class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] px-1.5 border-[2px] border-black dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] inline-block">
+        <span class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] px-2 py-0.5 border-[2px] border-black dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] inline-block mt-1 max-w-full break-words leading-snug">
           TAP HARD.
         </span>
       </h2>
@@ -360,14 +360,14 @@
           </button>
         </div>
 
-        <!-- Command Line Input -->
-        <form onsubmit={(e) => { e.preventDefault(); executeCommand(terminalInput); }} class="flex gap-2">
+        <!-- Command Line Input (min-text 16px on mobile to prevent iOS Safari auto-zoom) -->
+        <form onsubmit={(e) => { e.preventDefault(); executeCommand(terminalInput); }} class="flex items-center gap-2">
           <span class="text-[#00FF66] font-bold">➜</span>
           <input
             type="text"
             bind:value={terminalInput}
             placeholder="or type command here..."
-            class="flex-1 bg-transparent text-white outline-none border-b border-neutral-700 pb-0.5 text-xs font-mono"
+            class="flex-1 bg-transparent text-white outline-none border-b border-neutral-700 pb-1 text-base md:text-xs font-mono"
           />
         </form>
       </div>

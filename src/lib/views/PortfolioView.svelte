@@ -143,9 +143,9 @@
   ];
 </script>
 
-<div class="min-h-screen bg-brutal-dots transition-colors duration-150 p-4 sm:p-6 md:p-8 lg:p-12 text-black dark:text-white">
+<div class="min-h-screen bg-brutal-dots transition-colors duration-150 p-2 sm:p-4 md:p-8 lg:p-12 text-black dark:text-white overflow-x-hidden">
   <!-- Masthead Container (Desktop 1240px Matrix / Mobile Fit-On-Screen) -->
-  <div class="max-w-[1240px] mx-auto bg-white dark:bg-[#0E0E10] border-[3px] md:border-[4px] border-black dark:border-white shadow-[8px_8px_0px_#000] md:shadow-[16px_16px_0px_#000] dark:shadow-[8px_8px_0px_#FFFFFF] md:dark:shadow-[16px_16px_0px_#FFFFFF] overflow-hidden">
+  <div class="max-w-[1240px] w-full mx-auto bg-white dark:bg-[#0E0E10] border-[3px] md:border-[4px] border-black dark:border-white shadow-[8px_8px_0px_#000] md:shadow-[16px_16px_0px_#000] dark:shadow-[8px_8px_0px_#FFFFFF] md:dark:shadow-[16px_16px_0px_#FFFFFF] overflow-hidden">
     
     <!-- Top Global Header & Navigation -->
     <header class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-b-[3px] md:border-b-[4px] border-black dark:border-white bg-white dark:bg-[#09090B] transition-colors duration-150">
@@ -157,14 +157,14 @@
         </div>
         <div class="px-4 py-2">
           <div class="flex items-center gap-2">
-            <span class="font-sans font-black text-xl sm:text-2xl tracking-tight uppercase text-black dark:text-white leading-none">
+            <span class="font-sans font-black text-xl sm:text-2xl tracking-tight uppercase text-black dark:text-white leading-normal">
               ZERA
             </span>
-            <span class="font-mono text-[10px] font-bold px-1.5 py-0.5 bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] border border-black dark:border-white">
+            <span class="font-mono text-[10px] font-bold px-1.5 py-0.5 bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] border border-black dark:border-white leading-snug">
               MONKEYDHAFY
             </span>
           </div>
-          <p class="font-mono text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mt-0.5">
+          <p class="font-mono text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mt-0.5 leading-snug">
             PRINCIPAL SOLUTIONS ARCHITECT &bull; AI ENGINEERING LEAD
           </p>
         </div>
@@ -200,7 +200,7 @@
     </header>
 
     <!-- Main Hero Presentation -->
-    <section class="p-6 sm:p-8 md:p-12 border-b-[3px] md:border-b-[4px] border-black dark:border-white bg-white dark:bg-[#0E0E10]">
+    <section class="p-4 sm:p-8 md:p-12 border-b-[3px] md:border-b-[4px] border-black dark:border-white bg-white dark:bg-[#0E0E10]">
       <div class="max-w-4xl">
         <div class="flex flex-wrap gap-2 mb-4">
           <Badge variant="yellow" rotate="left">FIRST PRINCIPLES ARCHITECTURE</Badge>
@@ -209,10 +209,10 @@
           <Badge variant="lime">WCAG AAA COMPLIANT</Badge>
         </div>
 
-        <h1 class="font-sans font-black text-4xl sm:text-6xl md:text-7xl text-black dark:text-white uppercase leading-[0.96] tracking-tight mb-6">
+        <h1 class="font-sans font-black text-2xl xs:text-3xl sm:text-5xl md:text-6xl lg:text-7xl text-black dark:text-white uppercase leading-[1.3] sm:leading-[1.18] tracking-normal mb-6 break-words max-w-full">
           KIẾN TRÚC HỆ THỐNG.<br>
           TRÍ TUỆ NHÂN TẠO.<br>
-          <span class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] px-2 border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] inline-block mt-1">
+          <span class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] px-2.5 py-1 border-[2.5px] md:border-[3px] border-black dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] md:shadow-[4px_4px_0px_#000] md:dark:shadow-[4px_4px_0px_#FFFFFF] inline-block mt-2 max-w-full break-words leading-snug">
             THỰC CHIẾN GỐC RỄ.
           </span>
         </h1>
@@ -514,14 +514,14 @@
             {/each}
           </div>
 
-          <!-- Command Input -->
+          <!-- Command Input (min-text 16px on mobile prevents iOS Safari auto-zoom) -->
           <form onsubmit={(e) => { e.preventDefault(); executeTerminal(terminalInput); }} class="flex items-center gap-2">
             <span class="text-[#00FF66] font-bold text-sm">➜ ~</span>
             <input
               type="text"
               bind:value={terminalInput}
               placeholder="gõ 'help', 'bio', 'stack', 'projects', 'contact'..."
-              class="flex-1 bg-transparent text-white outline-none border-b border-neutral-700 pb-1 text-xs sm:text-sm font-mono placeholder:text-neutral-600 focus:border-[#FFE600]"
+              class="flex-1 bg-transparent text-white outline-none border-b border-neutral-700 pb-1 text-base sm:text-sm font-mono placeholder:text-neutral-600 focus:border-[#FFE600]"
             />
           </form>
 

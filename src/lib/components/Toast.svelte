@@ -1,5 +1,6 @@
 <script lang="ts">
   import { triggerHaptic } from '$lib/constants/tokens';
+  import { fly } from 'svelte/transition';
 
   interface Props {
     visible?: boolean;
@@ -63,17 +64,17 @@
 </script>
 
 {#if visible}
-  <!-- Responsive Placement: Mobile Bottom Floating vs Desktop Top Right -->
+  <!-- Responsive Placement: Mobile Top-Anchored (Dynamic Island / Banner standard) vs Desktop Top Right -->
   <div
     role="alert"
+    transition:fly={{ y: -24, duration: 180 }}
     class="
       fixed z-[300]
-      /* Mobile: Floating near bottom safe area */
-      bottom-6 left-4 right-4 md:bottom-auto md:left-auto md:right-6 md:top-6 md:max-w-sm md:w-full
+      /* Mobile: Floating near top below status bar */
+      top-4 left-4 right-4 md:top-6 md:right-6 md:left-auto md:max-w-sm md:w-full
       p-4 border-[3px] md:border-[4px]
       {typeConfig[type].classes}
       flex items-start justify-between gap-3
-      transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]
     "
   >
     <div class="flex items-start gap-2.5">
@@ -81,7 +82,7 @@
         {typeConfig[type].icon}
       </span>
       <div>
-        <div class="font-sans font-black text-sm uppercase tracking-tight leading-none mb-1 text-current">
+        <div class="font-sans font-black text-sm uppercase tracking-tight leading-snug mb-1 text-current">
           {title}
         </div>
         <div class="font-sans text-xs font-semibold leading-relaxed text-current opacity-90">

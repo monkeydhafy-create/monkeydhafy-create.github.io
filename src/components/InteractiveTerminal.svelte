@@ -116,7 +116,7 @@
             bind:value={inputVal} 
             onkeydown={handleKey}
             placeholder="Type a command (help, status, engbbq, stack, clear)..."
-            class="flex-1 bg-transparent border-none outline-none text-white font-mono placeholder:text-slate-600 focus:ring-0 text-xs sm:text-sm"
+            class="flex-1 bg-transparent border-none outline-none text-white font-mono placeholder:text-slate-600 focus:ring-0 text-base sm:text-sm"
             autocomplete="off"
             spellcheck="false"
           />

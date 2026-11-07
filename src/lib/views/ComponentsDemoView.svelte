@@ -52,7 +52,7 @@
     { id: 'forms', label: '02 / FORMS & INPUTS', badge: 'CONTROLS' },
     { id: 'layout', label: '03 / CARDS & ACCORDION', badge: 'SURFACES' },
     { id: 'feedback', label: '04 / LOADERS & TOAST', badge: 'DYNAMIC' },
-    { id: 'rules', label: '05 / 16 IRON RULES', badge: 'STANDARD' },
+    { id: 'rules', label: '05 / IRON RULES', badge: 'STANDARD' },
   ];
 
   const demoAccordionItems = [
@@ -84,9 +84,9 @@
   }
 </script>
 
-<div class="min-h-screen bg-brutal-dots transition-colors duration-150 p-4 sm:p-6 md:p-8 lg:p-12 text-black dark:text-white">
+<div class="min-h-screen bg-brutal-dots transition-colors duration-150 p-2 sm:p-4 md:p-8 lg:p-12 text-black dark:text-white overflow-x-hidden">
   <!-- Masthead Container (Desktop 1240px Matrix / Mobile Fit-On-Screen) -->
-  <div class="max-w-[1240px] mx-auto bg-white dark:bg-[#0E0E10] border-[3px] md:border-[4px] border-black dark:border-white shadow-[8px_8px_0px_#000] md:shadow-[16px_16px_0px_#000] dark:shadow-[8px_8px_0px_#FFFFFF] md:dark:shadow-[16px_16px_0px_#FFFFFF] overflow-hidden">
+  <div class="max-w-[1240px] w-full mx-auto bg-white dark:bg-[#0E0E10] border-[3px] md:border-[4px] border-black dark:border-white shadow-[8px_8px_0px_#000] md:shadow-[16px_16px_0px_#000] dark:shadow-[8px_8px_0px_#FFFFFF] md:dark:shadow-[16px_16px_0px_#FFFFFF] overflow-hidden">
     
     <!-- Top Global Header -->
     <header class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-b-[3px] md:border-b-[4px] border-black dark:border-white bg-white dark:bg-[#09090B] transition-colors duration-150">
@@ -98,14 +98,14 @@
         </div>
         <div class="px-4 py-2">
           <div class="flex items-center gap-2">
-            <span class="font-sans font-black text-xl sm:text-2xl tracking-tight uppercase text-black dark:text-white leading-none">
+            <span class="font-sans font-black text-xl sm:text-2xl tracking-tight uppercase text-black dark:text-white leading-normal">
               COMPONENT LAB
             </span>
-            <span class="font-mono text-[10px] font-bold px-1.5 py-0.5 bg-[#00FF66] text-black dark:bg-[#04200E] dark:text-[#00FF7F] border border-black dark:border-white">
+            <span class="font-mono text-[10px] font-bold px-1.5 py-0.5 bg-[#00FF66] text-black dark:bg-[#04200E] dark:text-[#00FF7F] border border-black dark:border-white leading-snug">
               LIVE DEMO
             </span>
           </div>
-          <p class="font-mono text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mt-0.5">
+          <p class="font-mono text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mt-0.5 leading-snug">
             HYPER NEO-BRUTALISM &bull; ARK UI SUITE &bull; ISO-2026.04
           </p>
         </div>
@@ -141,7 +141,7 @@
     </header>
 
     <!-- Lab Sub-Header Banner -->
-    <section class="p-6 sm:p-8 border-b-[3px] md:border-b-[4px] border-black dark:border-white bg-white dark:bg-[#0E0E10]">
+    <section class="p-4 sm:p-8 border-b-[3px] md:border-b-[4px] border-black dark:border-white bg-white dark:bg-[#0E0E10]">
       <div class="max-w-4xl">
         <div class="flex flex-wrap gap-2 mb-3">
           <Badge variant="cyan" rotate="left">SHOWROOM TRƯNG BÀY TOÀN BỘ LINH KIỆN</Badge>
@@ -149,7 +149,7 @@
           <Badge variant="lime">DEEP OLED COMPLIANT</Badge>
         </div>
 
-        <h1 class="font-sans font-black text-3xl sm:text-5xl uppercase tracking-tight text-black dark:text-white leading-[1.02] mb-3">
+        <h1 class="font-sans font-black text-2xl sm:text-4xl md:text-5xl uppercase tracking-normal text-black dark:text-white leading-[1.25] mb-3 break-words max-w-full">
           PHÒNG THỬ NGHIỆM COMPONENT &bull; ALL INTERACTIVE
         </h1>
 
@@ -477,7 +477,7 @@
         </div>
 
       <!-- ================================================================= -->
-      <!-- 05. 16 IRON RULES CATALOG -->
+      <!-- 05. IRON RULES CATALOG -->
       <!-- ================================================================= -->
       {:else if activeTabDemo === 'rules'}
         <div class="space-y-6">
@@ -486,7 +486,7 @@
               ■ TIÊU CHUẨN THIẾT KẾ BẮT BUỘC
             </div>
             <h2 class="font-sans font-black text-2xl sm:text-3xl uppercase tracking-tight text-black dark:text-white">
-              BỘ 16 ĐIỀU LUẬT THIẾT KẾ HYPER NEO-BRUTALISM × ARK UI
+              BỘ {DESIGN_SYSTEM_RULES.length} ĐIỀU LUẬT THIẾT KẾ HYPER NEO-BRUTALISM × ARK UI
             </h2>
             <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
               Mã hiệu: ISO-NEO-BRUTALISM-2026.04. Mọi component và layout đều bắt buộc tuân thủ không ngoại lệ.

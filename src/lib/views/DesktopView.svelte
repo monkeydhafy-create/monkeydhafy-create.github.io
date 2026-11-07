@@ -189,9 +189,9 @@
             <Badge variant="lime">WCAG AAA ACCREDITED</Badge>
           </div>
 
-          <h2 class="font-sans font-black text-6xl text-black dark:text-white uppercase leading-[0.95] tracking-tight mb-6">
+          <h2 class="font-sans font-black text-4xl lg:text-6xl text-black dark:text-white uppercase leading-[1.2] tracking-normal mb-6 break-words max-w-full">
             COGNITIVE<br>RETRIEVAL ENGINE.<br>
-            <span class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] px-2 border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] inline-block">
+            <span class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] px-2.5 py-1 border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] inline-block mt-2 max-w-full break-words leading-snug">
               UNAPOLOGETIC.
             </span>
           </h2>
@@ -394,13 +394,13 @@
             </div>
 
             <!-- Command Line Input -->
-            <form onsubmit={(e) => { e.preventDefault(); executeTerminal(terminalInput); }} class="flex gap-2">
+            <form onsubmit={(e) => { e.preventDefault(); executeTerminal(terminalInput); }} class="flex items-center gap-2">
               <span class="text-[#00FF66] font-bold">➜</span>
               <input
                 type="text"
                 bind:value={terminalInput}
                 placeholder="type 'help' or command..."
-                class="flex-1 bg-transparent text-white outline-none border-b border-neutral-700 pb-0.5 text-xs font-mono"
+                class="flex-1 bg-transparent text-white outline-none border-b border-neutral-700 pb-1 text-base md:text-xs font-mono"
               />
             </form>
 

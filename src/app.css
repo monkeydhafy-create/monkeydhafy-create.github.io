@@ -105,14 +105,44 @@
 /* Reserve scrollbar track permanently: opening a dialog never shifts layout */
 html {
   scrollbar-gutter: stable;
+  overflow-x: hidden;
 }
 html.nb-scroll-locked {
   overflow: hidden;
 }
 
-/* Vietnamese diacritics safety for uppercase headings */
-h1, h2, h3 {
-  padding-top: 0.08em;
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Universal Vietnamese Diacritic Safety: Prevent upper/lower accent clipping & collisions */
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.25;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* ============================================================================
+ * RULE 20: ZERO MOBILE INPUT AUTO-ZOOM (iOS Safari & WebKit Focus Discipline)
+ * iOS Safari forcibly zooms the page whenever an input, select, or textarea
+ * with font-size < 16px is focused. Forcing 16px min on mobile prevents zoom blowout.
+ * ============================================================================ */
+@media screen and (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Eliminate 300ms tap delay and prevent double-tap zoom distortion */
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
 }
 
 /* Halftone / Dot Matrix Background */
