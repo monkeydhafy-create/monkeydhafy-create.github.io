@@ -1,41 +1,165 @@
 @import "tailwindcss";
 
+/* ============================================================================
+ * HYPER NEO-BRUTALISM × ARK UI THEME SPECIFICATION (TAILWIND CSS V4)
+ * ============================================================================ */
+
 @theme {
-  --color-brand-dark: #080c14;
-  --color-brand-surface: #0f172a;
-  --color-brand-card: #162032;
-  --color-brand-border: #1e293b;
-  --color-brand-border-light: #334155;
-  --color-brand-accent: #22c55e;
-  --color-brand-cyan: #38bdf8;
-  --color-brand-violet: #a855f7;
-  --font-sans: "Plus Jakarta Sans", sans-serif;
+  /* Font Families */
+  --font-sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
+  --font-display: "Space Grotesk", sans-serif;
+
+  /* Border Strokes */
+  --border-hairline: 1.5px;
+  --border-thin: 2px;
+  --border-medium: 3px;
+  --border-thick: 4px;
+  --border-heavy: 5px;
+
+  /* Radii */
+  --radius-none: 0px;
+  --radius-micro: 2px;
+  --radius-punchy: 4px;
+
+  /* Transitions */
+  --ease-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-instant: 80ms;
+  --duration-snappy: 120ms;
+}
+
+/* ============================================================================
+ * LIGHT MODE & DARK MODE TOKENS (CSS CUSTOM PROPERTIES)
+ * ============================================================================ */
+
+:root,
+[data-theme="light"] {
+  /* Canvas & Surfaces */
+  --nb-canvas-base: #FFFDEB;
+  --nb-canvas-dot: rgba(0, 0, 0, 0.12);
+  --nb-surface-card: #FFFFFF;
+  --nb-surface-warm: #FFFDF0;
+  --nb-surface-muted: #F4F4EE;
+
+  /* Inks */
+  --nb-ink-radical: #000000;
+  --nb-ink-muted: #333333;
+  --nb-ink-subtle: #666666;
+
+  /* Borders & Shadows */
+  --nb-border: #000000;
+  --nb-shadow-color: #000000;
+  --nb-shadow-lvl1: 2px 2px 0px #000000;
+  --nb-shadow-lvl2: 4px 4px 0px #000000;
+  --nb-shadow-lvl3: 6px 6px 0px #000000;
+  --nb-shadow-lvl4: 8px 8px 0px #000000;
+  --nb-shadow-lvl5: 12px 12px 0px #000000;
+  --nb-shadow-lvl6: 16px 16px 0px #000000;
+
+  /* High-Energy Pop Pigments */
+  --nb-accent-yellow: #FFE600;
+  --nb-accent-magenta: #FF007A;
+  --nb-accent-lime: #00FF66;
+  --nb-accent-cyan: #00F0FF;
+  --nb-accent-purple: #7928CA;
+  --nb-accent-orange: #FF5C00;
+}
+
+[data-theme="dark"],
+.dark {
+  /* Canvas & Surfaces (Cyber Brutalist OLED) */
+  --nb-canvas-base: #080808;
+  --nb-canvas-dot: rgba(255, 255, 255, 0.12);
+  --nb-surface-card: #141414;
+  --nb-surface-warm: #1C1C1C;
+  --nb-surface-muted: #242424;
+
+  /* Inks */
+  --nb-ink-radical: #FFFFFF;
+  --nb-ink-muted: #D4D4D4;
+  --nb-ink-subtle: #888888;
+
+  /* Borders & Shadows */
+  --nb-border: #FFFFFF;
+  --nb-shadow-color: #FFFFFF;
+  --nb-shadow-lvl1: 2px 2px 0px #FFFFFF;
+  --nb-shadow-lvl2: 4px 4px 0px #FFFFFF;
+  --nb-shadow-lvl3: 6px 6px 0px #FFFFFF;
+  --nb-shadow-lvl4: 8px 8px 0px #FFFFFF;
+  --nb-shadow-lvl5: 12px 12px 0px #FFFFFF;
+  --nb-shadow-lvl6: 16px 16px 0px #FFFFFF;
+
+  /* Luminescent Pigments */
+  --nb-accent-yellow: #FFE600;
+  --nb-accent-magenta: #FF1A8C;
+  --nb-accent-lime: #00FF7F;
+  --nb-accent-cyan: #00F0FF;
+  --nb-accent-purple: #A855F7;
+  --nb-accent-orange: #FF6B00;
+}
+
+/* ============================================================================
+ * NEO-BRUTALIST UTILITY PATTERNS & MECHANICAL MICRO-INTERACTIONS
+ * ============================================================================ */
+
+/* Halftone / Dot Matrix Background */
+.bg-brutal-dots {
+  background-color: var(--nb-canvas-base);
+  background-image: radial-gradient(var(--nb-canvas-dot) 1.5px, transparent 1.5px);
+  background-size: 24px 24px;
+}
+
+/* Tactile Interactive Button */
+.btn-tactile {
+  border: var(--border-medium) solid var(--nb-border);
+  box-shadow: var(--nb-shadow-lvl2);
+  transition: transform var(--duration-instant) var(--ease-snappy),
+              box-shadow var(--duration-instant) var(--ease-snappy),
+              background-color var(--duration-instant) var(--ease-snappy);
+}
+
+.btn-tactile:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--nb-shadow-lvl1);
+}
+
+.btn-tactile:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0px 0px 0px var(--nb-shadow-color);
+}
+
+/* Elevated Card */
+.card-brutal {
+  background: var(--nb-surface-card);
+  border: var(--border-thick) solid var(--nb-border);
+  box-shadow: var(--nb-shadow-lvl3);
+}
+
+/* Running Marquee Animation */
+@keyframes brutal-marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-brutal-marquee {
+  display: flex;
+  width: max-content;
+  animation: brutal-marquee 25s linear infinite;
+}
+
+.animate-brutal-marquee:hover {
+  animation-play-state: paused;
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #080c14;
+  background: var(--nb-canvas-base);
+  border-left: 2px solid var(--nb-border);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #334155;
-}
-
-/* Grid Background */
-.bg-grid-pattern {
-  background-size: 40px 40px;
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-}
-
-.radial-glow {
-  background: radial-gradient(circle at 50% 0%, rgba(34, 197, 94, 0.12) 0%, rgba(56, 189, 248, 0.05) 35%, transparent 70%);
+  background: var(--nb-accent-yellow);
+  border: 2px solid var(--nb-border);
 }
