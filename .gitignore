@@ -13,6 +13,8 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+tests/screenshots/
+screenshots/
 
 # Editor directories
 .vscode/*
