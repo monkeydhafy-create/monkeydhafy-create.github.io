@@ -117,35 +117,112 @@
 
 <div class="block lg:hidden min-h-screen bg-brutal-dots transition-colors duration-150 text-black dark:text-white">
 
-  <!-- Mobile Minimal Top Header (Standard Web Header) -->
-  <header class="px-4 py-3 flex justify-between items-center border-b-[3px] border-black dark:border-white bg-[#FFE600] text-black">
+  <!-- Mobile Minimal Top Header (Standard Web Header with Nocturnal Dark Mode) -->
+  <header class="px-4 py-3 flex justify-between items-center border-b-[3px] border-black dark:border-white bg-[#FFE600] dark:bg-[#09090B] text-black dark:text-white transition-colors duration-150">
     <div class="flex items-center gap-2">
-      <div class="w-8 h-8 bg-black text-white flex items-center justify-center font-mono font-black text-base border-2 border-black">
+      <div class="w-8 h-8 bg-black text-white dark:bg-[#1C1900] dark:text-[#FFE600] flex items-center justify-center font-mono font-black text-base border-2 border-black dark:border-white shadow-[1.5px_1.5px_0px_#000] dark:shadow-[1.5px_1.5px_0px_#FFFFFF]">
         CH
       </div>
-      <span class="font-sans font-black text-xl tracking-tight uppercase">ENG.BBQ</span>
+      <span class="font-sans font-black text-xl tracking-tight uppercase text-black dark:text-white">ENG.BBQ</span>
     </div>
     
     <div class="flex items-center gap-2">
       <button
         onclick={ontoggleTheme}
-        class="px-2.5 py-1.5 font-mono text-[10px] font-black uppercase bg-white dark:bg-[#141414] text-black dark:text-white border-2 border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF] cursor-pointer"
+        class="px-2.5 py-1.5 font-mono text-[10px] font-black uppercase bg-white dark:bg-[#18181B] text-black dark:text-[#FFE600] border-2 border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFFFFF] cursor-pointer"
       >
         {isDark ? '☀️' : '🌙'}
       </button>
 
       <button
         onclick={() => { triggerHaptic('lightTap'); isDrawerOpen = true; }}
-        class="px-3 py-1.5 font-mono text-xs font-black uppercase bg-black text-white dark:bg-white dark:text-black border-2 border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF] cursor-pointer"
+        class="px-3 py-1.5 font-mono text-xs font-black uppercase bg-black text-white dark:bg-[#1C1900] dark:text-[#FFE600] border-2 border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFFFFF] cursor-pointer"
       >
         MENU ☰
       </button>
     </div>
   </header>
 
-  <!-- Mobile Web Top Navigation Tabs (Standard Web Navigation, No Bottom Collisions) -->
-  <div class="px-4 pt-3 pb-1 border-b-[2px] border-black dark:border-white bg-white dark:bg-[#141414]">
-    <Tabs items={mobileNavTabs} bind:activeId={activeTab} />
+  <!-- Mobile Fit-on-Screen Feature Bento Navigation (RULE 16: ZERO HORIZONTAL SCROLL) -->
+  <div class="px-4 py-3 border-b-[2px] border-black dark:border-zinc-800 bg-white/95 dark:bg-[#0E0E10]/95 backdrop-blur-sm select-none">
+    <div class="grid grid-cols-2 gap-2 mb-2">
+      <button
+        type="button"
+        onclick={() => handleTabSelect('arena')}
+        class="p-2.5 flex items-center justify-between border-[2px] border-black dark:border-white font-mono text-xs font-black uppercase transition-all duration-75 cursor-pointer select-none
+               {activeTab === 'arena' 
+                 ? 'bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] -translate-y-0.5' 
+                 : 'bg-neutral-100 dark:bg-[#18181B] text-black dark:text-zinc-300 hover:bg-[#FFE600] hover:text-black dark:hover:bg-[#1C1900] dark:hover:text-[#FFE600] shadow-[1.5px_1.5px_0px_#000] dark:shadow-[1.5px_1.5px_0px_#FFFFFF]'}"
+      >
+        <div class="flex items-center gap-1.5">
+          <span class="text-sm">⚡</span>
+          <span>ARENA</span>
+        </div>
+        <span class="text-[9px] px-1.5 py-0.5 {activeTab === 'arena' ? 'bg-black text-white dark:bg-[#FFE600] dark:text-black' : 'bg-black text-white dark:bg-zinc-800 dark:text-zinc-300'} font-bold">DAILY</span>
+      </button>
+
+      <button
+        type="button"
+        onclick={() => handleTabSelect('words')}
+        class="p-2.5 flex items-center justify-between border-[2px] border-black dark:border-white font-mono text-xs font-black uppercase transition-all duration-75 cursor-pointer select-none
+               {activeTab === 'words' 
+                 ? 'bg-[#00F0FF] text-black dark:bg-[#031C20] dark:text-[#00F0FF] dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] -translate-y-0.5' 
+                 : 'bg-neutral-100 dark:bg-[#18181B] text-black dark:text-zinc-300 hover:bg-[#00F0FF] hover:text-black dark:hover:bg-[#031C20] dark:hover:text-[#00F0FF] shadow-[1.5px_1.5px_0px_#000] dark:shadow-[1.5px_1.5px_0px_#FFFFFF]'}"
+      >
+        <div class="flex items-center gap-1.5">
+          <span class="text-sm">📖</span>
+          <span>WORDS</span>
+        </div>
+        <span class="text-[9px] px-1.5 py-0.5 {activeTab === 'words' ? 'bg-black text-white dark:bg-[#00F0FF] dark:text-black' : 'bg-black text-white dark:bg-zinc-800 dark:text-zinc-300'} font-bold">1.4K</span>
+      </button>
+    </div>
+
+    <div class="grid grid-cols-3 gap-2">
+      <button
+        type="button"
+        onclick={() => handleTabSelect('tianji')}
+        class="p-2 flex flex-col items-center justify-center border-[2px] border-black dark:border-white font-mono text-xs font-black uppercase transition-all duration-75 cursor-pointer select-none
+               {activeTab === 'tianji' 
+                 ? 'bg-[#00FF7F] text-black dark:bg-[#04200E] dark:text-[#00FF7F] dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] -translate-y-0.5' 
+                 : 'bg-neutral-100 dark:bg-[#18181B] text-black dark:text-zinc-300 hover:bg-[#00FF7F] hover:text-black dark:hover:bg-[#04200E] dark:hover:text-[#00FF7F] shadow-[1.5px_1.5px_0px_#000] dark:shadow-[1.5px_1.5px_0px_#FFFFFF]'}"
+      >
+        <div class="flex items-center gap-1">
+          <span class="text-xs">🔮</span>
+          <span>TIANJI</span>
+        </div>
+        <span class="text-[8px] opacity-75 mt-0.5 font-bold">8.77M</span>
+      </button>
+
+      <button
+        type="button"
+        onclick={() => handleTabSelect('cli')}
+        class="p-2 flex flex-col items-center justify-center border-[2px] border-black dark:border-white font-mono text-xs font-black uppercase transition-all duration-75 cursor-pointer select-none
+               {activeTab === 'cli' 
+                 ? 'bg-[#FF007A] text-white dark:bg-[#200412] dark:text-[#FF1A8C] dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] -translate-y-0.5' 
+                 : 'bg-neutral-100 dark:bg-[#18181B] text-black dark:text-zinc-300 hover:bg-[#FF007A] hover:text-white dark:hover:bg-[#200412] dark:hover:text-[#FF1A8C] shadow-[1.5px_1.5px_0px_#000] dark:shadow-[1.5px_1.5px_0px_#FFFFFF]'}"
+      >
+        <div class="flex items-center gap-1">
+          <span class="text-xs">💻</span>
+          <span>CLI</span>
+        </div>
+        <span class="text-[8px] opacity-75 mt-0.5 font-bold">RADAR</span>
+      </button>
+
+      <button
+        type="button"
+        onclick={() => handleTabSelect('profile')}
+        class="p-2 flex flex-col items-center justify-center border-[2px] border-black dark:border-white font-mono text-xs font-black uppercase transition-all duration-75 cursor-pointer select-none
+               {activeTab === 'profile' 
+                 ? 'bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] -translate-y-0.5' 
+                 : 'bg-neutral-100 dark:bg-[#18181B] text-black dark:text-zinc-300 hover:bg-[#FFE600] hover:text-black dark:hover:bg-[#1C1900] dark:hover:text-[#FFE600] shadow-[1.5px_1.5px_0px_#000] dark:shadow-[1.5px_1.5px_0px_#FFFFFF]'}"
+      >
+        <div class="flex items-center gap-1">
+          <span class="text-xs">👤</span>
+          <span>USER</span>
+        </div>
+        <span class="text-[8px] opacity-75 mt-0.5 font-bold">PROFILE</span>
+      </button>
+    </div>
   </div>
 
   <!-- Mobile Scrollable Main Content -->
@@ -159,7 +236,7 @@
 
       <h2 class="font-sans font-black text-3xl uppercase leading-[1.02] tracking-tight mb-2">
         LEARN FAST.<br>
-        <span class="bg-[#FFE600] text-black px-1.5 border-[2px] border-black dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF] inline-block">
+        <span class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] px-1.5 border-[2px] border-black dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] inline-block">
           TAP HARD.
         </span>
       </h2>
@@ -193,7 +270,7 @@
       </Card>
 
       <!-- Component: Mobile Bottom Sheet Picker -->
-      <div class="bg-white dark:bg-[#141414] border-[3px] border-black dark:border-white p-3.5 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF]">
+      <div class="bg-white dark:bg-[#0E0E10] border-[3px] border-black dark:border-white p-3.5 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF]">
         <SelectPicker 
           label="CHỌN TRÌNH ĐỘ HỌC TẬP" 
           options={levelOptions} 
@@ -216,11 +293,11 @@
           1,450 cụm từ ngữ cảnh được phân bổ theo thuật toán lặp lại ngắt quãng (Spaced Repetition).
         </p>
         <div class="space-y-3 mb-4">
-          <div class="p-3 bg-neutral-100 dark:bg-[#1C1C1C] border-2 border-black dark:border-white font-mono text-xs">
+          <div class="p-3 bg-neutral-100 dark:bg-[#18181B] border-2 border-black dark:border-white font-mono text-xs">
             <div class="font-bold text-[#FF007A]">THE EFFORT PARADOX</div>
             <div class="text-[11px] text-neutral-600 dark:text-neutral-300 mt-1">Càng cố học vẹt, càng nhanh quên trong phản xạ giao tiếp.</div>
           </div>
-          <div class="p-3 bg-neutral-100 dark:bg-[#1C1C1C] border-2 border-black dark:border-white font-mono text-xs">
+          <div class="p-3 bg-neutral-100 dark:bg-[#18181B] border-2 border-black dark:border-white font-mono text-xs">
             <div class="font-bold text-[#00F0FF]">COGNITIVE AVOIDANCE</div>
             <div class="text-[11px] text-neutral-600 dark:text-neutral-300 mt-1">Ép não bộ vượt qua tâm lý né tránh câu phức tạp dưới 3s.</div>
           </div>
@@ -242,7 +319,7 @@
             bind:value={selectedZodiacMobile} 
           />
         </div>
-        <div class="p-3 bg-[#FFFDF0] dark:bg-[#1C1C1C] border-2 border-black dark:border-white font-mono text-xs mb-4 text-black dark:text-white">
+        <div class="p-3 bg-[#FFFDF0] dark:bg-[#18181B] border-2 border-black dark:border-white font-mono text-xs mb-4 text-black dark:text-white">
           QUY CÁCH: THƯỢNG CÁCH &bull; 8.77M VECTOR CORPUS MATCHED
         </div>
         <Button variant="primary" size="md" fullWidthOnMobile>
@@ -252,7 +329,7 @@
 
     {:else if activeTab === 'cli'}
       <!-- Mobile CLI Terminal Tab -->
-      <div class="border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF] bg-black text-white p-4 font-mono text-xs">
+      <div class="border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] bg-black text-white p-4 font-mono text-xs">
         <div class="flex items-center justify-between pb-2 mb-3 border-b border-neutral-700 text-[#FFE600] font-black">
           <span>MOBILE CLI RADAR</span>
           <span>ONLINE</span>
@@ -317,10 +394,10 @@
     {/if}
 
     <!-- Callout Box -->
-    <div class="border-[3px] border-black dark:border-white p-4 bg-[#FFE600] text-black shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF]">
-      <div class="font-mono text-xs font-black uppercase">💡 WEB-FIRST MOBILE ARCHITECTURE:</div>
+    <div class="border-[3px] border-black dark:border-white p-4 bg-[#FFE600] text-black dark:bg-[#141200] dark:text-zinc-100 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF]">
+      <div class="font-mono text-xs font-black uppercase text-black dark:text-[#FFE600]">💡 WEB-FIRST MOBILE ARCHITECTURE:</div>
       <div class="text-xs font-semibold mt-1 leading-relaxed">
-        Giao diện thuần Web 100%: Không ngụy tạo App, không Bottom Toolbar che khuất Safari/Chrome. Điều hướng qua Web Tabs đỉnh trang và Menu Drawer!
+        Giao diện thuần Web 100%: Không ngụy tạo App, không Bottom Toolbar che khuất Safari/Chrome. Điều hướng qua Bento Grid hiển thị trọn vẹn và Menu Drawer!
       </div>
     </div>
 
@@ -350,16 +427,16 @@
           {#each mobileNavTabs as tab}
             <button
               onclick={() => { activeTab = tab.id; isDrawerOpen = false; }}
-              class="p-2.5 text-left font-mono text-xs font-bold uppercase border-2 border-black dark:border-white flex justify-between items-center transition-colors cursor-pointer {activeTab === tab.id ? 'bg-[#FFE600] text-black shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF]' : 'bg-white dark:bg-[#141414] text-black dark:text-white'}"
+              class="p-2.5 text-left font-mono text-xs font-bold uppercase border-2 border-black dark:border-white flex justify-between items-center transition-colors cursor-pointer {activeTab === tab.id ? 'bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFFFFF]' : 'bg-white dark:bg-[#18181B] text-black dark:text-white'}"
             >
               <span>{tab.label}</span>
-              <span class="text-[9px] px-1.5 py-0.5 bg-black text-white dark:bg-white dark:text-black">{tab.badge}</span>
+              <span class="text-[9px] px-1.5 py-0.5 {activeTab === tab.id ? 'bg-black text-white dark:bg-[#FFE600] dark:text-black' : 'bg-black text-white dark:bg-zinc-800 dark:text-zinc-300'} font-bold">{tab.badge}</span>
             </button>
           {/each}
         </div>
       </div>
 
-      <div class="p-3 bg-[#FFFDF0] dark:bg-[#1C1C1C] border-2 border-black dark:border-white font-mono text-xs text-black dark:text-white">
+      <div class="p-3 bg-[#FFFDF0] dark:bg-[#18181B] border-2 border-black dark:border-white font-mono text-xs text-black dark:text-white">
         STATUS: Ark UI Zag State Machine &bull; Touch Drag Gesture Enabled
       </div>
 

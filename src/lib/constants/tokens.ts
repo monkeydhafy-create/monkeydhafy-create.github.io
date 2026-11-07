@@ -135,19 +135,289 @@ export const COLORS = {
     borderRadical: '#FFFFFF',     // 4px crisp white boundary stroke
     borderSubtle: '#555555',      // Secondary hairline borders
 
-    // Vivid Neo-Brutalist Pop Pigments (Dark Mode - High Luminance)
-    yellow: '#FFE600',            // Acid Yellow (Luminescent against black)
-    magenta: '#FF1A8C',           // Electric Hot Pink
-    lime: '#00FF7F',              // Vibrant Spring Green
-    cyan: '#00F0FF',              // Hyper Cyan
-    purple: '#A855F7',            // Electric Violet
-    orange: '#FF6B00',            // Radiant Orange
+    // Vivid Neo-Brutalist Pop Pigments (Dark Mode - Nocturnal Deep Tones & Laser Inks)
+    yellow: '#FFE600',            // Acid Yellow Laser Ink
+    yellowDarkBg: '#1C1900',      // Deep Obsidian Amber (Non-glaring Dark Button/Badge surface)
+    magenta: '#FF1A8C',           // Electric Hot Pink Laser Ink
+    magentaDarkBg: '#200412',     // Deep Obsidian Magenta surface
+    lime: '#00FF7F',              // Vibrant Spring Green Laser Ink
+    limeDarkBg: '#04200E',        // Deep Obsidian Forest surface
+    cyan: '#00F0FF',              // Hyper Cyan Laser Ink
+    cyanDarkBg: '#031C20',        // Deep Obsidian Teal surface
+    purple: '#A855F7',            // Electric Violet Laser Ink
+    purpleDarkBg: '#190529',      // Deep Obsidian Violet surface
+    orange: '#FF6B00',            // Radiant Orange Laser Ink
+    orangeDarkBg: '#240A00',      // Deep Obsidian Ember surface
 
     // Functional State Colors
     stateHoverBg: '#FFE600',      // High contrast yellow on hover
     stateActiveBg: '#00F0FF',     // Cyan on active click
-    stateDisabledBg: '#222222',   // Dimmed disabled surface
-    stateDisabledInk: '#666666',  // Disabled text
+    stateDisabledBg: '#1C1C20',   // Dimmed disabled surface
+    stateDisabledInk: '#52525B',  // Disabled text
+  }
+} as const;
+
+// ============================================================================
+// 4.1. COMPONENT-SPECIFIC THEME PALETTES (Light vs Deep Dark Mode)
+// ============================================================================
+export const COMPONENT_COLORS = {
+  light: {
+    buttonPrimary: {
+      bg: 'bg-[#FFE600]',
+      text: 'text-black',
+      border: 'border-black',
+      hover: 'hover:bg-[#FFF066]',
+      shadow: 'shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000]',
+    },
+    buttonSecondary: {
+      bg: 'bg-[#00F0FF]',
+      text: 'text-black',
+      border: 'border-black',
+      hover: 'hover:bg-[#66F5FF]',
+      shadow: 'shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000]',
+    },
+    buttonDanger: {
+      bg: 'bg-[#FF007A]',
+      text: 'text-white',
+      border: 'border-black',
+      hover: 'hover:bg-[#FF3399]',
+      shadow: 'shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000]',
+    },
+    buttonOutline: {
+      bg: 'bg-white',
+      text: 'text-black',
+      border: 'border-black',
+      hover: 'hover:bg-neutral-100',
+      shadow: 'shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000]',
+    },
+    buttonDark: {
+      bg: 'bg-black',
+      text: 'text-white',
+      border: 'border-black',
+      hover: 'hover:bg-neutral-800',
+      shadow: 'shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000]',
+    },
+    badge: {
+      yellow: 'bg-[#FFE600] text-black border-black shadow-[2px_2px_0px_#000]',
+      cyan: 'bg-[#00F0FF] text-black border-black shadow-[2px_2px_0px_#000]',
+      magenta: 'bg-[#FF007A] text-white border-black shadow-[2px_2px_0px_#000]',
+      lime: 'bg-[#00FF66] text-black border-black shadow-[2px_2px_0px_#000]',
+      purple: 'bg-[#7928CA] text-white border-black shadow-[2px_2px_0px_#000]',
+      orange: 'bg-[#FF5C00] text-white border-black shadow-[2px_2px_0px_#000]',
+      neutral: 'bg-neutral-200 text-black border-black shadow-[2px_2px_0px_#000]',
+    },
+    card: {
+      bg: 'bg-white',
+      border: 'border-black',
+      subBg: 'bg-[#FFFDF0]',
+      shadow: 'shadow-[4px_4px_0px_#000] md:shadow-[6px_6px_0px_#000]',
+    },
+    toast: {
+      success: {
+        bg: 'bg-[#00FF66]',
+        text: 'text-black',
+        border: 'border-black',
+        shadow: 'shadow-[4px_4px_0px_#000] md:shadow-[6px_6px_0px_#000]',
+        icon: '✔'
+      },
+      warning: {
+        bg: 'bg-[#FFE600]',
+        text: 'text-black',
+        border: 'border-black',
+        shadow: 'shadow-[4px_4px_0px_#000] md:shadow-[6px_6px_0px_#000]',
+        icon: '⚠'
+      },
+      error: {
+        bg: 'bg-[#FF007A]',
+        text: 'text-white',
+        border: 'border-black',
+        shadow: 'shadow-[4px_4px_0px_#000] md:shadow-[6px_6px_0px_#000]',
+        icon: '✖'
+      },
+      info: {
+        bg: 'bg-[#00F0FF]',
+        text: 'text-black',
+        border: 'border-black',
+        shadow: 'shadow-[4px_4px_0px_#000] md:shadow-[6px_6px_0px_#000]',
+        icon: 'ℹ'
+      },
+    },
+    tabs: {
+      container: 'border-[3px] md:border-[4px] border-black bg-neutral-100 shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000]',
+      tabActive: 'bg-[#FFE600] text-black border-2 border-black shadow-[2px_2px_0px_#000] -translate-y-0.5',
+      tabInactive: 'text-neutral-600 hover:text-black hover:bg-neutral-200',
+    },
+    input: {
+      container: 'border-[2.5px] md:border-[3px] border-black shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000] bg-white',
+      prefix: 'bg-[#FFE600] text-black border-r-[2.5px] md:border-r-[3px] border-black',
+      field: 'text-black placeholder:text-neutral-400',
+    },
+    select: {
+      trigger: 'bg-white text-black border-[2.5px] md:border-[3px] border-black shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000]',
+      arrow: 'bg-[#FFE600] text-black border border-black shadow-[1px_1px_0px_#000]',
+      menu: 'bg-white border-t-[3px] md:border-[3px] border-black shadow-[0px_-4px_0px_#000] md:shadow-[6px_6px_0px_#000]',
+      optionActive: 'bg-[#FFE600] text-black border-black shadow-[2px_2px_0px_#000]',
+      optionInactive: 'hover:bg-neutral-100 text-black',
+    },
+    switch: {
+      track: 'border-[3px] border-black shadow-[2px_2px_0px_#000]',
+      trackActive: 'bg-[#00FF66]',
+      trackInactive: 'bg-neutral-300',
+      knobActive: 'bg-black text-white shadow-[1px_1px_0px_#000]',
+      knobInactive: 'bg-neutral-600 text-white',
+    },
+    accordion: {
+      headerOpen: 'bg-[#00F0FF] text-black',
+      headerClosed: 'bg-white text-black hover:bg-[#FFE600] hover:text-black',
+      indicatorOpen: 'rotate-45 bg-[#FFE600] text-black',
+      indicatorClosed: 'rotate-0',
+    },
+    banner: {
+      bg: 'bg-[#FFE600]',
+      text: 'text-black',
+      border: 'border-black',
+      ctaBtn: 'bg-black text-white hover:bg-neutral-800 shadow-[4px_4px_0px_#000]',
+    },
+    header: {
+      bar: 'border-b-[3px] md:border-b-[4px] border-black bg-white text-black',
+      logoBox: 'bg-[#FF007A] text-white border-r-[3px] md:border-r-[4px] border-black',
+      navActive: 'bg-[#FFE600] text-black border border-black shadow-[1.5px_1.5px_0px_#000]',
+      navInactive: 'text-neutral-700 hover:text-black hover:bg-neutral-200',
+    },
+    modal: {
+      header: 'bg-[#FFE600] text-black border-b-[3px] md:border-b-[4px] border-black',
+      closeBtn: 'bg-white text-black border-2 border-black shadow-[2px_2px_0px_#000]',
+      container: 'bg-white text-black border-t-[3px] md:border-[4px] border-black shadow-[12px_12px_0px_#000]',
+    }
+  },
+  dark: {
+    buttonPrimary: {
+      bg: 'dark:bg-[#FFE600]',
+      text: 'dark:text-black',
+      border: 'dark:border-white',
+      hover: 'dark:hover:bg-[#FFF066] dark:hover:text-black dark:hover:shadow-[1px_1px_0px_#FFFFFF]',
+      shadow: 'dark:shadow-[3px_3px_0px_#FFFFFF] md:dark:shadow-[4px_4px_0px_#FFFFFF]',
+    },
+    buttonSecondary: {
+      bg: 'dark:bg-[#00F0FF]',
+      text: 'dark:text-black',
+      border: 'dark:border-white',
+      hover: 'dark:hover:bg-[#66F5FF] dark:hover:text-black dark:hover:shadow-[1px_1px_0px_#FFFFFF]',
+      shadow: 'dark:shadow-[3px_3px_0px_#FFFFFF] md:dark:shadow-[4px_4px_0px_#FFFFFF]',
+    },
+    buttonDanger: {
+      bg: 'dark:bg-[#FF007A]',
+      text: 'dark:text-white',
+      border: 'dark:border-white',
+      hover: 'dark:hover:bg-[#FF3399] dark:hover:text-white dark:hover:shadow-[1px_1px_0px_#FFFFFF]',
+      shadow: 'dark:shadow-[3px_3px_0px_#FFFFFF] md:dark:shadow-[4px_4px_0px_#FFFFFF]',
+    },
+    buttonOutline: {
+      bg: 'dark:bg-[#18181B]',
+      text: 'dark:text-white',
+      border: 'dark:border-white',
+      hover: 'dark:hover:bg-[#27272A] dark:hover:text-white dark:hover:shadow-[1px_1px_0px_#FFFFFF]',
+      shadow: 'dark:shadow-[3px_3px_0px_#FFFFFF] md:dark:shadow-[4px_4px_0px_#FFFFFF]',
+    },
+    buttonDark: {
+      bg: 'dark:bg-[#27272A]',
+      text: 'dark:text-white',
+      border: 'dark:border-white',
+      hover: 'dark:hover:bg-zinc-700 dark:hover:shadow-[1px_1px_0px_#FFFFFF]',
+      shadow: 'dark:shadow-[3px_3px_0px_#FFFFFF] md:dark:shadow-[4px_4px_0px_#FFFFFF]',
+    },
+    badge: {
+      yellow: 'dark:bg-[#FFE600] dark:text-black dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      cyan: 'dark:bg-[#00F0FF] dark:text-black dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      magenta: 'dark:bg-[#FF007A] dark:text-white dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      lime: 'dark:bg-[#00FF66] dark:text-black dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      purple: 'dark:bg-[#7928CA] dark:text-white dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      orange: 'dark:bg-[#FF5C00] dark:text-white dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      neutral: 'dark:bg-[#27272A] dark:text-white dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+    },
+    card: {
+      bg: 'dark:bg-[#0E0E10]',
+      border: 'dark:border-white',
+      subBg: 'dark:bg-[#18181B]',
+      shadow: 'dark:shadow-[4px_4px_0px_#FFFFFF] md:dark:shadow-[6px_6px_0px_#FFFFFF]',
+    },
+    toast: {
+      success: {
+        bg: 'dark:bg-[#00FF66]',
+        text: 'dark:text-black',
+        border: 'dark:border-white',
+        shadow: 'dark:shadow-[4px_4px_0px_#FFFFFF] md:dark:shadow-[6px_6px_0px_#FFFFFF]',
+        icon: '✔'
+      },
+      warning: {
+        bg: 'dark:bg-[#FFE600]',
+        text: 'dark:text-black',
+        border: 'dark:border-white',
+        shadow: 'dark:shadow-[4px_4px_0px_#FFFFFF] md:dark:shadow-[6px_6px_0px_#FFFFFF]',
+        icon: '⚠'
+      },
+      error: {
+        bg: 'dark:bg-[#FF007A]',
+        text: 'dark:text-white',
+        border: 'dark:border-white',
+        shadow: 'dark:shadow-[4px_4px_0px_#FFFFFF] md:dark:shadow-[6px_6px_0px_#FFFFFF]',
+        icon: '✖'
+      },
+      info: {
+        bg: 'dark:bg-[#00F0FF]',
+        text: 'dark:text-black',
+        border: 'dark:border-white',
+        shadow: 'dark:shadow-[4px_4px_0px_#FFFFFF] md:dark:shadow-[6px_6px_0px_#FFFFFF]',
+        icon: 'ℹ'
+      },
+    },
+    tabs: {
+      container: 'dark:border-white dark:bg-[#18181B] dark:shadow-[3px_3px_0px_#FFFFFF] md:dark:shadow-[4px_4px_0px_#FFFFFF]',
+      tabActive: 'dark:bg-[#FFE600] dark:text-black dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF] -translate-y-0.5',
+      tabInactive: 'dark:text-zinc-300 dark:hover:text-white dark:hover:bg-[#27272A]',
+    },
+    input: {
+      container: 'dark:border-white dark:shadow-[3px_3px_0px_#FFFFFF] md:dark:shadow-[4px_4px_0px_#FFFFFF] dark:bg-[#121214]',
+      prefix: 'dark:bg-[#FFE600] dark:text-black dark:border-r-white',
+      field: 'dark:text-white dark:placeholder:text-zinc-500',
+    },
+    select: {
+      trigger: 'dark:bg-[#121214] dark:text-white dark:border-white dark:shadow-[3px_3px_0px_#FFFFFF] md:dark:shadow-[4px_4px_0px_#FFFFFF]',
+      arrow: 'dark:bg-[#FFE600] dark:text-black dark:border-white dark:shadow-[1px_1px_0px_#FFFFFF]',
+      menu: 'dark:bg-[#121214] dark:border-white dark:shadow-[0px_-4px_0px_#FFFFFF] md:dark:shadow-[6px_6px_0px_#FFFFFF]',
+      optionActive: 'dark:bg-[#FFE600] dark:text-black dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      optionInactive: 'dark:hover:bg-[#27272A] dark:text-white',
+    },
+    switch: {
+      track: 'dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      trackActive: 'dark:bg-[#00FF66] dark:border-white',
+      trackInactive: 'dark:bg-[#18181B]',
+      knobActive: 'dark:bg-black dark:text-white dark:shadow-[1px_1px_0px_#FFFFFF]',
+      knobInactive: 'dark:bg-zinc-500 dark:text-white',
+    },
+    accordion: {
+      headerOpen: 'dark:bg-[#00F0FF] dark:text-black dark:border-white',
+      headerClosed: 'dark:bg-[#0E0E10] dark:text-white dark:hover:bg-[#FFE600] dark:hover:text-black',
+      indicatorOpen: 'rotate-45 dark:bg-[#FFE600] dark:text-black dark:border-white',
+      indicatorClosed: 'rotate-0',
+    },
+    banner: {
+      bg: 'dark:bg-[#141416]',
+      text: 'dark:text-white',
+      border: 'dark:border-white',
+      ctaBtn: 'dark:bg-[#FFE600] dark:text-black dark:border-2 dark:border-white dark:shadow-[4px_4px_0px_#FFFFFF] dark:hover:bg-[#FFF066]',
+    },
+    header: {
+      bar: 'dark:border-white dark:bg-[#09090B] dark:text-white',
+      logoBox: 'dark:bg-[#FF007A] dark:text-white dark:border-white',
+      navActive: 'dark:bg-[#FFE600] dark:text-black dark:border-white dark:shadow-[1.5px_1.5px_0px_#FFFFFF]',
+      navInactive: 'dark:text-zinc-300 dark:hover:text-white dark:hover:bg-[#27272A]',
+    },
+    modal: {
+      header: 'dark:bg-[#FFE600] dark:text-black dark:border-white',
+      closeBtn: 'dark:bg-white dark:text-black dark:border-white dark:shadow-[2px_2px_0px_#FFFFFF]',
+      container: 'dark:bg-[#0E0E10] dark:text-white dark:border-white dark:shadow-[12px_12px_0px_#FFFFFF]',
+    }
   }
 } as const;
 
@@ -155,48 +425,48 @@ export const COLORS = {
 // 5. TYPOGRAPHY MATRIX (Hệ thống kiểu chữ & nhịp điệu đọc)
 // ============================================================================
 export const FONTS = {
-  sans: "'Space Grotesk', 'Inter', -apple-system, sans-serif",
+  sans: "'Be Vietnam Pro', 'Space Grotesk', 'Inter', -apple-system, sans-serif",
   mono: "'JetBrains Mono', 'SF Mono', monospace",
-  display: "'Space Grotesk', sans-serif",
+  display: "'Be Vietnam Pro', 'Space Grotesk', sans-serif",
 } as const;
 
 export const TYPE_SCALE = {
   displayMammoth: {
     fontSize: '60px',
-    lineHeight: '1.0',
-    letterSpacing: '-0.05em',
+    lineHeight: '1.1',
+    letterSpacing: '-0.04em',
     fontWeight: '900',
     textTransform: 'uppercase' as const,
   },
   displayLarge: {
     fontSize: '44px',
-    lineHeight: '1.02',
-    letterSpacing: '-0.04em',
+    lineHeight: '1.15',
+    letterSpacing: '-0.03em',
     fontWeight: '900',
     textTransform: 'uppercase' as const,
   },
   displayMedium: {
     fontSize: '32px',
-    lineHeight: '1.1',
-    letterSpacing: '-0.03em',
+    lineHeight: '1.2',
+    letterSpacing: '-0.02em',
     fontWeight: '800',
     textTransform: 'uppercase' as const,
   },
   heading1: {
     fontSize: '26px',
-    lineHeight: '1.2',
-    letterSpacing: '-0.02em',
+    lineHeight: '1.25',
+    letterSpacing: '-0.01em',
     fontWeight: '800',
   },
   heading2: {
     fontSize: '20px',
-    lineHeight: '1.25',
-    letterSpacing: '-0.01em',
+    lineHeight: '1.3',
+    letterSpacing: '0.0em',
     fontWeight: '700',
   },
   heading3: {
     fontSize: '16px',
-    lineHeight: '1.3',
+    lineHeight: '1.35',
     letterSpacing: '0.0em',
     fontWeight: '700',
   },

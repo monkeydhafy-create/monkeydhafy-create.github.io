@@ -129,19 +129,28 @@ export const DESIGN_SYSTEM_RULES = [
   {
     ruleNumber: 14,
     name: 'UNIVERSAL_COMPONENT_DARK_MODE_INVERSION',
-    title: 'Kỷ Luật Chuyển Đổi Dark Mode Toàn Diện Mọi Linh Kiện',
+    title: 'Kỷ Luật Đa Tầng Dark Mode Sâu Tuyệt Đối (Deep OLED Architecture)',
     description: 
-      'Khi chuyển sang Dark Mode, toàn bộ mọi linh kiện (Card, Input, Button, Tabs, Accordion, SelectPicker, Switch, Dialog, Drawer, Toast, Skeleton, Navigation Dock) bắt buộc phải đồng loạt chuyển đổi trạng thái hình học: (1) Viền mực đen (#000000) biến thành Viền trắng tinh khôi (#FFFFFF) hoặc viền neon. (2) Bóng đổ cứng đen (#000000) biến thành Bóng đổ cứng trắng (#FFFFFF) hoặc neon (#00F0FF, #FFE600). (3) Bề mặt linh kiện biến thành Charcoal sâu (#141414, #181818, #1C1C1C) - tuyệt đối không để màu trắng nguyên bản và không dùng màu đen hòa tan với nền (#000000) để đảm bảo độ sâu 3D. Tuyệt đối cấm chỉ đổi nền hoặc màu chữ mà giữ nguyên viền đen/bóng đen của linh kiện.',
-    badCode: 'Chỉ thêm dark:bg-black ở thẻ body, giữ nguyên card có shadow-[4px_4px_0px_#000] khiến bóng đen tàng hình trên nền đen.',
-    goodCode: 'bg-white dark:bg-[#141414] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF]',
+      'Khi chuyển sang Dark Mode, toàn bộ mọi linh kiện (Card, Input, Button, Tabs, Accordion, SelectPicker, Switch, Dialog, Drawer, Toast, Skeleton, Terminal) bắt buộc phải tuân thủ kiến trúc phân tầng bóng đêm sâu thẳm: (1) Canvas nền đen OLED nguyên bản (#000000). (2) Bề mặt linh kiện phân tầng có chiều sâu (#0E0E10 cho Card chính, #18181B cho Sub-panel, #27272A cho phần tử điều khiển). (3) Đường viền phân cách bằng mực sáng crisp (Zinc-300 / Zinc-400 hoặc Viền Đen ngăn cách trên các nút bấm màu bão hòa). (4) Bóng đổ sử dụng các dải Cyber Neon tương phản cao (#FFE600, #00F0FF, #FF007A, #00FF7F). TUYỆT ĐỐI CẤM dùng viền trắng (#FFF) đi kèm bóng trắng (#FFF) vì sẽ dính liền thành một khối viền méo mó dày cộm 8px-10px. (5) Header ban đêm chuyển sang tone Nocturnal trầm tối (#09090B) để bảo vệ mắt người dùng.',
+    badCode: 'Dùng dark:border-white kết hợp dark:shadow-[..._#FFF] khiến viền và bóng đổ dính liền thành cục trắng dày 8px méo mó; hoặc giữ nguyên header màu vàng chói lóa ban đêm.',
+    goodCode: 'bg-white dark:bg-[#0E0E10] border-black dark:border-zinc-300 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFE600] text-black dark:text-white',
   },
   {
     ruleNumber: 15,
     name: 'WEB_MOBILE_SOVEREIGNTY',
     title: 'Kỷ Luật Web Di Động Thuần Túy - Chống Ngụy Tạo Mobile App',
     description: 
-      'Giao diện Web Mobile phải tôn trọng bản chất của nền tảng Web: (1) Cấm giả lập thanh trạng thái điện thoại (09:41 5G 100%) vì hệ điều hành máy thật đã có. (2) Cấm cưỡng ép thanh điều hướng cố định dưới đáy (Bottom Toolbar Dock) kiểu Native App đối với các trang thông tin/portfolio không phải PWA, nhằm triệt tiêu lỗi chạm nhầm thanh Safari, lỗi double-tap và che khuất diện tích đọc. (3) Sử dụng điều hướng Tab đầu trang (Top Scrollable Tabs) hoặc Menu Drawer kết hợp cuộn tự nhiên theo chuẩn mực Web.',
+      'Giao diện Web Mobile phải tôn trọng bản chất của nền tảng Web: (1) Cấm giả lập thanh trạng thái điện thoại (09:41 5G 100%) vì hệ điều hành máy thật đã có. (2) Cấm cưỡng ép thanh điều hướng cố định dưới đáy (Bottom Toolbar Dock) kiểu Native App đối với các trang thông tin/portfolio không phải PWA, nhằm triệt tiêu lỗi chạm nhầm thanh Safari, lỗi double-tap và che khuất diện tích đọc. (3) Bố cục theo luồng Web tự nhiên, giữ không gian cuộn dọc thông thoáng.',
     badCode: 'Đặt thanh 5 nút fixed dưới đáy màn hình web mobile gây xung đột với Safari URL bar và che mất 15% diện tích đọc.',
-    goodCode: 'Bỏ Bottom Dock, sử dụng Web Tabs cuộn ngang ở đỉnh trang kết hợp Ark UI Menu Drawer khi cần chuyển phân hệ.',
+    goodCode: 'Bỏ Bottom Toolbar cố định, kết hợp Bento Navigation Grid đầu trang và Ark UI Menu Drawer khi cần chuyển phân hệ.',
+  },
+  {
+    ruleNumber: 16,
+    name: 'FIT_ON_SCREEN_BEHAVIOR_LAW',
+    title: 'Kỷ Luật Mọi Nút Bấm & Hành Vi Luôn Hiển Thị Trên Màn Hình (Cấm Cuộn Ngang)',
+    description: 
+      'Mọi nút bấm (action buttons), thanh điều hướng tính năng, các lựa chọn behavior trên di động PHẢI luôn luôn hiển thị trọn vẹn 100% trong khung nhìn màn hình (Fit-On-Screen). Tuyệt đối cấm sử dụng cuộn ngang (overflow-x-auto hay horizontal carousel) cho danh sách tính năng cốt lõi vì làm ẩn đi 40-60% chức năng khỏi tầm mắt người dùng và gây thao tác vuốt trượt ngang khó khăn. Thay vào đó, bắt buộc sử dụng bố cục Bento Grid đa hàng (ví dụ: lưới 2 hàng [2 cột + 3 cột] hoặc lưới co giãn đều) để người dùng bao quát và chạm tức thì vào mọi chức năng chỉ trong 1 ánh nhìn.',
+    badCode: '<div class="overflow-x-auto whitespace-nowrap">...</div> giấu nút ARENA và WORDS ra ngoài mép màn hình, bắt người dùng phải cuộn ngang mò mẫm.',
+    goodCode: '<div class="grid grid-cols-2 gap-2 mb-2">...</div><div class="grid grid-cols-3 gap-2">...</div> hiển thị trọn vẹn 5 tính năng tức thì trên mọi màn hình từ 375px-390px.',
   },
 ] as const;

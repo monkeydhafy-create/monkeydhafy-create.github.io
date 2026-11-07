@@ -26,14 +26,14 @@
 
 <div class="w-full {className}">
   {#if label}
-    <label for={inputId} class="block font-mono text-xs font-bold uppercase tracking-wider mb-1.5 text-black dark:text-white">
+    <label for={inputId} class="block font-mono text-xs font-bold uppercase tracking-wider mb-1.5 leading-snug text-black dark:text-white">
       {label}
     </label>
   {/if}
 
-  <div class="flex border-[3px] md:border-[4px] border-black dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF] md:shadow-[4px_4px_0px_#000] md:dark:shadow-[4px_4px_0px_#FFF] bg-white dark:bg-[#141414] overflow-hidden transition-colors duration-150">
+  <div class="flex items-stretch border-[2.5px] md:border-[3px] border-black dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF] md:shadow-[4px_4px_0px_#000] md:dark:shadow-[4px_4px_0px_#FFFFFF] bg-white dark:bg-[#121214] overflow-hidden transition-colors duration-150">
     {#if prefix}
-      <div class="bg-[#FFE600] text-black font-mono font-bold text-xs uppercase px-3 py-3 flex items-center border-r-[3px] md:border-r-[4px] border-black dark:border-white select-none">
+      <div class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] font-mono font-bold text-xs uppercase px-3 py-3 flex items-center justify-center border-r-[2.5px] md:border-r-[3px] border-black dark:border-r-white select-none leading-normal">
         {prefix}
       </div>
     {/if}
@@ -46,7 +46,7 @@
       bind:value
       {placeholder}
       {oninput}
-      class="flex-1 px-3 py-3 font-mono text-base md:text-sm bg-transparent text-black dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 outline-none min-h-[48px] md:min-h-[42px] disabled:opacity-50"
+      class="flex-1 px-3 py-3 font-sans text-base md:text-sm bg-transparent text-black dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 outline-none min-h-[48px] md:min-h-[42px] leading-normal disabled:opacity-50"
     />
   </div>
 </div>

@@ -7,10 +7,10 @@
  * ============================================================================ */
 
 @theme {
-  /* Font Families */
-  --font-sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Font Families with Native Vietnamese Diacritic Precision */
+  --font-sans: "Be Vietnam Pro", "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
-  --font-display: "Space Grotesk", sans-serif;
+  --font-display: "Be Vietnam Pro", "Space Grotesk", sans-serif;
 
   /* Border Strokes */
   --border-hairline: 1.5px;
@@ -67,19 +67,19 @@
 
 [data-theme="dark"],
 .dark {
-  --nb-canvas-base: #0A0A0A;
-  --nb-canvas-dot: rgba(255, 255, 255, 0.10);
+  --nb-canvas-base: #000000; /* Pure OLED Pitch Black */
+  --nb-canvas-dot: rgba(255, 255, 255, 0.08);
   
-  /* Cyber Brutalist Charcoal Surfaces - Never blend into 0x000000 canvas */
-  --nb-surface-card: #141414;
-  --nb-surface-warm: #1C1C1C;
-  --nb-surface-muted: #252525;
+  /* Deep Charcoal & Obsidian Multi-tier Surfaces */
+  --nb-surface-card: #0E0E10;
+  --nb-surface-warm: #18181B;
+  --nb-surface-muted: #27272A;
 
   --nb-ink-radical: #FFFFFF;
-  --nb-ink-muted: #D4D4D4;
-  --nb-ink-subtle: #888888;
+  --nb-ink-muted: #D4D4D8;
+  --nb-ink-subtle: #71717A;
 
-  /* In Dark Mode: Crisp White Borders & White Hard Shadows for 3D Isometric Elevation */
+  /* In Dark Mode: Crisp High-Contrast Pure White Neo-Brutalist Extrusion */
   --nb-border: #FFFFFF;
   --nb-shadow: #FFFFFF;
 
@@ -91,7 +91,7 @@
 
   /* Luminescent Pigments */
   --nb-accent-yellow: #FFE600;
-  --nb-accent-magenta: #FF1A8C;
+  --nb-accent-magenta: #FF007A;
   --nb-accent-lime: #00FF7F;
   --nb-accent-cyan: #00F0FF;
   --nb-accent-purple: #A855F7;
@@ -101,6 +101,19 @@
 /* ============================================================================
  * UNIFIED NEO-BRUTALIST UTILITY PATTERNS (AUTOMATIC DARK MODE INVERSION)
  * ============================================================================ */
+
+/* Reserve scrollbar track permanently: opening a dialog never shifts layout */
+html {
+  scrollbar-gutter: stable;
+}
+html.nb-scroll-locked {
+  overflow: hidden;
+}
+
+/* Vietnamese diacritics safety for uppercase headings */
+h1, h2, h3 {
+  padding-top: 0.08em;
+}
 
 /* Halftone / Dot Matrix Background */
 .bg-brutal-dots {
@@ -124,6 +137,11 @@
 
 /* Base Tactile Interactive Button */
 .btn-tactile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.35;
   border: var(--border-medium) solid var(--nb-border);
   box-shadow: var(--nb-shadow-md);
   transition: transform var(--duration-instant) var(--ease-snappy),

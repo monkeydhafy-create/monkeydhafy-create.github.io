@@ -50,20 +50,19 @@
     onclick={toggle}
     onkeydown={handleKeyDown}
     class="
-      w-14 h-8 border-[3px] border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF]
+      w-14 h-8 border-[3px] border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFFFFF]
       relative p-0.5 transition-colors duration-100 outline-none
-      {checked ? 'bg-[#00FF66]' : 'bg-neutral-300 dark:bg-[#222222]'}
+      {checked ? 'bg-[#00FF66] dark:bg-[#04200E] dark:border-white' : 'bg-neutral-300 dark:bg-[#18181B]'}
       {disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
     "
   >
     <!-- Switch Thumb Knob -->
     <div
       class="
-        w-6 h-6 border border-black dark:border-white shadow-[1px_1px_0px_#000] dark:shadow-[1px_1px_0px_#FFF]
+        w-6 h-6 border border-black dark:border-white shadow-[1px_1px_0px_#000] dark:shadow-[1px_1px_0px_#FFFFFF]
         flex items-center justify-center font-mono text-[9px] font-black
         transition-all duration-100 ease-[cubic-bezier(0.16,1,0.3,1)]
-        bg-black text-white dark:bg-white dark:text-black
-        {checked ? 'translate-x-6' : 'translate-x-0'}
+        {checked ? 'translate-x-6 bg-black text-white dark:bg-white dark:text-black' : 'translate-x-0 bg-neutral-600 text-white dark:bg-zinc-600 dark:text-zinc-200'}
       "
     >
       {checked ? 'ON' : 'OFF'}
@@ -71,7 +70,7 @@
   </div>
 
   {#if label}
-    <span class="font-mono text-xs font-bold uppercase tracking-wider text-black dark:text-white">
+    <span class="font-mono text-xs font-bold uppercase tracking-wider text-black dark:text-white leading-snug">
       {label}
     </span>
   {/if}

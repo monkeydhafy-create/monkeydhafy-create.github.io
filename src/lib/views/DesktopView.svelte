@@ -143,11 +143,11 @@
 
 <div class="hidden lg:block min-h-screen bg-brutal-dots transition-colors duration-150 p-8 xl:p-12 text-black dark:text-white">
   <!-- Desktop Masthead Container (1200px Grid) -->
-  <div class="max-w-[1240px] mx-auto bg-white dark:bg-[#141414] border-[4px] border-black dark:border-white shadow-[16px_16px_0px_#000] dark:shadow-[16px_16px_0px_#FFFFFF] overflow-hidden">
+  <div class="max-w-[1240px] mx-auto bg-white dark:bg-[#0E0E10] border-[4px] border-black dark:border-white shadow-[16px_16px_0px_#000] dark:shadow-[16px_16px_0px_#FFFFFF] overflow-hidden">
     
     <!-- Top Masthead Header Bar -->
-    <header class="grid grid-cols-[100px_1fr_auto] border-b-[4px] border-black dark:border-white bg-white dark:bg-[#141414]">
-      <div class="bg-[#FF007A] text-white flex items-center justify-center font-mono font-black text-2xl border-r-[4px] border-black dark:border-white">
+    <header class="grid grid-cols-[100px_1fr_auto] border-b-[4px] border-black dark:border-white bg-white dark:bg-[#09090B]">
+      <div class="bg-[#FF007A] text-white dark:bg-[#200412] dark:text-[#FF1A8C] flex items-center justify-center font-mono font-black text-2xl border-r-[4px] border-black dark:border-white">
         CH
       </div>
       <div class="px-8 py-5 flex items-center justify-between">
@@ -165,10 +165,10 @@
           <Badge variant="yellow">SVELTE 5 RUNES</Badge>
         </div>
       </div>
-      <div class="border-l-[4px] border-black dark:border-white p-4 flex items-center gap-3 bg-neutral-100 dark:bg-[#1C1C1C]">
+      <div class="border-l-[4px] border-black dark:border-white p-4 flex items-center gap-3 bg-neutral-100 dark:bg-[#18181B]">
         <button
           onclick={ontoggleTheme}
-          class="btn-tactile px-4 py-2 font-mono text-xs font-black uppercase bg-[#FFE600] text-black border-[2px] border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF] cursor-pointer"
+          class="btn-tactile px-4 py-2 font-mono text-xs font-black uppercase bg-[#FFE600] text-black dark:bg-[#18181B] dark:text-[#FFE600] border-[2px] border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFFFFF] cursor-pointer"
         >
           {isDark ? '☀️ LIGHT MODE' : '🌙 DARK MODE'}
         </button>
@@ -179,7 +179,7 @@
     <div class="grid grid-cols-12 border-b-[4px] border-black dark:border-white">
       
       <!-- Left Column (8 of 12 Cols) - Core Architectural Showcases -->
-      <div class="col-span-8 p-10 border-r-[4px] border-black dark:border-white bg-white dark:bg-[#141414] space-y-8">
+      <div class="col-span-8 p-10 border-r-[4px] border-black dark:border-white bg-white dark:bg-[#0E0E10] space-y-8">
         
         <!-- Hero Section -->
         <div>
@@ -191,7 +191,7 @@
 
           <h2 class="font-sans font-black text-6xl text-black dark:text-white uppercase leading-[0.95] tracking-tight mb-6">
             COGNITIVE<br>RETRIEVAL ENGINE.<br>
-            <span class="bg-[#FFE600] text-black px-2 border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF] inline-block">
+            <span class="bg-[#FFE600] text-black dark:bg-[#1C1900] dark:text-[#FFE600] px-2 border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] inline-block">
               UNAPOLOGETIC.
             </span>
           </h2>
@@ -215,7 +215,7 @@
         </div>
 
         <!-- Section 1: EngBbq 4-Pillar Cognitive Model with Tabs -->
-        <div class="pt-4 border-t-[3px] border-black dark:border-white">
+        <div class="pt-4 border-t-[3px] border-black dark:border-zinc-800">
           <div class="flex justify-between items-center mb-4">
             <div class="font-mono text-xs font-black uppercase text-[#FF007A] tracking-wider">
               ■ 01 / ENGBBQ COGNITIVE LANGUAGE ARCHITECTURE
@@ -262,7 +262,7 @@
         </div>
 
         <!-- Section 2: Tianji Ziwei AI Hermeneutics Engine -->
-        <div class="pt-4 border-t-[3px] border-black dark:border-white">
+        <div class="pt-4 border-t-[3px] border-black dark:border-zinc-800">
           <div class="flex justify-between items-center mb-4">
             <div class="font-mono text-xs font-black uppercase text-[#00F0FF] tracking-wider">
               ■ 02 / TIANJI ZIWEI AI COMPASS (8.77M VECTOR DATASET)
@@ -289,14 +289,14 @@
               Mệnh tọa <strong>{zodiacOptions.find(z => z.value === selectedZodiac)?.label}</strong>. Kế thừa nguyên bản 1848 câu khẩu quyết Thiên Kỷ, 
               kết hợp Tử Vi Đẩu Số Toàn Thư và Cốt Tủy Phú. Toàn bộ luận giải bằng Tiếng Việt chuẩn mực, âm Hán-Việt chính tông.
             </p>
-            <div class="p-3 bg-neutral-100 dark:bg-[#1C1C1C] font-mono text-xs border-2 border-black dark:border-white text-black dark:text-white">
+            <div class="p-3 bg-neutral-100 dark:bg-[#18181B] font-mono text-xs border-2 border-black dark:border-white text-black dark:text-white">
               CÁCH CỤC: Phủ Tướng Triều Viên &bull; LỘC MÃ GIAO TRÌ &bull; QUY CÁCH: THƯỢNG CÁCH
             </div>
           </Card>
         </div>
 
         <!-- Section 3: Interactive Accordion Specifications -->
-        <div class="pt-4 border-t-[3px] border-black dark:border-white">
+        <div class="pt-4 border-t-[3px] border-black dark:border-zinc-800">
           <div class="font-mono text-xs font-black uppercase text-neutral-500 mb-3">
             ■ 03 / SYSTEM ARCHITECTURAL SPECIFICATION ACCORDION
           </div>
@@ -304,12 +304,12 @@
         </div>
 
         <!-- Section 4: Live Component Playground Showcase -->
-        <div class="pt-4 border-t-[3px] border-black dark:border-white">
+        <div class="pt-4 border-t-[3px] border-black dark:border-zinc-800">
           <div class="font-mono text-xs font-black uppercase text-[#FFE600] tracking-wider mb-4">
             ■ 04 / INTERACTIVE COMPONENT SUITE PLAYGROUND
           </div>
 
-          <div class="grid grid-cols-3 gap-4 p-5 border-[3px] border-black dark:border-white bg-[#FFFDF0] dark:bg-[#1C1C1C]">
+          <div class="grid grid-cols-3 gap-4 p-5 border-[3px] border-black dark:border-white bg-[#FFFDF0] dark:bg-[#18181B]">
             <div>
               <div class="font-mono text-[10px] font-bold uppercase text-neutral-500 mb-2">BUTTON PALETTE:</div>
               <div class="space-y-2">
@@ -341,14 +341,14 @@
       </div>
 
       <!-- Right Column (4 of 12 Cols) - Telemetry & Terminal -->
-      <div class="col-span-4 p-8 bg-[#FFFDF0] dark:bg-[#181818] flex flex-col justify-between space-y-6">
+      <div class="col-span-4 p-8 bg-[#FFFDF0] dark:bg-[#121214] flex flex-col justify-between space-y-6">
         <div>
           <div class="font-mono text-xs font-black uppercase text-[#FF007A] tracking-widest mb-4">
             ■ REAL-TIME TELEMETRY MATRIX
           </div>
 
           <!-- Metric Tile 1 -->
-          <div class="bg-white dark:bg-[#141414] border-[3px] border-black dark:border-white p-5 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF] mb-4">
+          <div class="bg-white dark:bg-[#18181B] border-[3px] border-black dark:border-white p-5 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] mb-4">
             <div class="font-sans font-black text-5xl text-black dark:text-white leading-none">
               1,240
             </div>
@@ -358,7 +358,7 @@
           </div>
 
           <!-- Metric Tile 2 -->
-          <div class="bg-white dark:bg-[#141414] border-[3px] border-black dark:border-white p-5 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF] mb-4">
+          <div class="bg-white dark:bg-[#18181B] border-[3px] border-black dark:border-white p-5 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] mb-4">
             <div class="font-sans font-black text-5xl text-[#00FF66] leading-none">
               8.77M
             </div>
@@ -368,7 +368,7 @@
           </div>
 
           <!-- Metric Tile 3 -->
-          <div class="bg-white dark:bg-[#141414] border-[3px] border-black dark:border-white p-5 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF] mb-6">
+          <div class="bg-white dark:bg-[#18181B] border-[3px] border-black dark:border-white p-5 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] mb-6">
             <div class="font-sans font-black text-5xl text-[#FF007A] leading-none">
               0.00ms
             </div>
@@ -378,7 +378,7 @@
           </div>
 
           <!-- Interactive CLI Terminal for Desktop -->
-          <div class="border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF] bg-black text-white p-4 font-mono text-xs">
+          <div class="border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFFFFF] bg-black text-white p-4 font-mono text-xs">
             <div class="flex items-center justify-between pb-2 mb-3 border-b border-neutral-700 text-[#FFE600] font-black">
               <span>TERMINAL RADAR // CLI</span>
               <span>LIVE</span>
@@ -413,7 +413,7 @@
           </div>
         </div>
 
-        <div class="border-[2px] border-black dark:border-white p-4 bg-[#FFE600] text-black font-mono text-xs font-bold shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF]">
+        <div class="border-[2px] border-black dark:border-white p-4 bg-[#FFE600] text-black dark:bg-[#141200] dark:text-[#FFE600] font-mono text-xs font-bold shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFFFFF]">
           DESKTOP 12-COL FIXED MATRIX ACTIVE // DENSITY MAXIMAL
         </div>
       </div>
@@ -432,7 +432,7 @@
       <p class="font-sans text-base leading-relaxed">
         Trên Desktop ($W \ge 1024px$), hộp thoại tự động căn giữa màn hình với viền 4px, bóng đổ 12px sắc nét và kích thước tối đa <code>max-w-lg</code>.
       </p>
-      <div class="p-4 bg-[#FFFDF0] dark:bg-[#1C1C1C] border-[2px] border-black dark:border-white font-mono text-xs">
+      <div class="p-4 bg-[#FFFDF0] dark:bg-[#18181B] border-[2px] border-black dark:border-white font-mono text-xs">
         STATUS: Ark UI Zag State Machine &bull; Escape Key Active &bull; Focus Trapped
       </div>
       <div class="flex justify-end gap-3 pt-2">
