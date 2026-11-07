@@ -18,12 +18,12 @@
   }: Props = $props();
 
   const variantStyles = {
-    yellow: 'bg-[#FFE600] text-black border-black',
-    magenta: 'bg-[#FF007A] text-white border-black',
-    lime: 'bg-[#00FF66] text-black border-black',
-    cyan: 'bg-[#00F0FF] text-black border-black',
-    black: 'bg-black text-white border-black dark:border-white',
-    white: 'bg-white text-black border-black dark:border-white',
+    yellow: 'bg-[#FFE600] text-black border-black dark:border-white',
+    magenta: 'bg-[#FF007A] text-white border-black dark:border-white',
+    lime: 'bg-[#00FF66] text-black border-black dark:border-white',
+    cyan: 'bg-[#00F0FF] text-black border-black dark:border-white',
+    black: 'bg-black text-white border-black dark:bg-white dark:text-black dark:border-white',
+    white: 'bg-white text-black border-black dark:bg-[#141414] dark:text-white dark:border-white',
   };
 
   const rotateStyles = {
@@ -41,8 +41,8 @@
 <span
   class="
     inline-flex items-center font-mono font-bold uppercase tracking-wider
-    border-[2px] shadow-[2px_2px_0px_#000]
-    select-none
+    border-[2px] shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF]
+    select-none transition-all duration-100
     {sizeStyles[size]}
     {variantStyles[variant]}
     {rotateStyles[rotate]}

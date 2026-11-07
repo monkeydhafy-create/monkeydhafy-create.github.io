@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ============================================================================
  * HYPER NEO-BRUTALISM × ARK UI THEME SPECIFICATION (TAILWIND CSS V4)
  * ============================================================================ */
@@ -29,32 +31,30 @@
 }
 
 /* ============================================================================
- * LIGHT MODE & DARK MODE TOKENS (CSS CUSTOM PROPERTIES)
+ * EXHAUSTIVE LIGHT & DARK MODE CSS CUSTOM PROPERTIES
  * ============================================================================ */
 
 :root,
 [data-theme="light"] {
-  /* Canvas & Surfaces */
   --nb-canvas-base: #FFFDEB;
   --nb-canvas-dot: rgba(0, 0, 0, 0.12);
+  
   --nb-surface-card: #FFFFFF;
   --nb-surface-warm: #FFFDF0;
   --nb-surface-muted: #F4F4EE;
 
-  /* Inks */
   --nb-ink-radical: #000000;
   --nb-ink-muted: #333333;
   --nb-ink-subtle: #666666;
 
-  /* Borders & Shadows */
   --nb-border: #000000;
-  --nb-shadow-color: #000000;
-  --nb-shadow-lvl1: 2px 2px 0px #000000;
-  --nb-shadow-lvl2: 4px 4px 0px #000000;
-  --nb-shadow-lvl3: 6px 6px 0px #000000;
-  --nb-shadow-lvl4: 8px 8px 0px #000000;
-  --nb-shadow-lvl5: 12px 12px 0px #000000;
-  --nb-shadow-lvl6: 16px 16px 0px #000000;
+  --nb-shadow: #000000;
+
+  --nb-shadow-sm: 2px 2px 0px #000000;
+  --nb-shadow-md: 4px 4px 0px #000000;
+  --nb-shadow-lg: 6px 6px 0px #000000;
+  --nb-shadow-xl: 8px 8px 0px #000000;
+  --nb-shadow-modal: 12px 12px 0px #000000;
 
   /* High-Energy Pop Pigments */
   --nb-accent-yellow: #FFE600;
@@ -67,27 +67,27 @@
 
 [data-theme="dark"],
 .dark {
-  /* Canvas & Surfaces (Cyber Brutalist OLED) */
-  --nb-canvas-base: #080808;
-  --nb-canvas-dot: rgba(255, 255, 255, 0.12);
+  --nb-canvas-base: #0A0A0A;
+  --nb-canvas-dot: rgba(255, 255, 255, 0.10);
+  
+  /* Cyber Brutalist Charcoal Surfaces - Never blend into 0x000000 canvas */
   --nb-surface-card: #141414;
   --nb-surface-warm: #1C1C1C;
-  --nb-surface-muted: #242424;
+  --nb-surface-muted: #252525;
 
-  /* Inks */
   --nb-ink-radical: #FFFFFF;
   --nb-ink-muted: #D4D4D4;
   --nb-ink-subtle: #888888;
 
-  /* Borders & Shadows */
+  /* In Dark Mode: Crisp White Borders & White Hard Shadows for 3D Isometric Elevation */
   --nb-border: #FFFFFF;
-  --nb-shadow-color: #FFFFFF;
-  --nb-shadow-lvl1: 2px 2px 0px #FFFFFF;
-  --nb-shadow-lvl2: 4px 4px 0px #FFFFFF;
-  --nb-shadow-lvl3: 6px 6px 0px #FFFFFF;
-  --nb-shadow-lvl4: 8px 8px 0px #FFFFFF;
-  --nb-shadow-lvl5: 12px 12px 0px #FFFFFF;
-  --nb-shadow-lvl6: 16px 16px 0px #FFFFFF;
+  --nb-shadow: #FFFFFF;
+
+  --nb-shadow-sm: 2px 2px 0px #FFFFFF;
+  --nb-shadow-md: 4px 4px 0px #FFFFFF;
+  --nb-shadow-lg: 6px 6px 0px #FFFFFF;
+  --nb-shadow-xl: 8px 8px 0px #FFFFFF;
+  --nb-shadow-modal: 12px 12px 0px #FFFFFF;
 
   /* Luminescent Pigments */
   --nb-accent-yellow: #FFE600;
@@ -99,7 +99,7 @@
 }
 
 /* ============================================================================
- * NEO-BRUTALIST UTILITY PATTERNS & MECHANICAL MICRO-INTERACTIONS
+ * UNIFIED NEO-BRUTALIST UTILITY PATTERNS (AUTOMATIC DARK MODE INVERSION)
  * ============================================================================ */
 
 /* Halftone / Dot Matrix Background */
@@ -109,10 +109,23 @@
   background-size: 24px 24px;
 }
 
-/* Tactile Interactive Button */
+/* Base Border Class */
+.brutal-border {
+  border-width: 3px;
+  border-style: solid;
+  border-color: var(--nb-border);
+}
+
+@media (min-width: 768px) {
+  .brutal-border {
+    border-width: 4px;
+  }
+}
+
+/* Base Tactile Interactive Button */
 .btn-tactile {
   border: var(--border-medium) solid var(--nb-border);
-  box-shadow: var(--nb-shadow-lvl2);
+  box-shadow: var(--nb-shadow-md);
   transition: transform var(--duration-instant) var(--ease-snappy),
               box-shadow var(--duration-instant) var(--ease-snappy),
               background-color var(--duration-instant) var(--ease-snappy);
@@ -120,35 +133,20 @@
 
 .btn-tactile:hover {
   transform: translate(2px, 2px);
-  box-shadow: var(--nb-shadow-lvl1);
+  box-shadow: var(--nb-shadow-sm);
 }
 
 .btn-tactile:active {
   transform: translate(4px, 4px);
-  box-shadow: 0px 0px 0px var(--nb-shadow-color);
+  box-shadow: 0px 0px 0px transparent;
 }
 
 /* Elevated Card */
 .card-brutal {
   background: var(--nb-surface-card);
   border: var(--border-thick) solid var(--nb-border);
-  box-shadow: var(--nb-shadow-lvl3);
-}
-
-/* Running Marquee Animation */
-@keyframes brutal-marquee {
-  0% { transform: translateX(0%); }
-  100% { transform: translateX(-50%); }
-}
-
-.animate-brutal-marquee {
-  display: flex;
-  width: max-content;
-  animation: brutal-marquee 25s linear infinite;
-}
-
-.animate-brutal-marquee:hover {
-  animation-play-state: paused;
+  box-shadow: var(--nb-shadow-lg);
+  color: var(--nb-ink-radical);
 }
 
 /* Custom Scrollbar */

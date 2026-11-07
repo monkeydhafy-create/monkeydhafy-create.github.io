@@ -8,6 +8,7 @@
   import SelectPicker from '$lib/components/SelectPicker.svelte';
   import Toast from '$lib/components/Toast.svelte';
   import DialogDrawer from '$lib/components/DialogDrawer.svelte';
+  import Tabs from '$lib/components/Tabs.svelte';
   import { triggerHaptic } from '$lib/constants/tokens';
 
   interface Props {
@@ -17,13 +18,21 @@
 
   let { isDark = false, ontoggleTheme }: Props = $props();
 
-  let activeTab = $state<'arena' | 'words' | 'tianji' | 'cli' | 'profile'>('arena');
+  let activeTab = $state('arena');
   let isDrawerOpen = $state(false);
   let isToastVisible = $state(false);
   let hapticEnabled = $state(true);
   let selectedLevel = $state('b2');
   let selectedZodiacMobile = $state('ziwei');
   let streakDays = $state(24);
+
+  const mobileNavTabs = [
+    { id: 'arena', label: '⚡ ARENA', badge: 'DAILY' },
+    { id: 'words', label: '📖 WORDS', badge: '1.4K' },
+    { id: 'tianji', label: '🔮 TIANJI', badge: '8.77M' },
+    { id: 'cli', label: '💻 RADAR CLI', badge: 'LIVE' },
+    { id: 'profile', label: '👤 PROFILE', badge: 'USER' },
+  ];
 
   // Terminal state for mobile
   interface HistoryItem {
@@ -106,18 +115,9 @@
   }
 </script>
 
-<div class="block lg:hidden min-h-screen bg-brutal-dots transition-colors duration-150 pb-[84px] text-black dark:text-white">
-  
-  <!-- Mobile Status Bar (Simulated Phone Notch Area) -->
-  <div class="px-5 py-2.5 flex justify-between items-center font-mono text-[11px] font-black border-b-[3px] border-black dark:border-white bg-white dark:bg-neutral-900">
-    <span>09:41</span>
-    <div class="flex items-center gap-2">
-      <span class="text-[#00FF66] font-bold">5G</span>
-      <span>100% 🔋</span>
-    </div>
-  </div>
+<div class="block lg:hidden min-h-screen bg-brutal-dots transition-colors duration-150 text-black dark:text-white">
 
-  <!-- Mobile Minimal Top Header -->
+  <!-- Mobile Minimal Top Header (Standard Web Header) -->
   <header class="px-4 py-3 flex justify-between items-center border-b-[3px] border-black dark:border-white bg-[#FFE600] text-black">
     <div class="flex items-center gap-2">
       <div class="w-8 h-8 bg-black text-white flex items-center justify-center font-mono font-black text-base border-2 border-black">
@@ -129,33 +129,23 @@
     <div class="flex items-center gap-2">
       <button
         onclick={ontoggleTheme}
-        class="px-2.5 py-1.5 font-mono text-[10px] font-black uppercase bg-white text-black border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer"
+        class="px-2.5 py-1.5 font-mono text-[10px] font-black uppercase bg-white dark:bg-[#141414] text-black dark:text-white border-2 border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF] cursor-pointer"
       >
         {isDark ? '☀️' : '🌙'}
       </button>
 
       <button
         onclick={() => { triggerHaptic('lightTap'); isDrawerOpen = true; }}
-        class="px-3 py-1.5 font-mono text-xs font-black uppercase bg-black text-white border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer"
+        class="px-3 py-1.5 font-mono text-xs font-black uppercase bg-black text-white dark:bg-white dark:text-black border-2 border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF] cursor-pointer"
       >
         MENU ☰
       </button>
     </div>
   </header>
 
-  <!-- Mobile High-Speed Marquee -->
-  <div class="bg-[#FF007A] text-white py-1.5 border-b-[3px] border-black dark:border-white overflow-hidden select-none font-mono text-[10px] font-black uppercase tracking-wider">
-    <div class="animate-brutal-marquee gap-8">
-      <span>★ MOBILE THUMB ZONE V2.4</span>
-      <span>★ 48PX TOUCH TARGETS</span>
-      <span>★ ARK UI BOTTOM DRAWER</span>
-      <span>★ TACTILE HAPTIC VIBRATION</span>
-      <!-- Loop -->
-      <span>★ MOBILE THUMB ZONE V2.4</span>
-      <span>★ 48PX TOUCH TARGETS</span>
-      <span>★ ARK UI BOTTOM DRAWER</span>
-      <span>★ TACTILE HAPTIC VIBRATION</span>
-    </div>
+  <!-- Mobile Web Top Navigation Tabs (Standard Web Navigation, No Bottom Collisions) -->
+  <div class="px-4 pt-3 pb-1 border-b-[2px] border-black dark:border-white bg-white dark:bg-[#141414]">
+    <Tabs items={mobileNavTabs} bind:activeId={activeTab} />
   </div>
 
   <!-- Mobile Scrollable Main Content -->
@@ -169,7 +159,7 @@
 
       <h2 class="font-sans font-black text-3xl uppercase leading-[1.02] tracking-tight mb-2">
         LEARN FAST.<br>
-        <span class="bg-[#FFE600] text-black px-1.5 border-[2px] border-black shadow-[3px_3px_0px_#000] inline-block">
+        <span class="bg-[#FFE600] text-black px-1.5 border-[2px] border-black dark:border-white shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF] inline-block">
           TAP HARD.
         </span>
       </h2>
@@ -203,7 +193,7 @@
       </Card>
 
       <!-- Component: Mobile Bottom Sheet Picker -->
-      <div class="bg-white dark:bg-neutral-900 border-[3px] border-black dark:border-white p-3.5 shadow-[3px_3px_0px_#000]">
+      <div class="bg-white dark:bg-[#141414] border-[3px] border-black dark:border-white p-3.5 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF]">
         <SelectPicker 
           label="CHỌN TRÌNH ĐỘ HỌC TẬP" 
           options={levelOptions} 
@@ -226,11 +216,11 @@
           1,450 cụm từ ngữ cảnh được phân bổ theo thuật toán lặp lại ngắt quãng (Spaced Repetition).
         </p>
         <div class="space-y-3 mb-4">
-          <div class="p-3 bg-neutral-100 dark:bg-neutral-800 border-2 border-black dark:border-white font-mono text-xs">
+          <div class="p-3 bg-neutral-100 dark:bg-[#1C1C1C] border-2 border-black dark:border-white font-mono text-xs">
             <div class="font-bold text-[#FF007A]">THE EFFORT PARADOX</div>
             <div class="text-[11px] text-neutral-600 dark:text-neutral-300 mt-1">Càng cố học vẹt, càng nhanh quên trong phản xạ giao tiếp.</div>
           </div>
-          <div class="p-3 bg-neutral-100 dark:bg-neutral-800 border-2 border-black dark:border-white font-mono text-xs">
+          <div class="p-3 bg-neutral-100 dark:bg-[#1C1C1C] border-2 border-black dark:border-white font-mono text-xs">
             <div class="font-bold text-[#00F0FF]">COGNITIVE AVOIDANCE</div>
             <div class="text-[11px] text-neutral-600 dark:text-neutral-300 mt-1">Ép não bộ vượt qua tâm lý né tránh câu phức tạp dưới 3s.</div>
           </div>
@@ -252,7 +242,7 @@
             bind:value={selectedZodiacMobile} 
           />
         </div>
-        <div class="p-3 bg-[#FFFDF0] dark:bg-neutral-800 border-2 border-black dark:border-white font-mono text-xs mb-4">
+        <div class="p-3 bg-[#FFFDF0] dark:bg-[#1C1C1C] border-2 border-black dark:border-white font-mono text-xs mb-4 text-black dark:text-white">
           QUY CÁCH: THƯỢNG CÁCH &bull; 8.77M VECTOR CORPUS MATCHED
         </div>
         <Button variant="primary" size="md" fullWidthOnMobile>
@@ -262,7 +252,7 @@
 
     {:else if activeTab === 'cli'}
       <!-- Mobile CLI Terminal Tab -->
-      <div class="border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] bg-black text-white p-4 font-mono text-xs">
+      <div class="border-[3px] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF] bg-black text-white p-4 font-mono text-xs">
         <div class="flex items-center justify-between pb-2 mb-3 border-b border-neutral-700 text-[#FFE600] font-black">
           <span>MOBILE CLI RADAR</span>
           <span>ONLINE</span>
@@ -279,16 +269,16 @@
 
         <!-- Command Buttons Pills on Mobile for Fast Tap -->
         <div class="grid grid-cols-2 gap-2 mb-3">
-          <button onclick={() => executeCommand('status')} class="p-2 bg-neutral-800 text-white border border-neutral-600 text-xs font-bold uppercase active:bg-[#FFE600] active:text-black">
+          <button onclick={() => executeCommand('status')} class="p-2 bg-neutral-800 text-white border border-neutral-600 text-xs font-bold uppercase active:bg-[#FFE600] active:text-black cursor-pointer">
             STATUS
           </button>
-          <button onclick={() => executeCommand('engbbq')} class="p-2 bg-neutral-800 text-white border border-neutral-600 text-xs font-bold uppercase active:bg-[#00F0FF] active:text-black">
+          <button onclick={() => executeCommand('engbbq')} class="p-2 bg-neutral-800 text-white border border-neutral-600 text-xs font-bold uppercase active:bg-[#00F0FF] active:text-black cursor-pointer">
             ENGBBQ
           </button>
-          <button onclick={() => executeCommand('tianji')} class="p-2 bg-neutral-800 text-white border border-neutral-600 text-xs font-bold uppercase active:bg-[#00FF66] active:text-black">
+          <button onclick={() => executeCommand('tianji')} class="p-2 bg-neutral-800 text-white border border-neutral-600 text-xs font-bold uppercase active:bg-[#00FF66] active:text-black cursor-pointer">
             TIANJI
           </button>
-          <button onclick={() => executeCommand('clear')} class="p-2 bg-neutral-800 text-white border border-neutral-600 text-xs font-bold uppercase active:bg-[#FF007A] active:text-black">
+          <button onclick={() => executeCommand('clear')} class="p-2 bg-neutral-800 text-white border border-neutral-600 text-xs font-bold uppercase active:bg-[#FF007A] active:text-black cursor-pointer">
             CLEAR
           </button>
         </div>
@@ -311,11 +301,11 @@
           Cấp bậc: <strong>Senior Cognitive Engineer</strong> &bull; Chuỗi liên tục: 24 ngày.
         </p>
         <div class="space-y-2 mb-4 font-mono text-xs">
-          <div class="flex justify-between border-b pb-1">
+          <div class="flex justify-between border-b border-neutral-200 dark:border-neutral-800 pb-1">
             <span>PLATFORM:</span>
             <span class="font-bold">engbbq.me</span>
           </div>
-          <div class="flex justify-between border-b pb-1">
+          <div class="flex justify-between border-b border-neutral-200 dark:border-neutral-800 pb-1">
             <span>ENGINE:</span>
             <span class="font-bold">Go + Svelte 5</span>
           </div>
@@ -327,62 +317,65 @@
     {/if}
 
     <!-- Callout Box -->
-    <div class="border-[3px] border-black dark:border-white p-4 bg-[#FFE600] text-black shadow-[3px_3px_0px_#000]">
-      <div class="font-mono text-xs font-black uppercase">💡 MOBILE BEHAVIOR VERIFIED:</div>
+    <div class="border-[3px] border-black dark:border-white p-4 bg-[#FFE600] text-black shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF]">
+      <div class="font-mono text-xs font-black uppercase">💡 WEB-FIRST MOBILE ARCHITECTURE:</div>
       <div class="text-xs font-semibold mt-1 leading-relaxed">
-        Select chuyển thành Bottom Sheet, Toast nổi trên Bottom Dock, và phản hồi rung khi bấm nút!
+        Giao diện thuần Web 100%: Không ngụy tạo App, không Bottom Toolbar che khuất Safari/Chrome. Điều hướng qua Web Tabs đỉnh trang và Menu Drawer!
       </div>
     </div>
+
+    <!-- Web-Native Mobile Footer -->
+    <footer class="mt-8 p-4 border-[3px] border-black dark:border-white bg-black text-white font-mono text-xs space-y-1">
+      <div class="flex justify-between items-center text-[#FFE600] font-bold">
+        <span>ENGBBQ.ME &bull; MOBILE WEB</span>
+        <span>ISO-2026.04</span>
+      </div>
+      <div class="text-[10px] text-neutral-400">
+        Standard Web Architecture &bull; No PWA &bull; Pure Svelte 5 Runes
+      </div>
+    </footer>
   </main>
 
-  <!-- Mobile Fixed Bottom Thumb Dock Navigation (Height: 72px) -->
-  <nav class="fixed bottom-0 left-0 right-0 h-[72px] bg-white dark:bg-neutral-900 border-t-[3px] border-black dark:border-white px-2 pb-[env(safe-area-inset-bottom,8px)] grid grid-cols-5 items-center gap-1 z-50 shadow-[0px_-3px_0px_#000]">
-    {#each [
-      { id: 'arena', label: 'ARENA', icon: '⚡' },
-      { id: 'words', label: 'WORDS', icon: '📖' },
-      { id: 'tianji', label: 'TIANJI', icon: '🔮' },
-      { id: 'cli', label: 'CLI', icon: '💻' },
-      { id: 'profile', label: 'USER', icon: '👤' }
-    ] as const as item}
-      {@const isActive = activeTab === item.id}
-      <button
-        onclick={() => handleTabSelect(item.id)}
-        class="flex flex-col items-center justify-center h-12 rounded transition-transform duration-75 cursor-pointer select-none
-               {isActive ? 'bg-[#FFE600] text-black border-2 border-black shadow-[2px_2px_0px_#000] -translate-y-0.5' : 'text-neutral-500 dark:text-neutral-400'}"
-      >
-        <span class="text-base leading-none mb-0.5">{item.icon}</span>
-        <span class="font-mono text-[8px] font-black uppercase tracking-wider">{item.label}</span>
-      </button>
-    {/each}
-  </nav>
-
   <!-- Mobile Ark UI Drawer (Bottom Sheet) -->
-  <DialogDrawer bind:open={isDrawerOpen} title="MOBILE BOTTOM DRAWER">
+  <DialogDrawer bind:open={isDrawerOpen} title="MOBILE SYSTEM MENU">
     <div class="space-y-4">
       <p class="font-sans text-sm leading-relaxed">
-        Trên Mobile ($W \le 430px$), hộp thoại <strong>tự động chuyển hóa thành Bottom Sheet Drawer</strong> trượt từ dưới đáy lên với thanh kéo tay cầm (Drag Handle) và nút bấm chuẩn cảm ứng 48px!
+        Trên Mobile, hộp thoại <strong>tự động chuyển hóa thành Bottom Sheet Drawer</strong> trượt từ dưới đáy lên theo máy trạng thái Ark UI Zag.js.
       </p>
       
-      <div class="p-3 bg-[#FFFDF0] dark:bg-neutral-800 border-2 border-black dark:border-white font-mono text-xs">
+      <!-- Quick Navigation inside Drawer -->
+      <div class="pt-2">
+        <div class="font-mono text-[10px] font-bold uppercase text-neutral-500 mb-2">ĐIỀU HƯỚNG CÁC PHÂN HỆ:</div>
+        <div class="grid grid-cols-1 gap-1.5">
+          {#each mobileNavTabs as tab}
+            <button
+              onclick={() => { activeTab = tab.id; isDrawerOpen = false; }}
+              class="p-2.5 text-left font-mono text-xs font-bold uppercase border-2 border-black dark:border-white flex justify-between items-center transition-colors cursor-pointer {activeTab === tab.id ? 'bg-[#FFE600] text-black shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF]' : 'bg-white dark:bg-[#141414] text-black dark:text-white'}"
+            >
+              <span>{tab.label}</span>
+              <span class="text-[9px] px-1.5 py-0.5 bg-black text-white dark:bg-white dark:text-black">{tab.badge}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <div class="p-3 bg-[#FFFDF0] dark:bg-[#1C1C1C] border-2 border-black dark:border-white font-mono text-xs text-black dark:text-white">
         STATUS: Ark UI Zag State Machine &bull; Touch Drag Gesture Enabled
       </div>
 
       <div class="space-y-2 pt-2">
         <Button variant="primary" fullWidthOnMobile onclick={() => isDrawerOpen = false}>
-          XÁC NHẬN & TIẾP TỤC &rarr;
-        </Button>
-        <Button variant="outline" fullWidthOnMobile onclick={() => isDrawerOpen = false}>
-          ĐÓNG NGĂN KÉO
+          ĐÓNG MENU HỆ THỐNG
         </Button>
       </div>
     </div>
   </DialogDrawer>
 
-  <!-- Mobile Toast Alert (Nổi trên Bottom Dock 84px) -->
+  <!-- Mobile Toast Alert (Nổi phía dưới góc an toàn) -->
   <Toast 
     bind:visible={isToastVisible} 
-    title="MOBILE HAPTIC TOAST" 
-    message="Nổi phía trên thanh Bottom Dock, tự động biến mất sau 4 giây."
+    title="MOBILE WEB TOAST" 
+    message="Thông báo nổi nhẹ nhàng phía dưới màn hình, tự động biến mất sau 4 giây."
     type="warning"
   />
 </div>

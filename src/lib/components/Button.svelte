@@ -22,7 +22,6 @@
     class: className = '',
   }: Props = $props();
 
-  // Mobile vs Desktop responsive classes
   const sizeClasses = {
     sm: 'px-3 py-1.5 text-xs min-h-[36px] md:min-h-[32px]',
     md: 'px-5 py-2.5 text-sm min-h-[48px] md:min-h-[42px]', // 48px touch target on mobile
@@ -30,11 +29,11 @@
   };
 
   const variantClasses = {
-    primary: 'bg-[#FFE600] text-black border-black hover:bg-[#FFF066] active:bg-[#00F0FF]',
-    secondary: 'bg-[#00F0FF] text-black border-black hover:bg-[#66F5FF] active:bg-[#FFE600]',
-    dark: 'bg-black text-white border-black dark:border-white hover:bg-neutral-800',
-    outline: 'bg-white text-black border-black dark:bg-neutral-900 dark:text-white dark:border-white hover:bg-neutral-100',
-    danger: 'bg-[#FF007A] text-white border-black hover:bg-[#FF3399]',
+    primary: 'bg-[#FFE600] text-black border-black dark:border-white hover:bg-[#FFF066] active:bg-[#00F0FF]',
+    secondary: 'bg-[#00F0FF] text-black border-black dark:border-white hover:bg-[#66F5FF] active:bg-[#FFE600]',
+    dark: 'bg-black text-white border-black dark:bg-white dark:text-black dark:border-white hover:bg-neutral-800 dark:hover:bg-neutral-200',
+    outline: 'bg-white text-black border-black dark:bg-[#141414] dark:text-white dark:border-white hover:bg-neutral-100 dark:hover:bg-neutral-800',
+    danger: 'bg-[#FF007A] text-white border-black dark:border-white hover:bg-[#FF3399]',
   };
 
   function handleClick(e: MouseEvent) {
@@ -51,11 +50,11 @@
   class="
     btn-tactile font-sans font-black uppercase tracking-tight
     border-[3px] md:border-[4px]
-    shadow-[3px_3px_0px_#000] md:shadow-[4px_4px_0px_#000]
-    hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0px_#000] md:hover:shadow-[2px_2px_0px_#000]
+    shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF] md:shadow-[4px_4px_0px_#000] md:dark:shadow-[4px_4px_0px_#FFF]
+    hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0px_#000] dark:hover:shadow-[1px_1px_0px_#FFF] md:hover:shadow-[2px_2px_0px_#000] md:dark:hover:shadow-[2px_2px_0px_#FFF]
     active:translate-x-[3px] active:translate-y-[3px] md:active:translate-x-[4px] md:active:translate-y-[4px] active:shadow-none
     transition-all duration-75 select-none
-    disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-[3px_3px_0px_#000]
+    disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0
     {sizeClasses[size]}
     {variantClasses[variant]}
     {fullWidthOnMobile ? 'w-full md:w-auto' : ''}

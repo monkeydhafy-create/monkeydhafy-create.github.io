@@ -27,22 +27,23 @@
 
 <div
   class="
-    bg-white dark:bg-neutral-900 text-black dark:text-white
+    bg-white dark:bg-[#141414] text-black dark:text-white
     border-[3px] md:border-[4px] border-black dark:border-white
-    shadow-[4px_4px_0px_#000] md:shadow-[6px_6px_0px_#000]
+    shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF] md:shadow-[6px_6px_0px_#000] md:dark:shadow-[6px_6px_0px_#FFF]
     p-4 md:p-6 mb-4
+    transition-colors duration-150
     {className}
   "
 >
   {#if title || badge}
     <div class="flex items-center justify-between pb-3 mb-4 border-b-[2px] md:border-b-[3px] border-black dark:border-white">
       {#if title}
-        <h3 class="font-sans font-black text-lg md:text-xl uppercase tracking-tight">
+        <h3 class="font-sans font-black text-lg md:text-xl uppercase tracking-tight text-black dark:text-white">
           {title}
         </h3>
       {/if}
       {#if badge}
-        <span class="font-mono text-[10px] md:text-xs font-bold uppercase px-2 py-1 border-[2px] border-black shadow-[2px_2px_0px_#000] {badgeBg[badgeColor]}">
+        <span class="font-mono text-[10px] md:text-xs font-bold uppercase px-2 py-1 border-[2px] border-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#FFF] {badgeBg[badgeColor]}">
           {badge}
         </span>
       {/if}

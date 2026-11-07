@@ -28,7 +28,7 @@
     </div>
   {/if}
 
-  <div class="h-6 md:h-7 border-[3px] md:border-[4px] border-black dark:border-white bg-white dark:bg-neutral-900 shadow-[3px_3px_0px_#000] p-0.5 overflow-hidden">
+  <div class="h-6 md:h-7 border-[3px] md:border-[4px] border-black dark:border-white bg-white dark:bg-[#141414] shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#FFF] p-0.5 overflow-hidden transition-colors duration-150">
     <div
       class="h-full bg-gradient-to-r {colorStyles[variant]} relative transition-all duration-300"
       style="

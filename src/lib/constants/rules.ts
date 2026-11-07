@@ -99,4 +99,49 @@ export const DESIGN_SYSTEM_RULES = [
     badCode: 'Chữ màu vàng #FFE600 đặt trên nền trắng #FFFFFF (Tương phản 1.2:1 - Vi phạm nghiêm trọng).',
     goodCode: 'Chữ đen #000000 trên nền vàng #FFE600 (Tương phản 17.5:1 - Đạt chuẩn WCAG AAA).',
   },
+  {
+    ruleNumber: 11,
+    name: 'BODY_SCROLL_LOCK_LAW',
+    title: 'Khóa Cuộn Nền Tuyệt Đối Khi Mở Modal / Drawer / Sheet',
+    description: 
+      'Khi bất kỳ lớp phủ nào (Dialog, Bottom Sheet Drawer, Select Picker) được mở ra, cuộn trang phía sau bắt buộc phải bị khóa hoàn toàn (document.body.style.overflow = "hidden", touchAction = "none"). Chỉ cho phép cuộn bên trong nội dung hộp thoại (overscroll-behavior: contain). Khi đóng lại hoặc unmount, trạng thái cuộn nền bắt buộc phải được hoàn trả nguyên vẹn.',
+    badCode: 'Mở Drawer/Modal mà người dùng vẫn dùng ngón tay/chuột cuộn được trang web phía sau làm trôi giao diện.',
+    goodCode: '$effect(() => { if (open) { document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = ""; }; } });',
+  },
+  {
+    ruleNumber: 12,
+    name: 'CLEAN_HEADROOM_LAW',
+    title: 'Tiêu Đề Tinh Giản - Loại Bỏ Yếu Tố Chuyển Động Vụn Vặt',
+    description: 
+      'Khu vực Header & Masthead phải luôn ổn định, sắc nét và tập trung vào nhận diện thương hiệu cũng như điều hướng cốt lõi. Tuyệt đối không nhồi nhét các dải chữ chạy liên tục (Marquee Ticker) gây xao nhãng thị giác và tăng mức tiêu thụ pin của CPU/GPU trên thiết bị di động.',
+    badCode: 'Chèn thanh chữ chạy marquee liên tục chiếm 30px đỉnh trang che mất tầm nhìn.',
+    goodCode: 'Header phẳng cố định, viền mực 3px-4px, logo to rõ, nút điều hướng và toggle theme đanh gọn.',
+  },
+  {
+    ruleNumber: 13,
+    name: 'NATURAL_RESPONSIVE_DISCIPLINE',
+    title: 'Kỷ Luật Responsive Tự Nhiên Không Dùng Switcher Thủ Công',
+    description: 
+      'Hệ thống giao diện sản xuất (Production) phải vận hành 100% tự động dựa trên truy vấn môi trường CSS Media Queries (hidden lg:block cho Desktop và block lg:hidden cho Mobile). Tuyệt đối không để tồn tại các nút bấm chuyển đổi Viewport thủ công (như nút giả lập điện thoại hay switcher) trên bản phát hành chính thức.',
+    badCode: 'Để các nút bấm gạt AUTO / DESKTOP / MOBILE lơ lửng trên giao diện người dùng thực.',
+    goodCode: 'CSS thuần tự nhận diện màn hình, tải đúng phân hệ DesktopView hoặc MobileView tức thì không giật layout.',
+  },
+  {
+    ruleNumber: 14,
+    name: 'UNIVERSAL_COMPONENT_DARK_MODE_INVERSION',
+    title: 'Kỷ Luật Chuyển Đổi Dark Mode Toàn Diện Mọi Linh Kiện',
+    description: 
+      'Khi chuyển sang Dark Mode, toàn bộ mọi linh kiện (Card, Input, Button, Tabs, Accordion, SelectPicker, Switch, Dialog, Drawer, Toast, Skeleton, Navigation Dock) bắt buộc phải đồng loạt chuyển đổi trạng thái hình học: (1) Viền mực đen (#000000) biến thành Viền trắng tinh khôi (#FFFFFF) hoặc viền neon. (2) Bóng đổ cứng đen (#000000) biến thành Bóng đổ cứng trắng (#FFFFFF) hoặc neon (#00F0FF, #FFE600). (3) Bề mặt linh kiện biến thành Charcoal sâu (#141414, #181818, #1C1C1C) - tuyệt đối không để màu trắng nguyên bản và không dùng màu đen hòa tan với nền (#000000) để đảm bảo độ sâu 3D. Tuyệt đối cấm chỉ đổi nền hoặc màu chữ mà giữ nguyên viền đen/bóng đen của linh kiện.',
+    badCode: 'Chỉ thêm dark:bg-black ở thẻ body, giữ nguyên card có shadow-[4px_4px_0px_#000] khiến bóng đen tàng hình trên nền đen.',
+    goodCode: 'bg-white dark:bg-[#141414] border-black dark:border-white shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#FFF]',
+  },
+  {
+    ruleNumber: 15,
+    name: 'WEB_MOBILE_SOVEREIGNTY',
+    title: 'Kỷ Luật Web Di Động Thuần Túy - Chống Ngụy Tạo Mobile App',
+    description: 
+      'Giao diện Web Mobile phải tôn trọng bản chất của nền tảng Web: (1) Cấm giả lập thanh trạng thái điện thoại (09:41 5G 100%) vì hệ điều hành máy thật đã có. (2) Cấm cưỡng ép thanh điều hướng cố định dưới đáy (Bottom Toolbar Dock) kiểu Native App đối với các trang thông tin/portfolio không phải PWA, nhằm triệt tiêu lỗi chạm nhầm thanh Safari, lỗi double-tap và che khuất diện tích đọc. (3) Sử dụng điều hướng Tab đầu trang (Top Scrollable Tabs) hoặc Menu Drawer kết hợp cuộn tự nhiên theo chuẩn mực Web.',
+    badCode: 'Đặt thanh 5 nút fixed dưới đáy màn hình web mobile gây xung đột với Safari URL bar và che mất 15% diện tích đọc.',
+    goodCode: 'Bỏ Bottom Dock, sử dụng Web Tabs cuộn ngang ở đỉnh trang kết hợp Ark UI Menu Drawer khi cần chuyển phân hệ.',
+  },
 ] as const;
