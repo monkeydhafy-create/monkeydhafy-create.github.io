@@ -1,29 +1,71 @@
-<!DOCTYPE html>
-<html lang="vi" class="scroll-smooth" data-theme="dark">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Zera — Principal Solutions Architect & AI Engineering Lead | EngBbq</title>
-  <meta name="description" content="Svelte 5 Portfolio of Zera — Principal Solutions Architect & AI Engineering Lead. Creator of EngBbq, Tianji AI, and Distributed Systems.">
-  <meta name="theme-color" content="#09090b">
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <title>PixiJS v8 — 2D Open-World Template</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="pixi-container"></div>
 
-  <!-- Open Graph -->
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://engbbq.me/">
-  <meta property="og:title" content="Zera — Principal Solutions Architect & AI Engineering Lead">
-  <meta property="og:description" content="Architecting resilient distributed systems, durable workflows, and cognitive AI platforms.">
-  <meta property="og:image" content="https://engbbq.me/logo_transparent.png">
+      <!-- Retina-Crisp HTML/CSS Overlay HUD -->
+      <div id="hud" aria-label="Game HUD">
+        <!-- Top Bar -->
+        <div class="hud-top">
+          <div class="hud-pill">
+            <div class="hud-dot"></div>
+            <div class="hud-meta">
+              <div id="hud-biome" class="hud-biome">Quảng Trường Cổ</div>
+              <div class="hud-subrow">
+                <span id="hud-coords">X:48 Y:49</span>
+                <span class="hud-sep">•</span>
+                <span id="hud-fps">60 FPS</span>
+              </div>
+            </div>
+          </div>
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="/logo_transparent.png">
+          <div class="hud-minimap-wrap">
+            <canvas
+              id="hud-minimap"
+              width="96"
+              height="96"
+              title="Chạm bản đồ nhỏ để di chuyển tới vị trí"
+            ></canvas>
+          </div>
+        </div>
 
-  <!-- Google Fonts: Be Vietnam Pro (Gold standard for Vietnamese diacritics), Space Grotesk & JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&family=JetBrains+Mono:wght@400;500;700;800&family=Space+Grotesk:wght@500;600;700;800;900&display=swap" rel="stylesheet">
-</head>
-<body class="font-sans antialiased min-h-screen selection:bg-emerald-500 selection:text-zinc-950">
-  <div id="app"></div>
-  <script type="module" src="/src/main.ts"></script>
-</body>
+        <!-- Discovery Banner Toast -->
+        <div id="hud-toast" class="hud-toast" role="status" aria-live="polite">
+          <div id="hud-toast-title" class="hud-toast-title"></div>
+          <div id="hud-toast-sub" class="hud-toast-sub"></div>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="hud-bottom">
+          <div class="hud-hint">
+            <span class="hint-mobile">Chạm hoặc kéo trên mặt đất để di chuyển</span>
+            <span class="hint-desktop">Click / Giữ chuột hoặc WASD để đi • Cuộn chuột để Zoom</span>
+          </div>
+
+          <div id="hud-controls" class="hud-controls">
+            <button id="btn-skin" class="hud-skin-btn" type="button" aria-label="Đổi nhân vật">
+              🥷 Samurai Xanh
+            </button>
+            <button id="btn-zoom-out" type="button" aria-label="Thu nhỏ">−</button>
+            <button id="btn-zoom-in" type="button" aria-label="Phóng to">+</button>
+            <button id="btn-center" type="button" aria-label="Về nhân vật">⌖</button>
+            <button id="btn-sound" type="button" aria-label="Tắt âm thanh">🔊</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

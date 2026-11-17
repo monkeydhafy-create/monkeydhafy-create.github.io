@@ -1,4 +1,4 @@
-name: Deploy Svelte 5 SPA to GitHub Pages
+name: Deploy PixiJS v8 Open-World to GitHub Pages
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Svelte 5 App
+      - name: Build PixiJS v8 App
         run: npm run build
 
       - name: Setup Pages

@@ -1,25 +1,29 @@
 {
-  "name": "engbbq-portfolio-spa",
+  "name": "engbbq-open-world",
+  "version": "0.0.0",
   "private": true,
-  "version": "2.0.0",
   "type": "module",
   "scripts": {
+    "start": "npm run dev",
     "dev": "vite",
-    "build": "vite build",
+    "build": "oxlint && tsc && vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "lint": "oxlint",
+    "format": "oxfmt"
   },
   "dependencies": {
-    "@ark-ui/svelte": "^5.25.1",
-    "@lucide/svelte": "^1.70.0"
+    "@esotericsoftware/spine-pixi-v8": "~4.3.13",
+    "@pixi/3d": "^0.1.0",
+    "@pixi/sound": "^6.0.2",
+    "@pixi/ui": "^2.4.1",
+    "gsap": "^3.15.0",
+    "pixi-filters": "^6.1.5",
+    "pixi.js": "^8.23.0"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^7.3.1",
-    "@tailwindcss/vite": "^4.3.5",
-    "svelte": "^5.57.3",
-    "svelte-check": "^4.3.5",
-    "tailwindcss": "^4.3.5",
-    "typescript": "^5.8.2",
-    "vite": "^8.3.6"
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.5"
   }
 }
