@@ -44,8 +44,8 @@ const PUZZLE_TITLES: Record<VaultPuzzleKind, { badge: string; title: string; gui
   },
   code4: {
     badge: "🔢 KHÓA MẬT MÃ 4 SỐ",
-    title: "Đoán Mã Két An Toàn (Tối đa 6 lượt)",
-    guide: "Nhập 4 chữ số khác nhau (0–9). Sai quá 6 lượt mật mã sẽ tự đổi mới! 🟢 Đúng chỗ • 🟡 Sai chỗ.",
+    title: "Đoán Mã Két An Toàn (Tối đa 10 lượt)",
+    guide: "Nhập 4 chữ số khác nhau (0–9). Sai quá 10 lượt mật mã sẽ tự đổi mới! 🟢 Đúng số & đúng vị trí • 🟡 Đúng số nhưng sai vị trí • ⬛ Không có.",
   },
   memory_cards: {
     badge: ARCADE_MINIGAME_META.memory_cards.badge,
@@ -697,7 +697,7 @@ export function createCode4State(
   rng: () => number = Math.random,
   resetCount = 0,
   justReset = false,
-  maxAttempts = 8,
+  maxAttempts = 10,
 ): Code4State {
   const digits = shuffleInPlace(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], rng);
   return {
@@ -824,6 +824,7 @@ export class PuzzleMinigameModal {
       this.pipes = cached.pipes ?? null;
       this.signal = cached.signal ?? null;
       this.code4 = cached.code4 ?? null;
+      if (this.code4 && this.code4.maxAttempts < 10) this.code4.maxAttempts = 10;
     } else {
       this.initPuzzleState();
       if (!isJail) {
@@ -878,7 +879,7 @@ export class PuzzleMinigameModal {
     else if (this.kind === "pipes") this.pipes = createPipesState(this.activeRng);
     else if (this.kind === "signal") this.signal = createSignalState(this.activeRng);
     else if (this.kind === "code4") {
-      this.code4 = createCode4State(this.activeRng, 0, false, 6 + (this.activeTarget?.extraMisses ?? 0));
+      this.code4 = createCode4State(this.activeRng, 0, false, 10 + (this.activeTarget?.extraMisses ?? 0));
     }
   }
 

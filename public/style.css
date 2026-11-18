@@ -4637,3 +4637,32 @@ button {
 .vp-code-key.is-hint-miss {
   opacity: 0.48;
 }
+
+/* Vault Code4: roomier rows, separated attempt index from digits */
+.vp-code-row {
+  padding: 6px 10px;
+  gap: 12px;
+}
+
+.vp-code-history {
+  max-height: 188px;
+  overflow-y: auto;
+}
+
+.vp-code-guess-cells {
+  gap: 8px;
+}
+
+.vp-code-idx {
+  min-width: 34px;
+  margin-right: 8px;
+  padding-right: 8px;
+  border-right: 1px solid rgba(148, 163, 184, 0.28);
+  font-size: 12px;
+}
+
+.vp-code-digit {
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
+}
