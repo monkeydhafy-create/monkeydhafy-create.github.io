@@ -70,17 +70,48 @@
             <div id="sv-thermal-text" class="sv-thermal">🌡️ 36.8°C • 🌤️ 25°C</div>
           </div>
 
-          <div class="hud-minimap-shell">
-            <button
-              id="btn-minimap"
-              class="hud-minimap-wrap"
-              type="button"
-              title="Chạm để mở bản đồ lớn"
-              aria-label="Mở bản đồ lớn"
-            >
-              <canvas id="hud-minimap" width="146" height="84"></canvas>
-              <span class="minimap-badge">🗺️</span>
-            </button>
+          <div class="hud-top-right">
+            <div class="hud-minimap-shell">
+              <button
+                id="btn-minimap"
+                class="hud-minimap-wrap"
+                type="button"
+                title="Chạm để mở bản đồ lớn"
+                aria-label="Mở bản đồ lớn"
+              >
+                <canvas id="hud-minimap" width="146" height="84"></canvas>
+                <span class="minimap-badge">🗺️</span>
+              </button>
+            </div>
+            <div id="hud-menu-wrap" class="hud-menu-wrap">
+              <button
+                id="btn-hud-menu"
+                class="hud-pill-btn hud-menu-btn"
+                type="button"
+                title="Nhiệm vụ, Hướng dẫn & Âm thanh"
+                aria-label="Menu"
+                aria-expanded="false"
+              >
+                ☰
+              </button>
+              <div id="hud-menu-popover" class="hud-menu-popover" role="menu" aria-label="Tiện ích nhanh">
+                <button id="btn-missions" class="hud-menu-item" type="button" role="menuitem">
+                  📋 Nhiệm vụ
+                </button>
+                <button id="btn-reputation" class="hud-menu-item" type="button" role="menuitem">
+                  🏆 Danh vọng
+                </button>
+                <button id="btn-pets" class="hud-menu-item" type="button" role="menuitem">
+                  🐾 Thú cưng
+                </button>
+                <button id="btn-guide" class="hud-menu-item" type="button" role="menuitem">
+                  📖 Hướng dẫn
+                </button>
+                <button id="btn-sound-toggle" class="hud-menu-item" type="button" role="menuitem">
+                  🔊 Âm thanh: Bật
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -92,9 +123,6 @@
 
           <div class="hud-bottom hud-bottom-end">
             <div id="hud-controls" class="hud-controls">
-              <button id="btn-missions" class="hud-pill-btn hud-missions-btn" type="button" aria-label="Nhiệm vụ nâng cấp">
-                📋 Nhiệm vụ
-              </button>
               <button id="btn-quick-use" class="hud-pill-btn hud-quick-btn" type="button" aria-label="Dùng nhanh vật phẩm">
                 ⚡ Dùng nhanh
               </button>
@@ -143,9 +171,11 @@
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_butcher_shop">🍜 Quán Ăn</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_pharmacy">💊 Thuốc</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_quest_guild">📜 Nhiệm Vụ</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_reputation_hall">🏆 Sảnh Danh Vọng</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_pet_gacha">🐾 Nhận Nuôi</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_airport">✈️ Sân Bay</button>
             </div>
-            <span class="fullmap-legend">🏠 Nhà • 🏛️ Sưu Tầm • 🏪 Balo • 👔 Áo • 💇 Tóc • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện • 🏯 Thành Cổ • ⛩️ Thần Xã</span>
+            <span class="fullmap-legend">🏠 Nhà • 🏛️ Sưu Tầm • 📜 Nhiệm Vụ • 🏆 Danh Vọng • 🐾 Nhận Nuôi • 🏪 Balo • 👔 Áo • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện</span>
           </div>
         </div>
       </div>
@@ -514,21 +544,22 @@
         </div>
       </div>
 
-      <!-- Permanent Safebox & Home Storage Trade-In Upgrade Modal -->
+      <!-- Unified Missions & Permanent Upgrade Modal -->
       <div id="safebox-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="sb-title">
         <div class="bag-card sb-card">
           <div class="bag-header">
             <div>
-              <h2 id="sb-title" class="bag-title">⬆️ Nâng Cấp Vĩnh Viễn</h2>
-              <div class="sb-mode-tabs" role="tablist" aria-label="Chọn loại nâng cấp">
-                <button id="btn-up-tab-safebox" class="btn-sell-zone is-active" type="button">🔐 Safebox</button>
+              <h2 id="sb-title" class="bag-title">📋 Nhiệm Vụ &amp; Nâng Cấp</h2>
+              <div class="sb-mode-tabs" role="tablist" aria-label="Chọn nhóm nhiệm vụ">
+                <button id="btn-up-tab-daily" class="btn-sell-zone is-active" type="button">📜 Hằng ngày</button>
+                <button id="btn-up-tab-safebox" class="btn-sell-zone" type="button">🔐 Safebox</button>
                 <button id="btn-up-tab-home" class="btn-sell-zone" type="button">🏠 Kho Nhà</button>
                 <button id="btn-up-tab-gym" class="btn-sell-zone" type="button">🏋️ Phòng Gym</button>
                 <button id="btn-up-tab-treadmill" class="btn-sell-zone" type="button">🏃 Máy Chạy Bộ</button>
               </div>
               <div id="sb-stats" class="bag-stats"></div>
             </div>
-            <button id="btn-sb-close" class="bag-close" type="button" aria-label="Đóng nâng cấp">✕</button>
+            <button id="btn-sb-close" class="bag-close" type="button" aria-label="Đóng nhiệm vụ">✕</button>
           </div>
           <div id="sb-tier-banner" class="sb-tier-banner"></div>
           <div id="sb-requirements-list" class="sb-requirements-list"></div>
@@ -555,6 +586,76 @@
             <button id="btn-qb-reroll" class="btn-card-secondary" type="button">
               🔄 Làm mới sớm (250 Vàng)
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cumulative Reputation & Milestones Modal -->
+      <div id="reputation-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="rep-title">
+        <div class="bag-card sb-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="rep-title" class="bag-title">🏆 Danh Vọng Tích Lũy</h2>
+              <div id="rep-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-rep-close" class="bag-close" type="button" aria-label="Đóng bảng danh vọng">✕</button>
+          </div>
+          <div id="rep-rank-banner" class="sb-tier-banner rep-rank-banner"></div>
+          <div id="rep-category-tabs" class="sb-mode-tabs">
+            <button class="btn-sell-zone is-active" type="button" data-rep-cat="all">📋 Tất cả</button>
+            <button class="btn-sell-zone" type="button" data-rep-cat="wealth">💰 Tài sản</button>
+            <button class="btn-sell-zone" type="button" data-rep-cat="quests_home">📜 NV &amp; Nhà</button>
+            <button class="btn-sell-zone" type="button" data-rep-cat="rare_loot">💎 Đồ hiếm</button>
+            <button class="btn-sell-zone" type="button" data-rep-cat="minigames">🎮 Minigame</button>
+            <button class="btn-sell-zone" type="button" data-rep-cat="survival">🍔 Ăn uống</button>
+            <button class="btn-sell-zone" type="button" data-rep-cat="shop">🛒 Đổi Đồ Đỏ</button>
+          </div>
+          <div id="rep-list" class="sb-requirements-list"></div>
+          <div class="sb-footer">
+            <button id="btn-rep-claim-all" class="btn-card-primary" type="button">
+              🎁 Nhận tất cả mốc đã đạt
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pet Gacha & Companion Modal -->
+      <div id="pet-gacha-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="pet-title">
+        <div class="bag-card sb-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="pet-title" class="bag-title">🐾 Nhà Nhận Nuôi Thú Cưng</h2>
+              <div id="pet-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-pet-close" class="bag-close" type="button" aria-label="Đóng bảng thú cưng">✕</button>
+          </div>
+          <div id="pet-tabs" class="sb-mode-tabs">
+            <button class="btn-sell-zone is-active" type="button" data-pet-tab="gacha">🎰 Quay Gacha (2.000🪙)</button>
+            <button class="btn-sell-zone" type="button" data-pet-tab="roster">🐾 Bộ Sưu Tập Pet</button>
+          </div>
+          <div id="pet-body" class="sb-requirements-list"></div>
+          <div id="pet-footer" class="sb-footer pet-footer-actions">
+            <button id="btn-pet-roll-1" class="btn-card-primary" type="button">🎰 Quay 1 lần (2.000🪙)</button>
+            <button id="btn-pet-roll-5" class="btn-card-secondary" type="button">🎲 Quay 5 lần (10.000🪙)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive How-To-Play Slide Deck Modal -->
+      <div id="guide-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+        <div class="bag-card guide-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="guide-title" class="bag-title">📖 Hướng Dẫn Chơi Game</h2>
+              <div id="guide-step-meta" class="bag-stats"></div>
+            </div>
+            <button id="btn-guide-close" class="bag-close" type="button" aria-label="Đóng hướng dẫn">✕</button>
+          </div>
+          <div id="guide-slide-stage" class="guide-slide-stage"></div>
+          <div class="guide-footer">
+            <button id="btn-guide-prev" class="btn-card-secondary" type="button">⬅️ Trước</button>
+            <div id="guide-dots" class="guide-dots" role="tablist" aria-label="Chọn trang hướng dẫn"></div>
+            <button id="btn-guide-next" class="btn-card-primary" type="button">Tiếp ➡️</button>
           </div>
         </div>
       </div>

@@ -62,7 +62,20 @@ import {
 import {
   QUEST_MANUAL_REROLL_COST_GOLD,
   formatQuestCountdown,
+  type DailyQuestEntry,
 } from "../world/QuestSystem.ts";
+import {
+  REPUTATION_SHOP_BY_ID,
+  REPUTATION_SHOP_ITEMS,
+  type ReputationCategory,
+} from "../world/ReputationSystem.ts";
+import {
+  PET_BY_ID,
+  PET_CATALOG,
+  PET_GACHA_COST_GOLD,
+  formatPetBonusSummary,
+  type GachaRollOutcome,
+} from "../world/PetSystem.ts";
 import type { PendingVaultTarget, ShopKind, WorldScene } from "../world/WorldScene.ts";
 import {
   ArcadeMinigameController,
@@ -70,6 +83,89 @@ import {
   type ArcadeMinigameKind,
 } from "./ArcadeMinigames.ts";
 import { PuzzleMinigameModal } from "./PuzzleMinigameModal.ts";
+
+const GUIDE_SLIDES: ReadonlyArray<{
+  icon: string;
+  heading: string;
+  sub: string;
+  imageSrc: string;
+  imageFit?: "cover" | "contain";
+  points: readonly string[];
+}> = [
+  {
+    icon: "🗺️",
+    heading: "Di Chuyển & 3 Khu Vực Bản Đồ",
+    sub: "Làm quen địa hình và mức độ rủi ro theo từng vùng",
+    imageSrc: "./assets/world/guide/slide-1-world.png",
+    imageFit: "cover",
+    points: [
+      "Dùng chuột/chạm để dẫn đường hoặc phím WASD / mũi tên để di chuyển; nhấn [E] hoặc nút tương tác khi đứng gần rương và tòa nhà.",
+      "🟢 Vùng Xanh: Khu an toàn (-70% hiệu ứng bất lợi), có Nhà Riêng, Shop, Hội Sở Nhiệm Vụ & Sân Bay.",
+      "🟡 Vùng Vàng: (-30% hiệu ứng bất lợi) có cảnh sát tuần tra & nhiều nhà dân, cửa tiệm loot đồ.",
+      "🔴 Vùng Đỏ: Rủi ro cao nhất (100% bất lợi), nhiều Rương Hoàng Gia, Két khóa và tỷ lệ vật phẩm hiếm cao nhất.",
+    ],
+  },
+  {
+    icon: "🌡️",
+    heading: "Sinh Tồn, Thời Tiết & Trang Bị",
+    sub: "Giữ thân nhiệt, no bụng và cân đối tải trọng balo",
+    imageSrc: "./assets/world/guide/slide-5-wardrobe.png",
+    imageFit: "contain",
+    points: [
+      "Luôn theo dõi Máu ❤️, Độ No 🍗, Thể Lực ⚡ và Thân Nhiệt 🌡️ ở góc trên bên trái.",
+      "Map Hà Nội có nắng gắt sốc nhiệt, bụi mịn/nồm ẩm, mưa bão ngập trơn và chướng khí vùng sâu; Map Nhật có núi tuyết Hokkaido rét buốt.",
+      "Mang nặng từ 10kg và 20kg sẽ hao thể lực nhanh hơn và đi chậm hơn; khi đang ăn/uống/dùng thuốc sẽ di chuyển chậm đi 66%.",
+    ],
+  },
+  {
+    icon: "🎒",
+    heading: "Balo, Safebox & Kho Nhà Vĩnh Viễn",
+    sub: "Quản lý ô lưới thông minh và bảo vệ chiến lợi phẩm",
+    imageSrc: "./assets/world/guide/slide-3-bag.png",
+    imageFit: "contain",
+    points: [
+      "Kéo thả và bấm [R] để xoay vật phẩm vừa khít vào lưới Balo. Trong Shop có nút Bán đồ không phải đồ ăn cực nhanh.",
+      "🔐 Safebox bảo vệ vật phẩm an toàn 100% không bị tịch thu khi bị Cảnh Sát bắt.",
+      "🏠 Kho Nhà là kho lưu trữ vĩnh viễn và là nơi giao nộp nguyên liệu nâng cấp Safebox, Kho Nhà, Phòng Gym & Máy Chạy Bộ.",
+    ],
+  },
+  {
+    icon: "📜",
+    heading: "Nhiệm Vụ Nâng Cấp & Hội Sở 4 Giờ",
+    sub: "Theo dõi tiến độ nâng cấp và kiếm Vàng, Đồ ăn, Thuốc, Đồ Đỏ",
+    imageSrc: "./assets/world/guide/slide-4-missions.png",
+    imageFit: "contain",
+    points: [
+      "Bấm nút [📋 Nhiệm vụ] ngay trên màn hình để xem tiến trình nâng cấp Safebox, Kho Nhà, Phòng Gym (+Thể lực) & Máy Chạy Bộ (+Tốc độ mang nặng).",
+      "Ghé [📜 Hội Sở Nhiệm Vụ] trong Vùng Xanh mỗi 4 giờ để nhận 3–5 nhiệm vụ Giao đồ, Khám phá hoặc Minigame; cảnh báo Cảnh sát 'Đang bị tình nghi' báo trước 2s, Vùng Đỏ được sai 2 lần.",
+      "Vật phẩm Đồ Đỏ (S) có thể đem trưng bày tại [🏛️ Phòng Sưu Tầm] để nhận thưởng lớn.",
+    ],
+  },
+  {
+    icon: "🧭",
+    heading: "Bản Đồ Lớn 3 Vùng & Minimap 5×",
+    sub: "Quan sát toàn cảnh, lọc khu vực và di chuyển nhanh",
+    imageSrc: "./assets/world/guide/slide-2-fullmap.png",
+    imageFit: "contain",
+    points: [
+      "Minimap góc trên bên phải luôn zoom 5× quanh người chơi để theo dõi cảnh sát và rương gần nhất.",
+      "Chạm vào minimap hoặc nhấn [M] để mở Bản Đồ Lớn, chạm bất kỳ điểm nào để tự động dẫn đường.",
+      "Dùng thanh lọc [Toàn Bản Đồ / Vùng Xanh / Vùng Vàng / Vùng Đỏ] hoặc các nút đi nhanh tới Nhà, Shop, Hội Sở Nhiệm Vụ, Sân Bay.",
+    ],
+  },
+  {
+    icon: "✈️",
+    heading: "Sân Bay Quốc Tế & Nhật Bản",
+    sub: "Mở rộng hành trình sang Tokyo – Samurai – Núi Tuyết",
+    imageSrc: "./assets/world/guide/slide-6-airport.png",
+    imageFit: "contain",
+    points: [
+      "Tại Sân Bay Quốc Tế, mua vé sang Nhật Bản (5.000 Vàng) với đô thị Tokyo, nông thôn Samurai, núi tuyết Hokkaido cùng 10 món ăn & 10 trang phục Nhật riêng.",
+      "Hoặc chọn bay Thái Lan (500 Vàng) để đổi giới tính nhân vật Nam ⇄ Nữ bất cứ lúc nào.",
+      "Toàn bộ Balo, Safebox, Kho Nhà và Phòng Sưu Tầm được đồng bộ xuyên suốt giữa hai bản đồ!",
+    ],
+  },
+];
 
 const MINIMAP_COLORS: Record<TileType, string> = {
   grass: "#2d6a4f",
@@ -143,7 +239,11 @@ export class Hud {
   private readonly toastTitleEl: HTMLElement;
   private readonly toastSubEl: HTMLElement;
   private readonly bagBtn: HTMLButtonElement;
+  private readonly hudMenuBtn: HTMLButtonElement;
+  private readonly hudMenuPopoverEl: HTMLElement;
   private readonly missionsBtn: HTMLButtonElement;
+  private readonly guideBtn: HTMLButtonElement;
+  private readonly soundToggleBtn: HTMLButtonElement;
   private readonly interactBarEl: HTMLElement;
   private readonly interactBtn: HTMLButtonElement;
 
@@ -197,6 +297,7 @@ export class Hud {
   // Safebox, Home Storage, Gym & Treadmill Upgrade Modal
   private readonly safeboxModalEl: HTMLElement;
   private readonly sbTitleEl: HTMLElement;
+  private readonly upTabDailyBtn: HTMLButtonElement;
   private readonly upTabSafeboxBtn: HTMLButtonElement;
   private readonly upTabHomeBtn: HTMLButtonElement;
   private readonly upTabGymBtn: HTMLButtonElement;
@@ -213,6 +314,42 @@ export class Hud {
   private readonly questBoardListEl: HTMLElement;
   private readonly questBoardCloseBtn: HTMLButtonElement;
   private readonly questBoardRerollBtn: HTMLButtonElement;
+
+  // Cumulative Reputation Modal
+  private readonly reputationBtn: HTMLButtonElement;
+  private readonly reputationModalEl: HTMLElement;
+  private readonly reputationStatsEl: HTMLElement;
+  private readonly reputationBannerEl: HTMLElement;
+  private readonly reputationTabsEl: HTMLElement;
+  private readonly reputationListEl: HTMLElement;
+  private readonly reputationCloseBtn: HTMLButtonElement;
+  private readonly reputationClaimAllBtn: HTMLButtonElement;
+  private isReputationOpen = false;
+  private reputationCategory: ReputationCategory = "all";
+
+  // Pet Gacha & Companion Modal
+  private readonly petsBtn: HTMLButtonElement;
+  private readonly petModalEl: HTMLElement;
+  private readonly petStatsEl: HTMLElement;
+  private readonly petTabsEl: HTMLElement;
+  private readonly petBodyEl: HTMLElement;
+  private readonly petCloseBtn: HTMLButtonElement;
+  private readonly petRoll1Btn: HTMLButtonElement;
+  private readonly petRoll5Btn: HTMLButtonElement;
+  private isPetModalOpen = false;
+  private petModalTab: "gacha" | "roster" = "gacha";
+  private previewPetId: string = PET_CATALOG[0].id;
+  private previewPetAnim: "idle" | "run" | "play" = "idle";
+  private lastGachaOutcomes: GachaRollOutcome[] = [];
+
+  // How-To-Play Slide Deck Modal
+  private readonly guideModalEl: HTMLElement;
+  private readonly guideStepMetaEl: HTMLElement;
+  private readonly guideSlideStageEl: HTMLElement;
+  private readonly guideDotsEl: HTMLElement;
+  private readonly guideCloseBtn: HTMLButtonElement;
+  private readonly guidePrevBtn: HTMLButtonElement;
+  private readonly guideNextBtn: HTMLButtonElement;
 
   // Survival Telemetry + Blur Vignette + Hospital Overlay
   private readonly pixiContainerEl: HTMLElement;
@@ -336,8 +473,10 @@ export class Hud {
   private shopSellZone: "backpack" | "safebox" = "backpack";
   private isSafeboxModalOpen = false;
   private isQuestBoardOpen = false;
+  private isGuideModalOpen = false;
+  private guideSlideIdx = 0;
   private safeboxOpenedFromHome = false;
-  private upgradeModalMode: UpgradeKind = "safebox";
+  private upgradeModalMode: "daily" | UpgradeKind = "daily";
   private isWardrobeOpen = false;
   private isClothingShopOpen = false;
   private isFoodShopOpen = false;
@@ -405,7 +544,11 @@ export class Hud {
     this.toastTitleEl = document.getElementById("hud-toast-title")!;
     this.toastSubEl = document.getElementById("hud-toast-sub")!;
     this.bagBtn = document.getElementById("btn-bag") as HTMLButtonElement;
+    this.hudMenuBtn = document.getElementById("btn-hud-menu") as HTMLButtonElement;
+    this.hudMenuPopoverEl = document.getElementById("hud-menu-popover")!;
     this.missionsBtn = document.getElementById("btn-missions") as HTMLButtonElement;
+    this.guideBtn = document.getElementById("btn-guide") as HTMLButtonElement;
+    this.soundToggleBtn = document.getElementById("btn-sound-toggle") as HTMLButtonElement;
     this.wardrobeBtn = document.getElementById("btn-wardrobe") as HTMLButtonElement;
     this.interactBarEl = document.getElementById("interact-bar")!;
     this.interactBtn = document.getElementById("btn-interact") as HTMLButtonElement;
@@ -469,6 +612,7 @@ export class Hud {
 
     this.safeboxModalEl = document.getElementById("safebox-modal")!;
     this.sbTitleEl = document.getElementById("sb-title")!;
+    this.upTabDailyBtn = document.getElementById("btn-up-tab-daily") as HTMLButtonElement;
     this.upTabSafeboxBtn = document.getElementById("btn-up-tab-safebox") as HTMLButtonElement;
     this.upTabHomeBtn = document.getElementById("btn-up-tab-home") as HTMLButtonElement;
     this.upTabGymBtn = document.getElementById("btn-up-tab-gym") as HTMLButtonElement;
@@ -484,6 +628,32 @@ export class Hud {
     this.questBoardListEl = document.getElementById("qb-list")!;
     this.questBoardCloseBtn = document.getElementById("btn-qb-close") as HTMLButtonElement;
     this.questBoardRerollBtn = document.getElementById("btn-qb-reroll") as HTMLButtonElement;
+
+    this.reputationBtn = document.getElementById("btn-reputation") as HTMLButtonElement;
+    this.reputationModalEl = document.getElementById("reputation-modal")!;
+    this.reputationStatsEl = document.getElementById("rep-stats")!;
+    this.reputationBannerEl = document.getElementById("rep-rank-banner")!;
+    this.reputationTabsEl = document.getElementById("rep-category-tabs")!;
+    this.reputationListEl = document.getElementById("rep-list")!;
+    this.reputationCloseBtn = document.getElementById("btn-rep-close") as HTMLButtonElement;
+    this.reputationClaimAllBtn = document.getElementById("btn-rep-claim-all") as HTMLButtonElement;
+
+    this.petsBtn = document.getElementById("btn-pets") as HTMLButtonElement;
+    this.petModalEl = document.getElementById("pet-gacha-modal")!;
+    this.petStatsEl = document.getElementById("pet-stats")!;
+    this.petTabsEl = document.getElementById("pet-tabs")!;
+    this.petBodyEl = document.getElementById("pet-body")!;
+    this.petCloseBtn = document.getElementById("btn-pet-close") as HTMLButtonElement;
+    this.petRoll1Btn = document.getElementById("btn-pet-roll-1") as HTMLButtonElement;
+    this.petRoll5Btn = document.getElementById("btn-pet-roll-5") as HTMLButtonElement;
+
+    this.guideModalEl = document.getElementById("guide-modal")!;
+    this.guideStepMetaEl = document.getElementById("guide-step-meta")!;
+    this.guideSlideStageEl = document.getElementById("guide-slide-stage")!;
+    this.guideDotsEl = document.getElementById("guide-dots")!;
+    this.guideCloseBtn = document.getElementById("btn-guide-close") as HTMLButtonElement;
+    this.guidePrevBtn = document.getElementById("btn-guide-prev") as HTMLButtonElement;
+    this.guideNextBtn = document.getElementById("btn-guide-next") as HTMLButtonElement;
 
     this.wardrobeModalEl = document.getElementById("wardrobe-modal")!;
     this.wardrobeCloseBtn = document.getElementById("btn-wardrobe-close") as HTMLButtonElement;
@@ -591,6 +761,7 @@ export class Hud {
     this.refreshBagBadge();
     this.updateSurvivalHud();
     this.updateInteractPrompt();
+    this.syncSoundButtonLabel();
     this.drawMinimap();
     this.bindEvents();
   }
@@ -622,7 +793,10 @@ export class Hud {
       | "fullmap"
       | "vaultpuzzle"
       | "safebox"
-      | "questboard",
+      | "questboard"
+      | "reputation"
+      | "pet"
+      | "guide",
   ): void {
     if (except !== "bag" && this.isBagOpen) {
       this.setBagOpen(false);
@@ -637,6 +811,18 @@ export class Hud {
     if (except !== "questboard" && this.isQuestBoardOpen) {
       this.isQuestBoardOpen = false;
       this.questBoardModalEl.classList.remove("is-open");
+    }
+    if (except !== "reputation" && this.isReputationOpen) {
+      this.isReputationOpen = false;
+      this.reputationModalEl.classList.remove("is-open");
+    }
+    if (except !== "pet" && this.isPetModalOpen) {
+      this.isPetModalOpen = false;
+      this.petModalEl.classList.remove("is-open");
+    }
+    if (except !== "guide" && this.isGuideModalOpen) {
+      this.isGuideModalOpen = false;
+      this.guideModalEl.classList.remove("is-open");
     }
     if (except !== "wardrobe" && this.isWardrobeOpen) {
       this.isWardrobeOpen = false;
@@ -935,11 +1121,179 @@ export class Hud {
     this.airportGenderPanelEl.classList.toggle("is-hidden", isFlight);
   }
 
+  private syncSoundButtonLabel(): void {
+    const enabled = this.scene.isSoundEnabled();
+    this.soundToggleBtn.textContent = enabled ? "🔊 Âm thanh: Bật" : "🔇 Âm thanh: Tắt";
+    this.soundToggleBtn.classList.toggle("is-muted", !enabled);
+  }
+
+  public openGuideModal(startIndex = 0): void {
+    this.closeAllModals("guide");
+    this.isGuideModalOpen = true;
+    this.guideSlideIdx = Math.max(0, Math.min(GUIDE_SLIDES.length - 1, startIndex));
+    this.guideModalEl.classList.add("is-open");
+    this.renderGuideSlide();
+  }
+
+  private renderGuideSlide(): void {
+    const total = GUIDE_SLIDES.length;
+    const slide = GUIDE_SLIDES[this.guideSlideIdx];
+
+    this.guideStepMetaEl.replaceChildren();
+    const pill = document.createElement("span");
+    pill.className = "bag-stat-pill";
+    pill.textContent = `Trang ${this.guideSlideIdx + 1}/${total}`;
+    this.guideStepMetaEl.appendChild(pill);
+
+    this.guideSlideStageEl.replaceChildren();
+    const hero = document.createElement("div");
+    hero.className = "guide-slide-hero";
+    const ico = document.createElement("div");
+    ico.className = "guide-slide-icon";
+    ico.textContent = slide.icon;
+    const headWrap = document.createElement("div");
+    const h = document.createElement("div");
+    h.className = "guide-slide-heading";
+    h.textContent = slide.heading;
+    const s = document.createElement("div");
+    s.className = "guide-slide-sub";
+    s.textContent = slide.sub;
+    headWrap.append(h, s);
+    hero.append(ico, headWrap);
+
+    const mediaWrap = document.createElement("div");
+    mediaWrap.className = "guide-slide-media";
+    const img = document.createElement("img");
+    img.className = `guide-slide-img${slide.imageFit === "cover" ? " is-cover" : ""}`;
+    img.src = slide.imageSrc;
+    img.alt = slide.heading;
+    img.loading = "eager";
+    mediaWrap.appendChild(img);
+
+    const list = document.createElement("ul");
+    list.className = "guide-slide-points";
+    for (const pt of slide.points) {
+      const li = document.createElement("li");
+      li.textContent = pt;
+      list.appendChild(li);
+    }
+
+    this.guideSlideStageEl.append(hero, mediaWrap, list);
+
+    this.guideDotsEl.replaceChildren();
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = `guide-dot${i === this.guideSlideIdx ? " is-active" : ""}`;
+      dot.setAttribute("aria-label", `Trang ${i + 1}`);
+      dot.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.guideSlideIdx = i;
+        this.renderGuideSlide();
+      });
+      this.guideDotsEl.appendChild(dot);
+    }
+
+    this.guidePrevBtn.disabled = this.guideSlideIdx === 0;
+    this.guideNextBtn.textContent =
+      this.guideSlideIdx >= total - 1 ? "✅ Bắt đầu chơi" : "Tiếp ➡️";
+  }
+
   public openQuestBoardModal(): void {
     this.closeAllModals("questboard");
     this.isQuestBoardOpen = true;
     this.questBoardModalEl.classList.add("is-open");
     this.renderQuestBoardModal();
+  }
+
+  private buildDailyQuestRow(
+    q: DailyQuestEntry,
+    onAfterAction: () => void,
+    atQuestBoard = this.scene.isAtQuestBoard(),
+  ): HTMLElement {
+    const inv = this.scene.inventory;
+    const row = document.createElement("div");
+    const isReady = q.progress >= q.targetCount;
+    row.className = `sb-req-row${q.claimed || isReady ? " is-complete" : ""}`;
+
+    const meta = document.createElement("div");
+    meta.className = "sb-req-meta";
+
+    const title = document.createElement("div");
+    title.className = "sb-req-name";
+    title.textContent = `${q.title} • Độ khó ${q.difficultyScore.toFixed(1)}★`;
+
+    const desc = document.createElement("div");
+    desc.className = "qb-card-meta";
+    desc.textContent = q.description;
+
+    const rewardItemDef = q.reward.itemId ? ITEM_BY_ID[q.reward.itemId] : null;
+    const rewardPill = document.createElement("div");
+    rewardPill.className = `qb-reward-pill${q.reward.categoryLabel === "Đồ Đỏ (S)" ? " is-red" : ""}`;
+    rewardPill.textContent = rewardItemDef
+      ? `🎁 Thưởng [${q.reward.categoryLabel}]: +${q.reward.gold.toLocaleString("vi-VN")} Vàng & ${q.reward.itemQty}× ${rewardItemDef.name}`
+      : `🎁 Thưởng [Tiền]: +${q.reward.gold.toLocaleString("vi-VN")} Vàng`;
+
+    const sub = document.createElement("div");
+    sub.className = "sb-req-sub";
+    if (q.kind === "deliver" && q.targetItemId && !q.claimed) {
+      const owned = inv.countItemAcrossZones(q.targetItemId).total;
+      sub.textContent = `Tiến độ: ${q.progress}/${q.targetCount} • Đang giữ: ${owned}`;
+    } else {
+      sub.textContent = `Tiến độ: ${q.progress}/${q.targetCount}`;
+    }
+
+    const bar = document.createElement("div");
+    bar.className = "sb-req-bar";
+    const fill = document.createElement("div");
+    fill.className = "sb-req-bar-fill";
+    fill.style.width = `${Math.min(100, (q.progress / q.targetCount) * 100)}%`;
+    bar.appendChild(fill);
+
+    meta.append(title, desc, rewardPill, sub, bar);
+
+    const act = document.createElement("div");
+    act.className = "sb-req-actions";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    if (q.claimed) {
+      btn.className = "btn-card-secondary";
+      btn.textContent = "✅ Đã nhận";
+      btn.disabled = true;
+    } else if (isReady) {
+      btn.className = atQuestBoard ? "btn-card-primary" : "btn-card-secondary";
+      btn.textContent = atQuestBoard ? "🎁 Nhận thưởng" : "🔒 Về Hội Sở nhận";
+      btn.disabled = !atQuestBoard;
+    } else if (q.kind === "deliver" && q.targetItemId) {
+      const owned = inv.countItemAcrossZones(q.targetItemId).total;
+      if (!atQuestBoard) {
+        btn.className = "btn-card-secondary";
+        btn.textContent = owned > 0 ? "🔒 Về Hội Sở giao" : "⏳ Thiếu đồ";
+        btn.disabled = true;
+      } else {
+        btn.className = owned > 0 ? "btn-card-primary" : "btn-card-secondary";
+        btn.textContent = owned > 0 ? `📦 Giao đồ (${owned})` : "⏳ Thiếu đồ";
+        btn.disabled = owned <= 0;
+      }
+    } else {
+      btn.className = "btn-card-secondary";
+      btn.textContent = "⏳ Đang làm";
+      btn.disabled = true;
+    }
+
+    btn.addEventListener("click", () => {
+      const res = this.scene.deliverOrClaimDailyQuest(q.id);
+      this.showDiscoveryToast(
+        res.ok ? "📜 Nhiệm vụ 4 giờ" : "Chưa thể hoàn thành",
+        res.message,
+      );
+      this.refreshBagBadge();
+      onAfterAction();
+    });
+
+    act.appendChild(btn);
+    row.append(meta, act);
+    return row;
   }
 
   private renderQuestBoardModal(): void {
@@ -960,86 +1314,20 @@ export class Hud {
       this.questBoardStatsEl.appendChild(pill);
     }
 
-    this.questBoardRerollBtn.textContent = `🔄 Làm mới sớm (${QUEST_MANUAL_REROLL_COST_GOLD} Vàng)`;
-    this.questBoardRerollBtn.disabled = inv.getGold() < QUEST_MANUAL_REROLL_COST_GOLD;
+    const pendingCount = board.quests.filter((q) => !q.claimed).length;
+    if (pendingCount <= 0) {
+      this.questBoardRerollBtn.textContent = "⏳ Đã xong hết — Chờ reset 4 giờ";
+      this.questBoardRerollBtn.disabled = true;
+    } else {
+      this.questBoardRerollBtn.textContent = `🔄 Đổi ${pendingCount} NV chưa xong (${QUEST_MANUAL_REROLL_COST_GOLD} Vàng)`;
+      this.questBoardRerollBtn.disabled = inv.getGold() < QUEST_MANUAL_REROLL_COST_GOLD;
+    }
 
     this.questBoardListEl.replaceChildren();
     for (const q of board.quests) {
-      const row = document.createElement("div");
-      const isReady = q.progress >= q.targetCount;
-      row.className = `sb-req-row${q.claimed || isReady ? " is-complete" : ""}`;
-
-      const meta = document.createElement("div");
-      meta.className = "sb-req-meta";
-
-      const title = document.createElement("div");
-      title.className = "sb-req-name";
-      title.textContent = `${q.title} • Độ khó ${q.difficultyScore.toFixed(1)}★`;
-
-      const desc = document.createElement("div");
-      desc.className = "qb-card-meta";
-      desc.textContent = q.description;
-
-      const rewardItemDef = q.reward.itemId ? ITEM_BY_ID[q.reward.itemId] : null;
-      const rewardPill = document.createElement("div");
-      rewardPill.className = `qb-reward-pill${q.reward.categoryLabel === "Đồ Đỏ (S)" ? " is-red" : ""}`;
-      rewardPill.textContent = rewardItemDef
-        ? `🎁 Thưởng [${q.reward.categoryLabel}]: +${q.reward.gold.toLocaleString("vi-VN")} Vàng & ${q.reward.itemQty}× ${rewardItemDef.name}`
-        : `🎁 Thưởng [Tiền]: +${q.reward.gold.toLocaleString("vi-VN")} Vàng`;
-
-      const sub = document.createElement("div");
-      sub.className = "sb-req-sub";
-      if (q.kind === "deliver" && q.targetItemId && !q.claimed) {
-        const owned = inv.countItemAcrossZones(q.targetItemId).total;
-        sub.textContent = `Tiến độ: ${q.progress}/${q.targetCount} • Đang giữ: ${owned}`;
-      } else {
-        sub.textContent = `Tiến độ: ${q.progress}/${q.targetCount}`;
-      }
-
-      const bar = document.createElement("div");
-      bar.className = "sb-req-bar";
-      const fill = document.createElement("div");
-      fill.className = "sb-req-bar-fill";
-      fill.style.width = `${Math.min(100, (q.progress / q.targetCount) * 100)}%`;
-      bar.appendChild(fill);
-
-      meta.append(title, desc, rewardPill, sub, bar);
-
-      const act = document.createElement("div");
-      act.className = "sb-req-actions";
-      const btn = document.createElement("button");
-      btn.type = "button";
-      if (q.claimed) {
-        btn.className = "btn-card-secondary";
-        btn.textContent = "✅ Đã nhận";
-        btn.disabled = true;
-      } else if (isReady) {
-        btn.className = "btn-card-primary";
-        btn.textContent = "🎁 Nhận thưởng";
-      } else if (q.kind === "deliver" && q.targetItemId) {
-        const owned = inv.countItemAcrossZones(q.targetItemId).total;
-        btn.className = owned > 0 ? "btn-card-primary" : "btn-card-secondary";
-        btn.textContent = owned > 0 ? `📦 Giao đồ (${owned})` : "⏳ Thiếu đồ";
-        btn.disabled = owned <= 0;
-      } else {
-        btn.className = "btn-card-secondary";
-        btn.textContent = "⏳ Đang làm";
-        btn.disabled = true;
-      }
-
-      btn.addEventListener("click", () => {
-        const res = this.scene.deliverOrClaimDailyQuest(q.id);
-        this.showDiscoveryToast(
-          res.ok ? "📜 Nhiệm vụ 4 giờ" : "Chưa thể hoàn thành",
-          res.message,
-        );
-        this.refreshBagBadge();
-        this.renderQuestBoardModal();
-      });
-
-      act.appendChild(btn);
-      row.append(meta, act);
-      this.questBoardListEl.appendChild(row);
+      this.questBoardListEl.appendChild(
+        this.buildDailyQuestRow(q, () => this.renderQuestBoardModal()),
+      );
     }
   }
 
@@ -1048,6 +1336,462 @@ export class Hud {
     this.isCollectionOpen = true;
     this.collectionModalEl.classList.add("is-open");
     this.renderCollectionModal();
+  }
+
+  public openPetGachaModal(tab: "gacha" | "roster" = "gacha"): void {
+    this.closeAllModals("pet");
+    this.isPetModalOpen = true;
+    this.petModalTab = tab;
+    this.petModalEl.classList.add("is-open");
+    this.renderPetGachaModal();
+  }
+
+  private renderPetGachaModal(): void {
+    const ownedIds = new Set(this.scene.getOwnedPetIds());
+    const equipped = this.scene.getEquippedPet();
+    const gold = this.scene.inventory.getGold();
+    const atGacha = this.scene.isAtPetGacha();
+
+    this.petStatsEl.replaceChildren();
+    for (const txt of [
+      `💰 ${gold.toLocaleString("vi-VN")} Vàng`,
+      `🐾 Sở hữu: ${ownedIds.size}/${PET_CATALOG.length}`,
+      equipped ? `✨ Đang theo: ${equipped.emoji} ${equipped.name}` : "💤 Chưa chọn Pet",
+    ]) {
+      const pill = document.createElement("span");
+      pill.className = "bag-stat-pill";
+      pill.textContent = txt;
+      this.petStatsEl.appendChild(pill);
+    }
+
+    for (const btn of this.petTabsEl.querySelectorAll<HTMLButtonElement>("[data-pet-tab]")) {
+      btn.classList.toggle("is-active", btn.dataset.petTab === this.petModalTab);
+    }
+
+    this.petBodyEl.replaceChildren();
+
+    // Pet Live Preview & Effects Panel
+    const previewPet = PET_BY_ID[this.previewPetId] ?? equipped ?? PET_CATALOG[0];
+    if (previewPet) {
+      if (this.previewPetAnim === "play" && !previewPet.playIconSrc) {
+        this.previewPetAnim = "idle";
+      }
+      const pCard = document.createElement("div");
+      pCard.className = `pet-preview-card is-${previewPet.rarity}`;
+
+      const stage = document.createElement("div");
+      stage.className = "pet-preview-stage";
+      const pImg = document.createElement("img");
+      pImg.src =
+        this.previewPetAnim === "run"
+          ? previewPet.runIconSrc
+          : this.previewPetAnim === "play" && previewPet.playIconSrc
+            ? previewPet.playIconSrc
+            : previewPet.iconSrc;
+      pImg.alt = previewPet.name;
+      stage.appendChild(pImg);
+
+      const info = document.createElement("div");
+      info.className = "pet-preview-info";
+
+      const pTitle = document.createElement("div");
+      pTitle.className = "sb-req-name";
+      const pDot = document.createElement("span");
+      pDot.className = `r-dot r-dot-${previewPet.rarity}`;
+      const pLbl = document.createElement("span");
+      pLbl.textContent = ` Xem trước [Hạng ${previewPet.rarity}] ${previewPet.emoji} ${previewPet.name}`;
+      pTitle.append(pDot, pLbl);
+
+      const pBonus = document.createElement("div");
+      pBonus.className = `rep-reward-line${previewPet.rarity === "S" ? " is-red" : ""}`;
+      pBonus.textContent = `✨ Hiệu ứng: ${formatPetBonusSummary(previewPet.bonuses)}`;
+
+      info.append(pTitle, pBonus);
+      if (previewPet.smartTrait) {
+        const smartEl = document.createElement("div");
+        smartEl.className = "pet-smart-pill";
+        smartEl.textContent = previewPet.smartTrait;
+        info.appendChild(smartEl);
+      }
+
+      const animActs = document.createElement("div");
+      animActs.className = "pet-preview-actions";
+      const modes: Array<{ key: "idle" | "run" | "play"; label: string }> = [
+        { key: "idle", label: "🧍 Đứng yên" },
+        { key: "run", label: "🏃 Chạy" },
+      ];
+      if (previewPet.playIconSrc) {
+        modes.push({ key: "play", label: "🎾 Nghịch ngợm" });
+      }
+      for (const m of modes) {
+        const ab = document.createElement("button");
+        ab.type = "button";
+        ab.className = `btn-sell-zone${this.previewPetAnim === m.key ? " is-active" : ""}`;
+        ab.textContent = m.label;
+        ab.addEventListener("click", () => {
+          this.previewPetAnim = m.key;
+          this.renderPetGachaModal();
+        });
+        animActs.appendChild(ab);
+      }
+      info.appendChild(animActs);
+
+      pCard.append(stage, info);
+      this.petBodyEl.appendChild(pCard);
+    }
+
+    if (this.petModalTab === "gacha") {
+      if (this.lastGachaOutcomes.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "sb-tier-banner";
+        empty.textContent = atGacha
+          ? `🎰 Sẵn sàng! Mỗi lượt nhận nuôi tốn ${PET_GACHA_COST_GOLD.toLocaleString("vi-VN")} Vàng.`
+          : "🔒 Hãy đến Nhà Nhận Nuôi Thú Cưng để nhận nuôi bằng Vàng (hoặc chọn Pet trong Bộ Sưu Tập để xem trước).";
+        this.petBodyEl.appendChild(empty);
+      } else {
+        for (const out of this.lastGachaOutcomes) {
+          const row = document.createElement("div");
+          row.className = `sb-req-row${out.kind === "pet" || out.rarity === "S" ? " is-complete" : ""}`;
+
+          const icon = document.createElement("img");
+          icon.className = "sb-req-icon";
+          icon.src = out.kind === "pet" ? out.pet.iconSrc : out.item.iconSrc;
+          icon.alt = out.kind === "pet" ? out.pet.name : out.item.name;
+
+          const meta = document.createElement("div");
+          meta.className = "sb-req-meta";
+          const title = document.createElement("div");
+          title.className = "sb-req-name";
+          const dot = document.createElement("span");
+          dot.className = `r-dot r-dot-${out.rarity}`;
+          const lbl = document.createElement("span");
+          lbl.textContent =
+            out.kind === "pet"
+              ? ` [PET ${out.rarity}] ${out.pet.emoji} ${out.pet.name}`
+              : ` [${out.rarity}] ${out.item.name}`;
+          title.append(dot, lbl);
+
+          const sub = document.createElement("div");
+          sub.className = "sb-req-sub";
+          if (out.kind === "pet") {
+            sub.textContent = out.isDuplicate
+              ? `Trùng Pet — Hoàn trả +${out.refundGold.toLocaleString("vi-VN")} Vàng!`
+              : `🎉 Pet mới! ${formatPetBonusSummary(out.pet.bonuses)}`;
+          } else {
+            sub.textContent =
+              out.storedWhere === "backpack"
+                ? "Đã cất vào Balo"
+                : out.storedWhere === "home"
+                  ? "Balo đầy — Đã gửi Kho Nhà"
+                  : `Balo & Kho đầy — Tự bán +${out.overflowGold.toLocaleString("vi-VN")} Vàng`;
+          }
+
+          meta.append(title, sub);
+          row.append(icon, meta);
+          this.petBodyEl.appendChild(row);
+        }
+      }
+    } else {
+      const rarityOrder: Record<string, number> = { S: 0, A: 1, B: 2, C: 3 };
+      const sorted = [...PET_CATALOG].sort((a, b) => {
+        const ownDiff = Number(ownedIds.has(b.id)) - Number(ownedIds.has(a.id));
+        if (ownDiff !== 0) return ownDiff;
+        return rarityOrder[a.rarity] - rarityOrder[b.rarity];
+      });
+
+      for (const pet of sorted) {
+        const owned = ownedIds.has(pet.id);
+        const isEq = equipped?.id === pet.id;
+        const row = document.createElement("div");
+        row.className = `sb-req-row${isEq ? " is-complete" : ""}`;
+
+        const icon = document.createElement("img");
+        icon.className = "sb-req-icon";
+        icon.src = pet.iconSrc;
+        icon.alt = pet.name;
+        if (!owned) icon.style.opacity = "0.4";
+
+        const meta = document.createElement("div");
+        meta.className = "sb-req-meta";
+        const title = document.createElement("div");
+        title.className = "sb-req-name";
+        const dot = document.createElement("span");
+        dot.className = `r-dot r-dot-${pet.rarity}`;
+        const lbl = document.createElement("span");
+        lbl.textContent = ` [Hạng ${pet.rarity}] ${pet.emoji} ${pet.name}`;
+        title.append(dot, lbl);
+
+        const desc = document.createElement("div");
+        desc.className = "qb-card-meta";
+        desc.textContent = pet.description;
+
+        const bonusLine = document.createElement("div");
+        bonusLine.className = `rep-reward-line${pet.rarity === "S" ? " is-red" : ""}`;
+        bonusLine.textContent = `✨ Hiệu ứng: ${formatPetBonusSummary(pet.bonuses)}`;
+
+        meta.append(title, desc, bonusLine);
+        if (pet.smartTrait) {
+          const smartEl = document.createElement("div");
+          smartEl.className = "pet-smart-pill";
+          smartEl.textContent = pet.smartTrait;
+          meta.appendChild(smartEl);
+        }
+
+        const act = document.createElement("div");
+        act.className = "sb-req-actions";
+        const previewBtn = document.createElement("button");
+        previewBtn.type = "button";
+        previewBtn.className = "btn-card-secondary";
+        previewBtn.textContent = "👁️ Xem trước";
+        previewBtn.addEventListener("click", () => {
+          this.previewPetId = pet.id;
+          this.previewPetAnim = pet.playIconSrc ? "play" : "idle";
+          this.renderPetGachaModal();
+        });
+        act.appendChild(previewBtn);
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        if (!owned) {
+          btn.className = "btn-card-secondary";
+          btn.textContent = "🔒 Quay Gacha để mở";
+          btn.disabled = true;
+        } else if (isEq) {
+          btn.className = "btn-card-secondary";
+          btn.textContent = "💤 Cho nghỉ";
+        } else {
+          btn.className = "btn-card-primary";
+          btn.textContent = "🐾 Cho đi theo";
+        }
+        btn.addEventListener("click", () => {
+          const res = this.scene.equipPet(isEq ? null : pet.id);
+          this.showDiscoveryToast("🐾 Thú Cưng", res.message);
+          this.renderPetGachaModal();
+        });
+        act.appendChild(btn);
+
+        row.append(icon, meta, act);
+        this.petBodyEl.appendChild(row);
+      }
+    }
+
+    if (!atGacha) {
+      this.petRoll1Btn.textContent = "🔒 Đến Nhà Nhận Nuôi để quay";
+      this.petRoll1Btn.disabled = true;
+      this.petRoll5Btn.textContent = "🔒 Quay 5 lần (10.000🪙)";
+      this.petRoll5Btn.disabled = true;
+    } else {
+      this.petRoll1Btn.textContent = `🎰 Quay 1 lần (${PET_GACHA_COST_GOLD.toLocaleString("vi-VN")}🪙)`;
+      this.petRoll1Btn.disabled = gold < PET_GACHA_COST_GOLD;
+      this.petRoll5Btn.textContent = `🎲 Quay 5 lần (${(PET_GACHA_COST_GOLD * 5).toLocaleString("vi-VN")}🪙)`;
+      this.petRoll5Btn.disabled = gold < PET_GACHA_COST_GOLD * 5;
+    }
+  }
+
+  public openReputationModal(category?: ReputationCategory): void {
+    this.closeAllModals("reputation");
+    this.isReputationOpen = true;
+    if (category) this.reputationCategory = category;
+    this.reputationModalEl.classList.add("is-open");
+    this.renderReputationModal();
+  }
+
+  private renderReputationModal(): void {
+    const summary = this.scene.getReputationSummary();
+    const { state, rank, nextRank, progressInRank01 } = summary;
+
+    this.reputationStatsEl.replaceChildren();
+    for (const txt of [
+      `${rank.badge} ${rank.title}`,
+      `⭐ ${state.points.toLocaleString("vi-VN")} Danh vọng`,
+      `🏅 Mốc: ${summary.totalClaimed}/${summary.totalMilestones}`,
+    ]) {
+      const pill = document.createElement("span");
+      pill.className = "bag-stat-pill";
+      pill.textContent = txt;
+      this.reputationStatsEl.appendChild(pill);
+    }
+
+    this.reputationBannerEl.replaceChildren();
+    const top = document.createElement("div");
+    top.className = "rep-rank-top";
+    const rTitle = document.createElement("span");
+    rTitle.className = "rep-rank-title";
+    rTitle.textContent = `${rank.badge} Cấp ${rank.level}: ${rank.title} (${state.points.toLocaleString("vi-VN")} điểm)`;
+    const rNext = document.createElement("span");
+    rNext.className = "rep-rank-next";
+    rNext.textContent = nextRank
+      ? `Tiếp theo: ${nextRank.badge} ${nextRank.title} (${nextRank.minPoints.toLocaleString("vi-VN")} điểm)`
+      : "👑 Đã đạt cấp Danh vọng cao nhất!";
+    top.append(rTitle, rNext);
+
+    const rBar = document.createElement("div");
+    rBar.className = "rep-rank-bar";
+    const rFill = document.createElement("div");
+    rFill.className = "rep-rank-bar-fill";
+    rFill.style.width = `${Math.round(progressInRank01 * 100)}%`;
+    rBar.appendChild(rFill);
+    this.reputationBannerEl.append(top, rBar);
+
+    for (const btn of this.reputationTabsEl.querySelectorAll<HTMLButtonElement>("[data-rep-cat]")) {
+      const cat = btn.dataset.repCat as ReputationCategory;
+      btn.classList.toggle("is-active", cat === this.reputationCategory);
+    }
+
+    this.reputationListEl.replaceChildren();
+
+    if (this.reputationCategory === "shop") {
+      const atRepHall = this.scene.isAtReputationHall();
+      for (const entry of REPUTATION_SHOP_ITEMS) {
+        const def = ITEM_BY_ID[entry.itemId];
+        if (!def) continue;
+        const owned = this.scene.inventory.countItemAcrossZones(entry.itemId).total;
+        const canAfford = state.points >= entry.costPoints;
+
+        const row = document.createElement("div");
+        row.className = "sb-req-row";
+
+        const icon = document.createElement("img");
+        icon.className = "sb-req-icon";
+        icon.src = def.iconSrc;
+        icon.alt = def.name;
+
+        const meta = document.createElement("div");
+        meta.className = "sb-req-meta";
+
+        const title = document.createElement("div");
+        title.className = "sb-req-name";
+        const dot = document.createElement("span");
+        dot.className = `r-dot r-dot-${def.rarity}`;
+        const label = document.createElement("span");
+        label.textContent = ` ${def.name} (${def.w}×${def.h}) • Giới hạn Danh vọng`;
+        title.append(dot, label);
+
+        const desc = document.createElement("div");
+        desc.className = "qb-card-meta";
+        desc.textContent = def.description;
+
+        const costLine = document.createElement("div");
+        costLine.className = "rep-reward-line is-red";
+        costLine.textContent = `⭐ Giá đổi: ${entry.costPoints.toLocaleString("vi-VN")} Danh vọng • Đang giữ: ${owned}`;
+
+        meta.append(title, desc, costLine);
+
+        const act = document.createElement("div");
+        act.className = "sb-req-actions";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        if (!atRepHall) {
+          btn.className = "btn-card-secondary";
+          btn.textContent = "🔒 Đến Sảnh Danh Vọng";
+          btn.disabled = true;
+        } else {
+          btn.className = canAfford ? "btn-card-primary" : "btn-card-secondary";
+          btn.textContent = canAfford ? `🛒 Đổi (${entry.costPoints}⭐)` : `🔒 Thiếu (${entry.costPoints}⭐)`;
+          btn.disabled = !canAfford;
+        }
+        btn.addEventListener("click", () => {
+          const res = this.scene.buyReputationShopItem(entry.itemId);
+          this.showDiscoveryToast(
+            res.ok ? "🔴 Đổi Đồ Đỏ Danh Vọng" : "Không thể đổi",
+            res.message,
+          );
+          this.refreshBagBadge();
+          this.renderReputationModal();
+        });
+        act.appendChild(btn);
+
+        row.append(icon, meta, act);
+        this.reputationListEl.appendChild(row);
+      }
+
+      this.reputationClaimAllBtn.textContent = atRepHall
+        ? `🏛️ Tại Sảnh Danh Vọng • Điểm hiện có: ${state.points.toLocaleString("vi-VN")}⭐`
+        : `🏛️ Đến Sảnh Danh Vọng để đổi Đồ Đỏ • Điểm: ${state.points.toLocaleString("vi-VN")}⭐`;
+      this.reputationClaimAllBtn.disabled = true;
+      return;
+    }
+
+    const filtered = summary.activeMilestones.filter(
+      (m) => this.reputationCategory === "all" || m.category === this.reputationCategory,
+    );
+    const sorted = [...filtered].sort((a, b) => {
+      const rankOrder = (x: typeof a): number => (x.completed && !x.claimed ? 0 : !x.claimed ? 1 : 2);
+      const diff = rankOrder(a) - rankOrder(b);
+      return diff !== 0 ? diff : a.tierIndex - b.tierIndex;
+    });
+
+    this.reputationListEl.replaceChildren();
+    for (const m of sorted) {
+      const row = document.createElement("div");
+      row.className = `sb-req-row${m.completed || m.claimed ? " is-complete" : ""}`;
+
+      const meta = document.createElement("div");
+      meta.className = "sb-req-meta";
+
+      const title = document.createElement("div");
+      title.className = "sb-req-name";
+      title.textContent = `${m.icon} [${m.trackLabel} • Bậc ${m.tierIndex}/${m.tierTotal}] ${m.title}`;
+
+      const desc = document.createElement("div");
+      desc.className = "qb-card-meta";
+      desc.textContent = m.description;
+
+      const rewardLine = document.createElement("div");
+      rewardLine.className = `rep-reward-line${m.reward.bonusItemKind === "red_s" ? " is-red" : ""}`;
+      const bonusPart = m.reward.bonusItemLabel ? ` & ${m.reward.bonusItemLabel}` : "";
+      rewardLine.textContent = `🎁 +${m.reward.points} Danh vọng • +${m.reward.gold.toLocaleString("vi-VN")} Vàng${bonusPart}`;
+
+      const clampedCur = Math.min(m.current, m.target);
+      const sub = document.createElement("div");
+      sub.className = "sb-req-sub";
+      sub.textContent = `Tiến độ: ${clampedCur.toLocaleString("vi-VN")}/${m.target.toLocaleString("vi-VN")}`;
+
+      const bar = document.createElement("div");
+      bar.className = "sb-req-bar";
+      const fill = document.createElement("div");
+      fill.className = "sb-req-bar-fill";
+      fill.style.width = `${Math.min(100, (clampedCur / Math.max(1, m.target)) * 100)}%`;
+      bar.appendChild(fill);
+
+      meta.append(title, desc, rewardLine, sub, bar);
+
+      const act = document.createElement("div");
+      act.className = "sb-req-actions";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      if (m.claimed) {
+        btn.className = "btn-card-secondary";
+        btn.textContent = "✅ Đã nhận";
+        btn.disabled = true;
+      } else if (m.completed) {
+        btn.className = "btn-card-primary";
+        btn.textContent = "🎁 Nhận thưởng";
+      } else {
+        btn.className = "btn-card-secondary";
+        btn.textContent = "⏳ Đang tích lũy";
+        btn.disabled = true;
+      }
+      btn.addEventListener("click", () => {
+        const res = this.scene.claimReputationMilestone(m.id);
+        this.showDiscoveryToast(
+          res.ok ? "🏆 Nhận thưởng Danh vọng" : "Chưa thể nhận",
+          res.message,
+        );
+        this.refreshBagBadge();
+        this.renderReputationModal();
+      });
+      act.appendChild(btn);
+
+      row.append(meta, act);
+      this.reputationListEl.appendChild(row);
+    }
+
+    this.reputationClaimAllBtn.textContent =
+      summary.claimableCount > 0
+        ? `🎁 Nhận tất cả mốc đã đạt (${summary.claimableCount})`
+        : "⏳ Chưa có mốc nào sẵn sàng nhận";
+    this.reputationClaimAllBtn.disabled = summary.claimableCount <= 0;
   }
 
   public openOnboardingModal(): void {
@@ -1439,6 +2183,12 @@ export class Hud {
     } else if (target.type === "quest") {
       nextClass = "btn-interact is-shop";
       nextText = `📜 Vào ${target.name} [E]`;
+    } else if (target.type === "reputation") {
+      nextClass = "btn-interact is-shop";
+      nextText = `🏛️ Vào ${target.name} [E]`;
+    } else if (target.type === "gacha") {
+      nextClass = "btn-interact is-shop";
+      nextText = `🐾 Vào ${target.name} [E]`;
     } else if (target.type === "jail_minigame") {
       nextClass = "btn-interact is-jail";
       nextText = target.label;
@@ -1789,10 +2539,11 @@ export class Hud {
       this.openSafeboxModal("home");
     });
 
-    const switchUpgradeTab = (mode: UpgradeKind) => {
+    const switchUpgradeTab = (mode: "daily" | UpgradeKind) => {
       this.upgradeModalMode = mode;
       this.renderSafeboxModal();
     };
+    this.upTabDailyBtn.addEventListener("click", () => switchUpgradeTab("daily"));
     this.upTabSafeboxBtn.addEventListener("click", () => switchUpgradeTab("safebox"));
     this.upTabHomeBtn.addEventListener("click", () => switchUpgradeTab("home"));
     this.upTabGymBtn.addEventListener("click", () => switchUpgradeTab("gym"));
@@ -1823,6 +2574,12 @@ export class Hud {
     });
 
     this.safeboxDeliverAllBtn.addEventListener("click", () => {
+      if (this.upgradeModalMode === "daily") {
+        const res = this.scene.rerollDailyQuestBoard();
+        this.showDiscoveryToast(res.ok ? "🔄 Làm mới nhiệm vụ" : "Không đủ Vàng", res.message);
+        this.renderSafeboxModal();
+        return;
+      }
       const atHome = this.safeboxOpenedFromHome || this.scene.isAtHome();
       const labelMap: Record<UpgradeKind, string> = {
         safebox: "Safebox",
@@ -1867,14 +2624,172 @@ export class Hud {
       this.renderShopModal();
     });
 
+    const setMenuOpen = (open: boolean): void => {
+      this.hudMenuPopoverEl.classList.toggle("is-open", open);
+      this.hudMenuBtn.setAttribute("aria-expanded", String(open));
+    };
+
+    this.hudMenuBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.hudMenuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
+      this.syncSoundButtonLabel();
+      const repSummary = this.scene.getReputationSummary();
+      this.reputationBtn.textContent =
+        repSummary.claimableCount > 0 ? `🏆 Danh vọng (${repSummary.claimableCount})` : "🏆 Danh vọng";
+      setMenuOpen(!this.hudMenuPopoverEl.classList.contains("is-open"));
+    });
+
+    window.addEventListener("pointerdown", (e) => {
+      if (
+        this.hudMenuPopoverEl.classList.contains("is-open") &&
+        !(e.target as HTMLElement | null)?.closest("#hud-menu-wrap")
+      ) {
+        setMenuOpen(false);
+      }
+    });
+
     this.missionsBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
     this.missionsBtn.addEventListener("click", (e) => {
       e.stopPropagation();
+      setMenuOpen(false);
       if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
       if (this.isSafeboxModalOpen) {
         this.closeAllModals();
       } else {
         this.openSafeboxModal(this.upgradeModalMode);
+      }
+    });
+
+    this.reputationBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.reputationBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setMenuOpen(false);
+      if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
+      if (this.isReputationOpen) {
+        this.closeAllModals();
+      } else {
+        this.openReputationModal();
+      }
+    });
+
+    this.reputationCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+    });
+    this.reputationModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.reputationModalEl) this.closeAllModals();
+    });
+    this.reputationTabsEl.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-rep-cat]");
+      if (!btn) return;
+      const cat = btn.dataset.repCat as ReputationCategory | undefined;
+      if (!cat) return;
+      this.reputationCategory = cat;
+      this.renderReputationModal();
+    });
+    this.reputationClaimAllBtn.addEventListener("click", () => {
+      const res = this.scene.claimAllReputationMilestones();
+      this.showDiscoveryToast(
+        res.ok ? "🏆 Nhận thưởng Danh vọng" : "Chưa có mốc sẵn sàng",
+        res.message,
+      );
+      this.refreshBagBadge();
+      this.renderReputationModal();
+    });
+
+    this.petsBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.petsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setMenuOpen(false);
+      if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
+      if (this.isPetModalOpen) {
+        this.closeAllModals();
+      } else {
+        this.openPetGachaModal("roster");
+      }
+    });
+    this.petCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+    });
+    this.petModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.petModalEl) this.closeAllModals();
+    });
+    this.petTabsEl.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-pet-tab]");
+      if (!btn) return;
+      const tab = btn.dataset.petTab as "gacha" | "roster" | undefined;
+      if (!tab) return;
+      this.petModalTab = tab;
+      this.renderPetGachaModal();
+    });
+    const runGacha = (times: 1 | 5) => {
+      const res = this.scene.rollPetGacha(times);
+      if (res.ok) {
+        this.lastGachaOutcomes = res.results;
+        const firstPet = res.results.find((r) => r.kind === "pet");
+        if (firstPet && firstPet.kind === "pet") {
+          this.previewPetId = firstPet.pet.id;
+          this.previewPetAnim = firstPet.pet.playIconSrc ? "play" : "idle";
+        }
+        this.petModalTab = "gacha";
+      }
+      this.showDiscoveryToast(res.ok ? "🐾 Kết Quả Gacha" : "Không thể quay", res.message);
+      this.refreshBagBadge();
+      this.renderPetGachaModal();
+    };
+    this.petRoll1Btn.addEventListener("click", () => runGacha(1));
+    this.petRoll5Btn.addEventListener("click", () => runGacha(5));
+
+    this.guideBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.guideBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setMenuOpen(false);
+      if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
+      if (this.isGuideModalOpen) {
+        this.closeAllModals();
+      } else {
+        this.openGuideModal(0);
+      }
+    });
+
+    this.soundToggleBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.soundToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const next = !this.scene.isSoundEnabled();
+      this.scene.setSoundEnabled(next);
+      this.syncSoundButtonLabel();
+      this.showDiscoveryToast(
+        next ? "🔊 Đã bật âm thanh" : "🔇 Đã tắt âm thanh",
+        next ? "Hiệu ứng âm thanh trong game đã được bật." : "Toàn bộ âm thanh trong game đã được tắt.",
+      );
+    });
+
+    this.guideCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+    });
+    this.guideModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.guideModalEl) this.closeAllModals();
+    });
+    this.guidePrevBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.guideSlideIdx > 0) {
+        this.guideSlideIdx -= 1;
+        this.renderGuideSlide();
+      }
+    });
+    this.guideNextBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.guideSlideIdx < GUIDE_SLIDES.length - 1) {
+        this.guideSlideIdx += 1;
+        this.renderGuideSlide();
+      } else {
+        this.closeAllModals();
       }
     });
 
@@ -2034,6 +2949,7 @@ export class Hud {
       this.onboardModalEl.classList.remove("is-open");
       this.refreshBagBadge();
       this.updateSurvivalHud();
+      this.openGuideModal(0);
     });
     this.onboardModalEl.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
@@ -2264,6 +3180,8 @@ export class Hud {
       plains_pagoda: { color: "#f59e0b", label: "⛩️ Chùa Cổ", textColor: "#fde68a" },
       city_airport: { color: "#38bdf8", label: isJapanMap ? "✈️ Narita" : "✈️ Sân Bay", textColor: "#bae6fd" },
       city_quest_guild: { color: "#facc15", label: isJapanMap ? "📜 Ủy Thác" : "📜 Nhiệm Vụ", textColor: "#fef08a" },
+      city_reputation_hall: { color: "#f43f5e", label: "🏛️ Danh Vọng", textColor: "#fecdd3" },
+      city_pet_gacha: { color: "#f472b6", label: "🐾 Nhận Nuôi", textColor: "#fbcfe8" },
       city_police_station: { color: "#2563eb", label: isJapanMap ? "🚓 Koban" : "🚓 Phường", textColor: "#93c5fd" },
       city_hospital: { color: "#f43f5e", label: "🏥 Bệnh Viện", textColor: "#fecdd3" },
       jp_ryokan_inn: { color: "#f97316", label: "🏮 Lữ Quán", textColor: "#fed7aa" },
@@ -3533,7 +4451,7 @@ export class Hud {
     }
   }
 
-  private openSafeboxModal(mode: UpgradeKind = "safebox"): void {
+  private openSafeboxModal(mode: "daily" | UpgradeKind = "daily"): void {
     this.safeboxOpenedFromHome = this.isHomeStorageOpen || this.scene.isAtHome();
     this.upgradeModalMode = mode;
     this.closeAllModals("safebox");
@@ -3544,12 +4462,16 @@ export class Hud {
 
   private renderSafeboxModal(): void {
     const mode = this.upgradeModalMode;
+    this.upTabDailyBtn.classList.toggle("is-active", mode === "daily");
     this.upTabSafeboxBtn.classList.toggle("is-active", mode === "safebox");
     this.upTabHomeBtn.classList.toggle("is-active", mode === "home");
     this.upTabGymBtn.classList.toggle("is-active", mode === "gym");
     this.upTabTreadmillBtn.classList.toggle("is-active", mode === "treadmill");
 
     const inv = this.scene.inventory;
+    const board = this.scene.getDailyQuestBoard();
+    const dailyClaimed = board.quests.filter((q) => q.claimed).length;
+    this.upTabDailyBtn.textContent = `📜 Hằng ngày (${dailyClaimed}/${board.quests.length})`;
     const formatTabProgress = (
       icon: string,
       name: string,
@@ -3584,6 +4506,55 @@ export class Hud {
       inv.getTreadmillContract()?.requirements,
       Boolean(getNextTreadmillTier(inv.getTreadmillTier().id)),
     );
+
+    if (mode === "daily") {
+      const atQuestBoard = this.scene.isAtQuestBoard();
+      const remMs = Math.max(0, board.nextRefreshAt - Date.now());
+      this.sbTitleEl.textContent = "📜 Nhiệm Vụ Hằng Ngày (Làm mới 4 giờ)";
+      this.safeboxStatsEl.replaceChildren();
+      for (const txt of [
+        `⏳ Làm mới sau: ${formatQuestCountdown(remMs)}`,
+        `✅ Hoàn thành: ${dailyClaimed}/${board.quests.length}`,
+        `💰 ${inv.getGold().toLocaleString("vi-VN")} Vàng`,
+        atQuestBoard ? "🏛️ Tại Hội Sở Nhiệm Vụ" : "🚶 Ngoài đường (Chỉ xem NV)",
+      ]) {
+        const s = document.createElement("span");
+        s.className = "bag-stat-pill";
+        s.textContent = txt;
+        this.safeboxStatsEl.appendChild(s);
+      }
+
+      this.safeboxTierBannerEl.replaceChildren();
+      const headLine = document.createElement("div");
+      headLine.style.fontWeight = "800";
+      headLine.textContent = `Bảng Ủy Thác 4 Giờ • Đang có ${board.quests.length} nhiệm vụ`;
+      const subLine = document.createElement("div");
+      subLine.style.opacity = "0.92";
+      subLine.textContent = atQuestBoard
+        ? "🏛️ Tại Hội Sở Nhiệm Vụ — sẵn sàng bàn giao & nhận thưởng."
+        : "🔒 Chỉ bàn giao vật phẩm & nhận thưởng tại Hội Sở Nhiệm Vụ.";
+      this.safeboxTierBannerEl.append(headLine, subLine);
+
+      this.safeboxReqListEl.replaceChildren();
+      for (const q of board.quests) {
+        this.safeboxReqListEl.appendChild(
+          this.buildDailyQuestRow(q, () => this.renderSafeboxModal(), atQuestBoard),
+        );
+      }
+
+      const pendingCount = board.quests.filter((q) => !q.claimed).length;
+      if (!atQuestBoard) {
+        this.safeboxDeliverAllBtn.textContent = `🔒 Đến Hội Sở để đổi NV (${QUEST_MANUAL_REROLL_COST_GOLD} Vàng)`;
+        this.safeboxDeliverAllBtn.disabled = true;
+      } else if (pendingCount <= 0) {
+        this.safeboxDeliverAllBtn.textContent = "⏳ Đã xong hết — Chờ reset 4 giờ";
+        this.safeboxDeliverAllBtn.disabled = true;
+      } else {
+        this.safeboxDeliverAllBtn.textContent = `🔄 Đổi ${pendingCount} NV chưa xong (${QUEST_MANUAL_REROLL_COST_GOLD} Vàng)`;
+        this.safeboxDeliverAllBtn.disabled = inv.getGold() < QUEST_MANUAL_REROLL_COST_GOLD;
+      }
+      return;
+    }
     const viewCfg =
       mode === "home"
         ? (() => {
@@ -3719,9 +4690,11 @@ export class Hud {
       const sub = document.createElement("div");
       sub.className = "sb-req-sub";
       const missingCount = Math.max(0, req.requiredCount - req.deliveredCount);
+      const repShopEntry = REPUTATION_SHOP_BY_ID[req.itemId];
+      const repHint = repShopEntry ? ` • ⭐ Đổi ở Danh vọng (${repShopEntry.costPoints}⭐)` : "";
       sub.textContent = isDone
         ? `Hoàn tất: ${req.deliveredCount}/${req.requiredCount}`
-        : `Đã nộp: ${req.deliveredCount}/${req.requiredCount} (Còn thiếu ${missingCount}) • Đang giữ: ${counts.total}`;
+        : `Đã nộp: ${req.deliveredCount}/${req.requiredCount} (Còn thiếu ${missingCount}) • Đang giữ: ${counts.total}${repHint}`;
 
       const bar = document.createElement("div");
       bar.className = "sb-req-bar";
@@ -3741,7 +4714,8 @@ export class Hud {
         deliverBtn.textContent = isDone ? "✅ Đã xong" : `📤 Giao 1 (${counts.total})`;
         deliverBtn.disabled = isDone || counts.total <= 0;
         deliverBtn.addEventListener("click", () => {
-          const res = this.scene.deliverUpgradeItem(this.upgradeModalMode, req.itemId, atHome);
+          const upgradeMode = this.upgradeModalMode === "daily" ? "safebox" : this.upgradeModalMode;
+          const res = this.scene.deliverUpgradeItem(upgradeMode, req.itemId, atHome);
           this.showDiscoveryToast(
             res.upgraded ? `🎉 Nâng cấp ${viewCfg.label}!` : res.ok ? "📤 Đã giao nộp" : "Không thể giao",
             res.message,

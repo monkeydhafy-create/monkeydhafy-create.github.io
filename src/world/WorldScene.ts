@@ -1,6 +1,6 @@
 import { sound } from "@pixi/sound";
-import { Container, Graphics, Sprite, Text } from "pixi.js";
-import type { Application, FederatedPointerEvent, Texture } from "pixi.js";
+import { Assets, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
+import type { Application, FederatedPointerEvent } from "pixi.js";
 import type { PlayerGameSaveV3 } from "../security/SaveVault.ts";
 import type { ArcadeMinigameKind } from "../ui/ArcadeMinigames.ts";
 import { AtmosphereSystem } from "./AtmosphereSystem.ts";
@@ -88,9 +88,27 @@ import { PoliceSystem, type PoliceOfficerMarker } from "./PoliceSystem.ts";
 import {
   QUEST_MANUAL_REROLL_COST_GOLD,
   generateDailyQuestBoard,
+  rerollPendingQuests,
   type DailyQuestBoardState,
   type ExploreTargetKind,
 } from "./QuestSystem.ts";
+import {
+  REPUTATION_MILESTONE_BY_ID,
+  REPUTATION_SHOP_BY_ID,
+  buildReputationSummary,
+  createDefaultReputationState,
+  pickReputationBonusItemId,
+  type ReputationState,
+  type ReputationSummaryView,
+} from "./ReputationSystem.ts";
+import {
+  PET_BY_ID,
+  PET_DUPLICATE_REFUND_GOLD,
+  PET_GACHA_COST_GOLD,
+  rollPetGachaOutcome,
+  type GachaRollOutcome,
+  type PetDef,
+} from "./PetSystem.ts";
 import { WeatherParticles } from "./WeatherParticles.ts";
 
 interface RippleEffect {
@@ -180,6 +198,14 @@ export type NearbyInteraction =
       name: string;
     }
   | {
+      type: "reputation";
+      name: string;
+    }
+  | {
+      type: "gacha";
+      name: string;
+    }
+  | {
       type: "jail_minigame";
       stationId: string;
       kind: ArcadeMinigameKind;
@@ -210,6 +236,8 @@ export interface WorldCallbacks {
   onOpenCollectionHall?: () => void;
   onOpenAirport?: () => void;
   onOpenQuestBoard?: () => void;
+  onOpenReputationShop?: () => void;
+  onOpenPetGacha?: () => void;
   onMapChanged?: (activeMapId: MapId) => void;
   onConsumeCompleted?: (title: string, message: string) => void;
   onPoliceChallenge?: (officer: { id: string; name: string; biome: BiomeId; zone: SecurityZone }) => void;
@@ -265,6 +293,17 @@ export class WorldScene {
   private readonly ripples: RippleEffect[] = [];
   private readonly waterWakes: WaterWake[] = [];
   private readonly waterDroplets: WaterDroplet[] = [];
+  private collectionOrbitHost: { x: number; y: number; height: number; depthY: number } | null = null;
+  private readonly collectionOrbitItems: Array<{
+    node: Container;
+    glow: Graphics;
+    lightLevel: 0 | 1 | 2;
+    phaseOffset: number;
+    radiusX: number;
+    radiusY: number;
+    speed: number;
+  }> = [];
+  private readonly orbitTextureCache = new Map<string, Promise<Texture>>();
   private readonly terrainChunks: Array<{
     node: Container;
     cx: number;
@@ -304,6 +343,23 @@ export class WorldScene {
 
   private survival: SurvivalState;
   private questBoard: DailyQuestBoardState;
+  private reputation: ReputationState;
+  private readonly ownedPetIds = new Set<string>();
+  private equippedPetId: string | null = null;
+  private petNode: Container | null = null;
+  private petSprite: Sprite | null = null;
+  private petAura: Graphics | null = null;
+  private petBubble: Text | null = null;
+  private petIdleFrames: Texture[] = [];
+  private petRunFrames: Texture[] = [];
+  private petPlayFrames: Texture[] = [];
+  private petDustAccum = 0;
+  private petStarAccum = 0;
+  private petIdleTime = 0;
+  private petBaseScale = 1;
+  private petPosX = 0;
+  private petPosY = 0;
+  private petFacingSign = 1;
   private equipment: EquippedGear;
   private savedOutfits: SavedOutfitPreset[];
   private hairId: string;
@@ -344,11 +400,30 @@ export class WorldScene {
         this.callbacks.onRequestSave?.(true);
       }
     });
+    this.inventory.onItemLooted = (def) => {
+      if (def.rarity === "A" || def.rarity === "S") {
+        this.reputation.rareItemsLooted += 1;
+        if (def.rarity === "S") {
+          this.reputation.redItemsLooted += 1;
+        }
+        this.callbacks.onRequestSave?.(false);
+      }
+    };
     this.atlas = createWorldAtlas();
 
     this.survival = initialSave?.survival
       ? { ...initialSave.survival }
       : createDefaultSurvivalState();
+    this.reputation = initialSave?.reputation
+      ? {
+          ...initialSave.reputation,
+          peakGold: Math.max(initialSave.reputation.peakGold, this.inventory.getGold()),
+          claimedIds: [...initialSave.reputation.claimedIds],
+        }
+      : {
+          ...createDefaultReputationState(),
+          peakGold: this.inventory.getGold(),
+        };
     this.questBoard =
       initialSave?.questBoard && Date.now() < initialSave.questBoard.nextRefreshAt
         ? {
@@ -365,6 +440,15 @@ export class WorldScene {
     this.ownedHairIds = new Set<string>(
       initialSave?.ownedHairIds?.length ? initialSave.ownedHairIds : DEFAULT_OWNED_HAIR_IDS,
     );
+    if (initialSave?.ownedPetIds) {
+      for (const id of initialSave.ownedPetIds) {
+        if (PET_BY_ID[id]) this.ownedPetIds.add(id);
+      }
+    }
+    this.equippedPetId =
+      initialSave?.equippedPetId && this.ownedPetIds.has(initialSave.equippedPetId)
+        ? initialSave.equippedPetId
+        : null;
     this.hairId =
       initialSave?.hairId && this.ownedHairIds.has(initialSave.hairId)
         ? initialSave.hairId
@@ -456,6 +540,7 @@ export class WorldScene {
     this.buildLilypads();
     this.buildPropsAndBuildings();
     this.buildChests();
+    this.refreshPetFollower();
 
     this.police = new PoliceSystem(data, this.atlas, this.entityLayer);
     this.jailRoom = new JailRoom(this.atlas);
@@ -561,6 +646,13 @@ export class WorldScene {
         pendingArrestOfficerId: this.activePoliceChallengeOfficerId,
       },
       questBoard: this.questBoard,
+      reputation: {
+        ...this.reputation,
+        peakGold: Math.max(this.reputation.peakGold, this.inventory.getGold()),
+        claimedIds: [...this.reputation.claimedIds],
+      },
+      ownedPetIds: Array.from(this.ownedPetIds),
+      equippedPetId: this.equippedPetId,
     };
   }
 
@@ -741,13 +833,17 @@ export class WorldScene {
     this.ripples.length = 0;
     this.waterWakes.length = 0;
     this.waterDroplets.length = 0;
+    this.collectionOrbitHost = null;
+    this.collectionOrbitItems.length = 0;
 
     this.buildTerrainChunks();
     this.buildZoneBoundaryMarkers();
     this.buildLilypads();
     this.buildPropsAndBuildings();
     this.buildChests();
+    this.refreshPetFollower();
     this.entityLayer.addChild(this.player);
+    this.refreshPetFollower();
     this.police = new PoliceSystem(nextWorld, this.atlas, this.entityLayer);
     this.atmosphere.rebuildForWorld(nextWorld);
 
@@ -967,21 +1063,152 @@ export class WorldScene {
     return this.getNearbyInteraction()?.type === "collection";
   }
 
+  public isAtQuestBoard(): boolean {
+    if (this.isInJail) return false;
+    return this.getNearbyInteraction()?.type === "quest";
+  }
+
+  public isAtReputationHall(): boolean {
+    if (this.isInJail) return false;
+    return this.getNearbyInteraction()?.type === "reputation";
+  }
+
+  public isAtPetGacha(): boolean {
+    if (this.isInJail) return false;
+    return this.getNearbyInteraction()?.type === "gacha";
+  }
+
+  public getOwnedPetIds(): string[] {
+    return Array.from(this.ownedPetIds);
+  }
+
+  public getEquippedPet(): PetDef | null {
+    return this.equippedPetId ? (PET_BY_ID[this.equippedPetId] ?? null) : null;
+  }
+
+  public equipPet(petId: string | null): { ok: boolean; message: string } {
+    if (petId !== null && !this.ownedPetIds.has(petId)) {
+      return { ok: false, message: "Bạn chưa sở hữu thú cưng này." };
+    }
+    this.equippedPetId = petId;
+    this.refreshPetFollower();
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+    const pet = petId ? PET_BY_ID[petId] : null;
+    return {
+      ok: true,
+      message: pet ? `🐾 Đã chọn ${pet.emoji} ${pet.name} đồng hành!` : "Đã cho thú cưng nghỉ ngơi.",
+    };
+  }
+
+  public rollPetGacha(times: 1 | 5): {
+    ok: boolean;
+    results: GachaRollOutcome[];
+    message: string;
+  } {
+    if (!this.isAtPetGacha()) {
+      return {
+        ok: false,
+        results: [],
+        message: "🐾 Hãy đến Nhà Nhận Nuôi Thú Cưng để nhận nuôi!",
+      };
+    }
+    const cost = times * PET_GACHA_COST_GOLD;
+    if (!this.inventory.trySpendGold(cost)) {
+      return {
+        ok: false,
+        results: [],
+        message: `Cần ${cost.toLocaleString("vi-VN")} Vàng để quay ${times} lần!`,
+      };
+    }
+
+    const results: GachaRollOutcome[] = [];
+    for (let i = 0; i < times; i++) {
+      const rolled = rollPetGachaOutcome(this.activeMapId);
+      if (rolled.kind === "pet") {
+        const isDuplicate = this.ownedPetIds.has(rolled.pet.id);
+        const refundGold = isDuplicate ? PET_DUPLICATE_REFUND_GOLD[rolled.rarity] : 0;
+        if (isDuplicate) {
+          this.inventory.addGold(refundGold);
+        } else {
+          this.ownedPetIds.add(rolled.pet.id);
+          if (!this.equippedPetId) {
+            this.equippedPetId = rolled.pet.id;
+            this.refreshPetFollower();
+          }
+        }
+        results.push({
+          kind: "pet",
+          rarity: rolled.rarity,
+          pet: rolled.pet,
+          isDuplicate,
+          refundGold,
+        });
+      } else {
+        const bagRes = this.inventory.addItemToZone("backpack", rolled.item.id, "city");
+        let storedWhere: "backpack" | "home" | "sold_overflow" = "backpack";
+        let overflowGold = 0;
+        if (!bagRes.ok) {
+          const homeRes = this.inventory.addItemToZone("home", rolled.item.id, "city");
+          if (homeRes.ok) {
+            storedWhere = "home";
+          } else {
+            storedWhere = "sold_overflow";
+            overflowGold = rolled.item.valueGold;
+            this.inventory.addGold(overflowGold);
+          }
+        }
+        if (rolled.rarity === "A" || rolled.rarity === "S") {
+          this.reputation.rareItemsLooted += 1;
+          if (rolled.rarity === "S") this.reputation.redItemsLooted += 1;
+        }
+        results.push({
+          kind: "item",
+          rarity: rolled.rarity,
+          item: rolled.item,
+          storedWhere,
+          overflowGold,
+        });
+      }
+    }
+
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+    const petHits = results.filter((r) => r.kind === "pet").length;
+    return {
+      ok: true,
+      results,
+      message:
+        petHits > 0
+          ? `🎉 Trúng ${petHits} thú cưng trong ${times} lượt quay!`
+          : `🎰 Đã quay ${times} lần — nhận ${results.length} vật phẩm!`,
+    };
+  }
+
   public depositCollectionItem(itemId: string) {
     const res = this.inventory.depositCollectionDisplayItem(itemId);
-    if (res.ok) this.callbacks.onRequestSave?.(true);
+    if (res.ok) {
+      this.refreshCollectionOrbitSprites();
+      this.callbacks.onRequestSave?.(true);
+    }
     return res;
   }
 
   public withdrawCollectionItem(itemId: string) {
     const res = this.inventory.withdrawCollectionDisplayItem(itemId);
-    if (res.ok) this.callbacks.onRequestSave?.(true);
+    if (res.ok) {
+      this.refreshCollectionOrbitSprites();
+      this.callbacks.onRequestSave?.(true);
+    }
     return res;
   }
 
   public upgradeCollectionLight(itemId: string) {
     const res = this.inventory.upgradeCollectionLight(itemId);
-    if (res.ok) this.callbacks.onRequestSave?.(true);
+    if (res.ok) {
+      this.refreshCollectionOrbitSprites();
+      this.callbacks.onRequestSave?.(true);
+    }
     return res;
   }
 
@@ -991,13 +1218,15 @@ export class WorldScene {
     openedFromHome = false,
   ) {
     const res = this.inventory.deliverUpgradeItem(kind, itemId, openedFromHome || this.isAtHome());
+    if (res.upgraded) this.reputation.homeUpgradesCompleted += 1;
     if (res.ok) this.callbacks.onRequestSave?.(true);
     return res;
   }
 
   public deliverAllUpgradeItems(kind: UpgradeKind, openedFromHome = false) {
     const res = this.inventory.deliverAllUpgradeItems(kind, openedFromHome || this.isAtHome());
-    if (res.deliveredTotal > 0) this.callbacks.onRequestSave?.(true);
+    if (res.upgraded) this.reputation.homeUpgradesCompleted += 1;
+    if (res.deliveredTotal > 0 || res.upgraded) this.callbacks.onRequestSave?.(true);
     return res;
   }
 
@@ -1436,6 +1665,7 @@ export class WorldScene {
   }
 
   private applyConsumableEffect(c: ConsumableDef): void {
+    this.reputation.consumablesUsed += 1;
     if (c.staminaBoostPct && c.staminaBoostDurationMs) {
       this.survival.staminaBuff = {
         boostPct: c.staminaBoostPct,
@@ -1665,6 +1895,8 @@ export class WorldScene {
       city_pharmacy: "💊 Dược Đường Kanpo",
       city_airport: "✈️ Sân Bay Narita",
       city_quest_guild: "📜 Bảng Ủy Thác Tokyo",
+      city_reputation_hall: "🏛️ Sảnh Danh Vọng Tokyo",
+      city_pet_gacha: "🐾 Nhà Nhận Nuôi Thú Cưng",
     };
     const label = (this.activeMapId === "japan" ? jpNames[kind] : undefined) ?? BUILDING_META[kind].name;
     const prop = this.data.props.find((p) => p.kind === kind);
@@ -1728,20 +1960,32 @@ export class WorldScene {
   }
 
   public rerollDailyQuestBoard(): { ok: boolean; message: string } {
-    this.getDailyQuestBoard();
+    if (!this.isAtQuestBoard()) {
+      return {
+        ok: false,
+        message: "🏛️ Phải đến Hội Sở Nhiệm Vụ mới đổi / làm mới nhiệm vụ được!",
+      };
+    }
+    const board = this.getDailyQuestBoard();
+    const pendingCount = board.quests.filter((q) => !q.claimed).length;
+    if (pendingCount <= 0) {
+      return {
+        ok: false,
+        message: "✅ Bạn đã hoàn thành toàn bộ nhiệm vụ trong mốc 4 giờ này. Hãy đợi lượt reset tiếp theo!",
+      };
+    }
     if (!this.inventory.trySpendGold(QUEST_MANUAL_REROLL_COST_GOLD)) {
       return {
         ok: false,
-        message: `Cần ${QUEST_MANUAL_REROLL_COST_GOLD} Vàng để làm mới bảng nhiệm vụ sớm.`,
+        message: `Cần ${QUEST_MANUAL_REROLL_COST_GOLD} Vàng để đổi nhiệm vụ.`,
       };
     }
-    this.questBoard = generateDailyQuestBoard(
-      this.activeMapId,
-      Date.now(),
-      this.questBoard.rerollCount + 1,
-    );
+    this.questBoard = rerollPendingQuests(board);
     this.callbacks.onRequestSave?.(true);
-    return { ok: true, message: "🔄 Đã làm mới danh sách nhiệm vụ 4 giờ!" };
+    return {
+      ok: true,
+      message: `🔄 Đã đổi ${pendingCount} nhiệm vụ chưa hoàn thành (độ khó & phần thưởng tương đương)!`,
+    };
   }
 
   public deliverOrClaimDailyQuest(questId: string): { ok: boolean; message: string } {
@@ -1749,6 +1993,12 @@ export class WorldScene {
     const q = board.quests.find((entry) => entry.id === questId);
     if (!q) return { ok: false, message: "Không tìm thấy nhiệm vụ." };
     if (q.claimed) return { ok: false, message: "Nhiệm vụ này đã nhận thưởng rồi." };
+    if (!this.isAtQuestBoard()) {
+      return {
+        ok: false,
+        message: "🏛️ Phải đến Hội Sở Nhiệm Vụ mới bàn giao vật phẩm và nhận thưởng được!",
+      };
+    }
 
     if (q.kind === "deliver" && q.progress < q.targetCount) {
       if (!q.targetItemId) return { ok: false, message: "Vật phẩm nhiệm vụ không hợp lệ." };
@@ -1773,6 +2023,7 @@ export class WorldScene {
     }
 
     q.claimed = true;
+    this.reputation.dailyQuestsCompleted += 1;
     if (q.reward.gold > 0) {
       this.inventory.addGold(q.reward.gold);
     }
@@ -1806,6 +2057,7 @@ export class WorldScene {
   }
 
   private advanceMinigameQuests(amount = 1): void {
+    this.reputation.minigamesWon += amount;
     const board = this.getDailyQuestBoard();
     let changed = false;
     for (const q of board.quests) {
@@ -1814,7 +2066,117 @@ export class WorldScene {
         changed = true;
       }
     }
+    this.callbacks.onRequestSave?.(false);
     if (changed) this.callbacks.onRequestSave?.(false);
+  }
+
+  public getReputationSummary(): ReputationSummaryView {
+    this.reputation.peakGold = Math.max(this.reputation.peakGold, this.inventory.getGold());
+    return buildReputationSummary(this.reputation);
+  }
+
+  public claimReputationMilestone(milestoneId: string): { ok: boolean; message: string } {
+    this.reputation.peakGold = Math.max(this.reputation.peakGold, this.inventory.getGold());
+    const def = REPUTATION_MILESTONE_BY_ID[milestoneId];
+    if (!def) return { ok: false, message: "Không tìm thấy mốc danh vọng." };
+    if (this.reputation.claimedIds.includes(milestoneId)) {
+      return { ok: false, message: "Mốc danh vọng này đã nhận thưởng rồi." };
+    }
+    if (this.reputation[def.statKey] < def.target) {
+      return { ok: false, message: "Bạn chưa đạt điều kiện của mốc danh vọng này." };
+    }
+
+    this.reputation.claimedIds.push(milestoneId);
+    this.reputation.points += def.reward.points;
+    this.inventory.addGold(def.reward.gold);
+    this.reputation.peakGold = Math.max(this.reputation.peakGold, this.inventory.getGold());
+
+    let itemNote = "";
+    if (def.reward.bonusItemKind) {
+      const bonusId = pickReputationBonusItemId(def.reward.bonusItemKind, this.activeMapId);
+      const itemDef = bonusId ? ITEM_BY_ID[bonusId] : null;
+      if (bonusId && itemDef) {
+        const bagRes = this.inventory.addItemToZone("backpack", bonusId, "city");
+        let storedWhere = "";
+        if (!bagRes.ok) {
+          const homeRes = this.inventory.addItemToZone("home", bonusId, "city");
+          if (homeRes.ok) storedWhere = " (gửi Kho Nhà)";
+        }
+        itemNote = ` & 1× ${itemDef.name}${storedWhere}`;
+      }
+    }
+
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+    return {
+      ok: true,
+      message: `🏆 +${def.reward.points} Danh vọng, +${def.reward.gold.toLocaleString("vi-VN")} Vàng${itemNote}!`,
+    };
+  }
+
+  public claimAllReputationMilestones(): { ok: boolean; claimedCount: number; message: string } {
+    const summary = this.getReputationSummary();
+    const ready = summary.milestones.filter((m) => m.completed && !m.claimed);
+    if (ready.length === 0) {
+      return { ok: false, claimedCount: 0, message: "Chưa có mốc danh vọng nào sẵn sàng nhận thưởng." };
+    }
+    let totalPoints = 0;
+    let totalGold = 0;
+    let count = 0;
+    for (const m of ready) {
+      const res = this.claimReputationMilestone(m.id);
+      if (res.ok) {
+        totalPoints += m.reward.points;
+        totalGold += m.reward.gold;
+        count += 1;
+      }
+    }
+    return {
+      ok: count > 0,
+      claimedCount: count,
+      message: `🏆 Đã nhận ${count} mốc: +${totalPoints} Danh vọng & +${totalGold.toLocaleString("vi-VN")} Vàng!`,
+    };
+  }
+
+  public buyReputationShopItem(itemId: string): { ok: boolean; message: string } {
+    if (!this.isAtReputationHall()) {
+      return {
+        ok: false,
+        message: "🏛️ Phải đến Sảnh Danh Vọng mới đổi được vật phẩm Đỏ giới hạn!",
+      };
+    }
+    const shopEntry = REPUTATION_SHOP_BY_ID[itemId];
+    const itemDef = ITEM_BY_ID[itemId];
+    if (!shopEntry || !itemDef) {
+      return { ok: false, message: "Vật phẩm danh vọng không tồn tại." };
+    }
+    if (this.reputation.points < shopEntry.costPoints) {
+      return {
+        ok: false,
+        message: `Cần ${shopEntry.costPoints} điểm Danh vọng (bạn đang có ${this.reputation.points}).`,
+      };
+    }
+
+    const bagRes = this.inventory.addItemToZone("backpack", itemId, "city");
+    let storedWhere = "vào Balo";
+    if (!bagRes.ok) {
+      const homeRes = this.inventory.addItemToZone("home", itemId, "city");
+      if (!homeRes.ok) {
+        return {
+          ok: false,
+          message: "Balo và Kho Nhà đều đã đầy! Hãy dọn bớt chỗ trống trước khi đổi.",
+        };
+      }
+      storedWhere = "vào Kho Nhà";
+    }
+
+    this.reputation.points -= shopEntry.costPoints;
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+    return {
+      ok: true,
+      message: `🔴 Đã đổi 1× ${itemDef.name} (${shopEntry.costPoints} Danh vọng) và cất ${storedWhere}!`,
+    };
   }
 
   private advanceExploreQuests(target: ExploreTargetKind, amount = 1): void {
@@ -2123,6 +2485,18 @@ export class WorldScene {
           name: meta.name,
         };
       }
+      if (meta.tier === "reputation") {
+        return {
+          type: "reputation",
+          name: meta.name,
+        };
+      }
+      if (meta.tier === "gacha") {
+        return {
+          type: "gacha",
+          name: meta.name,
+        };
+      }
       if (meta.tier === "police") {
         return null;
       }
@@ -2195,6 +2569,18 @@ export class WorldScene {
     if (target.type === "quest") {
       this.playPressSfx();
       this.callbacks.onOpenQuestBoard?.();
+      return true;
+    }
+
+    if (target.type === "reputation") {
+      this.playPressSfx();
+      this.callbacks.onOpenReputationShop?.();
+      return true;
+    }
+
+    if (target.type === "gacha") {
+      this.playPressSfx();
+      this.callbacks.onOpenPetGacha?.();
       return true;
     }
 
@@ -2443,6 +2829,7 @@ export class WorldScene {
 
     if (!this.isMovementLocked()) {
       this.stepPendingConsume(dt);
+      const activePet = this.getEquippedPet();
       const survivalTick = stepSurvivalState(this.survival, dt, {
         isMoving: this.player.isMoving(),
         surface: this.player.getSurfaceState(),
@@ -2453,13 +2840,15 @@ export class WorldScene {
         mapId: this.activeMapId,
         biome: this.getCurrentBiome(),
         totalWeightKg: this.inventory.getCarriedWeightKg(this.cachedEquipStats.weightKg),
-        permanentStaminaBonusPct: this.inventory.getPermanentStaminaBonusPct(),
+        permanentStaminaBonusPct:
+          this.inventory.getPermanentStaminaBonusPct() + (activePet?.bonuses.staminaPct ?? 0),
         heavySpeedBonusPct: this.inventory.getHeavySpeedBonusPct(),
       });
       this.lastSurvivalTick = survivalTick;
       const consumeSlowMul = this.pendingConsume ? 0.34 : 1;
+      const petSpeedMul = 1 + (activePet?.bonuses.speedPct ?? 0) / 100;
       this.player.setSurvivalVisuals({
-        speedMultiplier: survivalTick.speedMultiplier * consumeSlowMul,
+        speedMultiplier: survivalTick.speedMultiplier * consumeSlowMul * petSpeedMul,
         isSweating: survivalTick.thermal.isSweating,
         isShivering: survivalTick.thermal.isShivering,
       });
@@ -2557,6 +2946,8 @@ export class WorldScene {
     this.weatherParticles.update(dt, env, viewBounds);
     this.streamNextTerrainChunks(2);
     this.streamNextProps(24);
+    this.updateCollectionOrbit();
+    this.updatePetFollower(dt);
   }
 
   public destroy(): void {
@@ -3083,6 +3474,8 @@ export class WorldScene {
       city_pharmacy: "plains_archway",
       city_police_station: "jp_ninja_dojo",
       city_quest_guild: "jp_shinkansen_station",
+      city_reputation_hall: "jp_shinto_shrine",
+      city_pet_gacha: "jp_akihabara_arcade",
     };
     const overrideKind = isJapan ? JP_GREEN_BLD_TEXTURE_OVERRIDE[prop.kind] : undefined;
     const tex = overrideKind ? this.atlas.buildings[overrideKind] : this.atlas.props[prop.kind];
@@ -3132,6 +3525,8 @@ export class WorldScene {
       city_collection_hall: { text: "🏛️ PHÒNG SƯU TẦM", color: 0xfde047 },
       city_airport: { text: "✈️ SÂN BAY QUỐC TẾ", color: 0x7dd3fc },
       city_quest_guild: { text: "📜 HỘI SỞ NHIỆM VỤ", color: 0xfde047 },
+      city_reputation_hall: { text: "🏛️ SẢNH DANH VỌNG", color: 0xf43f5e },
+      city_pet_gacha: { text: "🐾 NHÀ NHẬN NUÔI THÚ CƯNG", color: 0xf472b6 },
       city_hospital: { text: "🏥 BỆNH VIỆN", color: 0xfecdd3 },
       city_police_station: { text: "🚓 CÔNG AN PHƯỜNG", color: 0x93c5fd },
     };
@@ -3147,6 +3542,8 @@ export class WorldScene {
       city_collection_hall: { text: "🗼 THÁP BẢO TÀNG TOKYO", color: 0xfde047 },
       city_airport: { text: "✈️ SÂN BAY NARITA (5.000🪙)", color: 0x7dd3fc },
       city_quest_guild: { text: "📜 BẢNG ỦY THÁC TOKYO", color: 0xfde047 },
+      city_reputation_hall: { text: "🏛️ SẢNH DANH VỌNG TOKYO", color: 0xf43f5e },
+      city_pet_gacha: { text: "🐾 NHÀ NHẬN NUÔI THÚ CƯNG", color: 0xf472b6 },
       city_hospital: { text: "🏥 BỆNH VIỆN TOKYO", color: 0xfecdd3 },
       city_police_station: { text: "🚓 ĐỒN CẢNH SÁT KOBAN", color: 0x93c5fd },
     };
@@ -3203,7 +3600,420 @@ export class WorldScene {
       }
     }
 
+    if (prop.kind === "city_collection_hall") {
+      this.collectionOrbitHost = {
+        x: prop.x,
+        y: prop.y,
+        height: sprite.height,
+        depthY,
+      };
+      this.refreshCollectionOrbitSprites();
+    }
+
     return container;
+  }
+
+  private getOrbitTexture(src: string): Promise<Texture> {
+    let p = this.orbitTextureCache.get(src);
+    if (!p) {
+      p = Assets.load<Texture>(src);
+      this.orbitTextureCache.set(src, p);
+    }
+    return p;
+  }
+
+  private refreshCollectionOrbitSprites(): void {
+    for (const entry of this.collectionOrbitItems) {
+      entry.node.destroy({ children: true });
+    }
+    this.collectionOrbitItems.length = 0;
+    if (!this.collectionOrbitHost) return;
+
+    const slots = this.inventory.getCollectionHallStates();
+    const displayedEntries = Object.entries(slots).filter(([, slot]) => slot.displayed);
+    const total = displayedEntries.length;
+    if (total === 0) return;
+
+    displayedEntries.forEach(([itemId, slot], idx) => {
+      const def = ITEM_BY_ID[itemId];
+      if (!def) return;
+
+      const node = new Container();
+      const glow = new Graphics();
+
+      if (slot.lightLevel === 2) {
+        // Golden Tier 2: radiant dual-ring aura + 4 golden star flares
+        glow
+          .circle(0, 0, 20)
+          .fill({ color: 0xf59e0b, alpha: 0.24 })
+          .circle(0, 0, 14)
+          .fill({ color: 0xfde047, alpha: 0.36 })
+          .circle(0, 0, 17)
+          .stroke({ color: 0xfef08a, width: 1.5, alpha: 0.85 });
+        for (let r = 0; r < 4; r++) {
+          const ang = (r * Math.PI) / 2;
+          glow
+            .moveTo(Math.cos(ang) * 12, Math.sin(ang) * 12)
+            .lineTo(Math.cos(ang) * 23, Math.sin(ang) * 23)
+            .stroke({ color: 0xfef08a, width: 1.8, alpha: 0.9 });
+        }
+      } else if (slot.lightLevel === 1) {
+        // White Tier 1: silver-white halo + 4 crisp star ticks
+        glow
+          .circle(0, 0, 17)
+          .fill({ color: 0xbae6fd, alpha: 0.26 })
+          .circle(0, 0, 13)
+          .stroke({ color: 0xffffff, width: 1.3, alpha: 0.78 });
+        for (let r = 0; r < 4; r++) {
+          const ang = (r * Math.PI) / 2 + Math.PI / 4;
+          glow
+            .moveTo(Math.cos(ang) * 11, Math.sin(ang) * 11)
+            .lineTo(Math.cos(ang) * 18, Math.sin(ang) * 18)
+            .stroke({ color: 0xe0f2fe, width: 1.4, alpha: 0.85 });
+        }
+      } else {
+        // Tier 0: subtle crimson aura
+        glow
+          .circle(0, 0, 13)
+          .fill({ color: 0xf43f5e, alpha: 0.2 })
+          .circle(0, 0, 13)
+          .stroke({ color: 0xfda4af, width: 1, alpha: 0.45 });
+      }
+
+      const iconSprite = new Sprite();
+      iconSprite.anchor.set(0.5, 0.5);
+      iconSprite.alpha = slot.lightLevel === 0 ? 0.88 : 1;
+      void this.getOrbitTexture(def.iconSrc).then((tex) => {
+        if (iconSprite.destroyed) return;
+        iconSprite.texture = tex;
+        const maxSide = Math.max(tex.width || 32, tex.height || 32);
+        const targetPx = slot.lightLevel === 2 ? 25 : slot.lightLevel === 1 ? 22 : 19;
+        const scale = targetPx / Math.max(1, maxSide);
+        iconSprite.scale.set(scale);
+      });
+
+      node.addChild(glow, iconSprite);
+      this.entityLayer.addChild(node);
+
+      const ring = idx % 2;
+      this.collectionOrbitItems.push({
+        node,
+        glow,
+        lightLevel: slot.lightLevel,
+        phaseOffset: (idx / total) * Math.PI * 2,
+        radiusX: 82 + ring * 24,
+        radiusY: 30 + ring * 10,
+        speed: slot.lightLevel === 2 ? 0.78 : slot.lightLevel === 1 ? 0.65 : 0.52,
+      });
+    });
+
+    this.updateCollectionOrbit();
+  }
+
+  private updateCollectionOrbit(): void {
+    const host = this.collectionOrbitHost;
+    if (!host || this.collectionOrbitItems.length === 0) return;
+
+    const centerY = host.y - host.height * 0.46;
+    for (const item of this.collectionOrbitItems) {
+      const angle = this.elapsed * item.speed + item.phaseOffset;
+      const sinA = Math.sin(angle);
+      const bob = Math.sin(this.elapsed * 2.8 + item.phaseOffset) * 4;
+      item.node.position.set(
+        host.x + Math.cos(angle) * item.radiusX,
+        centerY + sinA * item.radiusY + bob,
+      );
+      item.node.zIndex = sinA >= 0 ? host.depthY + 40 : host.depthY - 40;
+
+      if (item.lightLevel === 2) {
+        item.glow.rotation = this.elapsed * 1.1;
+        const pulse = 1 + Math.sin(this.elapsed * 4.2 + item.phaseOffset) * 0.14;
+        item.glow.scale.set(pulse);
+      } else if (item.lightLevel === 1) {
+        item.glow.rotation = -this.elapsed * 0.65;
+        const pulse = 1 + Math.sin(this.elapsed * 2.8 + item.phaseOffset) * 0.08;
+        item.glow.scale.set(pulse);
+      }
+    }
+  }
+
+  private refreshPetFollower(): void {
+    if (this.petNode) {
+      this.petNode.destroy({ children: true });
+      this.petNode = null;
+      this.petSprite = null;
+      this.petAura = null;
+      this.petBubble = null;
+    }
+    this.petIdleFrames = [];
+    this.petRunFrames = [];
+    this.petPlayFrames = [];
+    this.petIdleTime = 0;
+
+    const pet = this.getEquippedPet();
+    if (!pet) return;
+
+    const node = new Container();
+    const shadow = new Sprite(this.atlas.shadow);
+    shadow.anchor.set(0.5, 0.5);
+    shadow.position.set(0, 6);
+    shadow.width = 24;
+    shadow.height = 10;
+    shadow.alpha = 0.28;
+
+    const aura = new Graphics();
+    if (pet.rarity === "S") {
+      aura
+        .circle(0, -8, 20)
+        .fill({ color: 0xf43f5e, alpha: 0.24 })
+        .circle(0, -8, 16)
+        .stroke({ color: 0xfde047, width: 1.8, alpha: 0.9 });
+      for (let r = 0; r < 4; r++) {
+        const ang = (r * Math.PI) / 2;
+        aura
+          .moveTo(Math.cos(ang) * 14, -8 + Math.sin(ang) * 14)
+          .lineTo(Math.cos(ang) * 23, -8 + Math.sin(ang) * 23)
+          .stroke({ color: 0xfef08a, width: 1.8, alpha: 0.9 });
+      }
+    } else if (pet.rarity === "A") {
+      aura
+        .circle(0, -8, 17)
+        .fill({ color: 0xfacc15, alpha: 0.2 })
+        .circle(0, -8, 15)
+        .stroke({ color: 0xfef08a, width: 1.4, alpha: 0.78 });
+    } else if (pet.rarity === "B") {
+      aura
+        .circle(0, -8, 14)
+        .fill({ color: 0x38bdf8, alpha: 0.14 })
+        .circle(0, -8, 14)
+        .stroke({ color: 0xbae6fd, width: 1, alpha: 0.5 });
+    }
+
+    const sprite = new Sprite();
+    sprite.anchor.set(0.5, 0.85);
+
+    const bubble = new Text({
+      text: "",
+      style: {
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontSize: 13,
+        fontWeight: "800",
+        fill: 0xffffff,
+        stroke: { color: 0x0f172a, width: 3.5 },
+      },
+    });
+    bubble.anchor.set(0.5, 1);
+    bubble.position.set(0, -34);
+    bubble.visible = false;
+
+    const sheet = pet.spriteSheet;
+    const sliceStrip = (tex: Texture, w: number, h: number, count: number): Texture[] => {
+      const out: Texture[] = [];
+      for (let i = 0; i < count; i++) {
+        if ((i + 1) * w > tex.source.width + 1) break;
+        out.push(
+          new Texture({
+            source: tex.source,
+            frame: new Rectangle(i * w, 0, w, h),
+          }),
+        );
+      }
+      return out.length > 0 ? out : [tex];
+    };
+
+    const loaders: Array<Promise<Texture>> = [
+      this.getOrbitTexture(sheet.idleSrc),
+      this.getOrbitTexture(sheet.runSrc),
+    ];
+    if (sheet.playSrc) {
+      loaders.push(this.getOrbitTexture(sheet.playSrc));
+    }
+
+    void Promise.all(loaders).then(([idleTex, runTex, playTex]) => {
+      if (sprite.destroyed) return;
+      this.petIdleFrames = sliceStrip(idleTex, sheet.iw, sheet.ih, sheet.ic);
+      this.petRunFrames = sliceStrip(runTex, sheet.rw, sheet.rh, sheet.rc);
+      if (playTex && sheet.pw && sheet.ph && sheet.pc) {
+        this.petPlayFrames = sliceStrip(playTex, sheet.pw, sheet.ph, sheet.pc);
+      }
+      sprite.texture = this.petIdleFrames[0];
+      const targetPx = pet.rarity === "S" ? 36 : pet.rarity === "A" ? 33 : 30;
+      this.petBaseScale = targetPx / Math.max(1, sheet.iw);
+      sprite.scale.set(this.petBaseScale * this.petFacingSign, this.petBaseScale);
+    });
+
+    node.addChild(shadow, aura, sprite, bubble);
+    this.entityLayer.addChild(node);
+    this.petPosX = this.player.x - 28;
+    this.petPosY = this.player.y + 4;
+    node.position.set(this.petPosX, this.petPosY);
+    node.zIndex = this.petPosY;
+
+    this.petNode = node;
+    this.petSprite = sprite;
+    this.petAura = aura;
+    this.petBubble = bubble;
+  }
+
+  private updatePetFollower(dt: number): void {
+    if (!this.petNode || !this.petSprite) return;
+
+    const pet = this.getEquippedPet();
+    const isSmartRank = pet !== null && (pet.rarity === "A" || pet.rarity === "S");
+    const playerMoving = this.player.isMoving();
+    this.petIdleTime = playerMoving ? 0 : this.petIdleTime + dt;
+
+    // Smart Rank A/S Companion: sniff nearby unopened chests & alert nearby police
+    let targetX = this.player.x - 30;
+    let targetY = this.player.y + 6;
+    let bubbleText = "";
+    let playfulOrbit = false;
+
+    if (isSmartRank) {
+      const zone = this.getSecurityZoneAt(this.player.x, this.player.y);
+      if (zone !== "green") {
+        const nearestPolice = this.police.findNearestOfficer(
+          this.player.x,
+          this.player.y,
+          this.ignoreUntilByOfficer,
+          this.globalPoliceIgnoreUntil,
+        );
+        if (nearestPolice && nearestPolice.distance <= 195) {
+          bubbleText = "🚨!";
+        }
+      }
+
+      const sniffRange = pet.rarity === "S" ? 320 : 260;
+      let nearestChestDist = sniffRange;
+      let sniffChestX = 0;
+      let sniffChestY = 0;
+      let foundChest = false;
+      for (const cv of this.chestVisuals) {
+        if (cv.chest.opened) continue;
+        const d = Math.hypot(cv.chest.x - this.player.x, cv.chest.y - this.player.y);
+        if (d < nearestChestDist) {
+          nearestChestDist = d;
+          sniffChestX = cv.chest.x;
+          sniffChestY = cv.chest.y;
+          foundChest = true;
+        }
+      }
+
+      if (foundChest) {
+        // Lean/trot toward the treasure chest while staying tethered near the player
+        const ang = Math.atan2(sniffChestY - this.player.y, sniffChestX - this.player.x);
+        targetX = this.player.x + Math.cos(ang) * 44;
+        targetY = this.player.y + Math.sin(ang) * 44;
+        if (!bubbleText) bubbleText = "💎!";
+      } else if (this.petIdleTime >= 2.8) {
+        // Playful idle behavior for Rank A/S: orbit around player or bounce with toy
+        playfulOrbit = true;
+        const cycle = Math.floor(this.petIdleTime / 4.5) % 2;
+        if (cycle === 0) {
+          const orbitAng = this.elapsed * 2.1;
+          targetX = this.player.x + Math.cos(orbitAng) * 36;
+          targetY = this.player.y + Math.sin(orbitAng) * 20;
+        }
+        if (!bubbleText) {
+          const icons = pet.rarity === "S" ? ["✨", "🎵", "⚡", "❤️"] : ["🎾", "🐾", "🎵", "❤️"];
+          bubbleText = icons[Math.floor(this.elapsed * 0.7) % icons.length];
+        }
+      }
+    }
+
+    const dx = targetX - this.petPosX;
+    const dy = targetY - this.petPosY;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > 220) {
+      this.petPosX = targetX;
+      this.petPosY = targetY;
+    } else {
+      const follow = 1 - Math.exp(-7.5 * dt);
+      this.petPosX += dx * follow;
+      this.petPosY += dy * follow;
+    }
+
+    if (Math.abs(dx) > 1.0) {
+      this.petFacingSign = dx >= 0 ? 1 : -1;
+    }
+
+    const moving = dist > 5 || playerMoving;
+    const usePlay = playfulOrbit && !moving && this.petPlayFrames.length > 0;
+    const frames = usePlay
+      ? this.petPlayFrames
+      : moving && this.petRunFrames.length > 0
+        ? this.petRunFrames
+        : this.petIdleFrames;
+    if (frames.length > 0) {
+      const fps = moving ? 10 : 8;
+      const frameIdx = Math.floor(this.elapsed * fps) % frames.length;
+      if (this.petSprite.texture !== frames[frameIdx]) {
+        this.petSprite.texture = frames[frameIdx];
+      }
+    }
+
+    const bob = moving
+      ? Math.abs(Math.sin(this.elapsed * 10)) * 2.8
+      : usePlay
+        ? Math.abs(Math.sin(this.elapsed * 7)) * 3.2
+        : 0;
+    this.petSprite.position.set(0, -bob);
+    this.petSprite.scale.set(this.petBaseScale * this.petFacingSign, this.petBaseScale);
+
+    if (this.petAura) {
+      this.petAura.position.set(0, -bob);
+      this.petAura.rotation = this.elapsed * 1.1;
+      const pulse = 1 + Math.sin(this.elapsed * 3.5) * 0.08;
+      this.petAura.scale.set(pulse);
+    }
+
+    if (this.petBubble) {
+      if (bubbleText) {
+        this.petBubble.visible = true;
+        this.petBubble.text = bubbleText;
+        this.petBubble.position.set(0, -34 - bob + Math.sin(this.elapsed * 5) * 2);
+      } else {
+        this.petBubble.visible = false;
+      }
+    }
+
+    if (moving) {
+      this.petDustAccum += dt;
+      if (this.petDustAccum >= 0.22) {
+        this.petDustAccum = 0;
+        const puff = new Graphics().circle(0, 0, 3).fill({ color: 0xe2e8f0, alpha: 0.45 });
+        puff.position.set(this.petPosX, this.petPosY + 4);
+        puff.zIndex = this.petPosY - 1;
+        this.entityLayer.addChild(puff);
+        window.setTimeout(() => {
+          if (!puff.destroyed) puff.destroy();
+        }, 220);
+      }
+      if (pet?.rarity === "S") {
+        this.petStarAccum += dt;
+        if (this.petStarAccum >= 0.16) {
+          this.petStarAccum = 0;
+          const starColor = Math.random() < 0.5 ? 0xfde047 : 0xfb7185;
+          const star = new Graphics().circle(0, 0, 2.5).fill({ color: starColor, alpha: 0.85 });
+          star.position.set(
+            this.petPosX + (Math.random() - 0.5) * 14,
+            this.petPosY - 6 + (Math.random() - 0.5) * 10,
+          );
+          star.zIndex = this.petPosY + 1;
+          this.entityLayer.addChild(star);
+          window.setTimeout(() => {
+            if (!star.destroyed) star.destroy();
+          }, 320);
+        }
+      }
+    } else {
+      this.petDustAccum = 0;
+      this.petStarAccum = 0;
+    }
+
+    this.petNode.position.set(this.petPosX, this.petPosY);
+    this.petNode.zIndex = this.petPosY;
   }
 
   private buildChests(): void {

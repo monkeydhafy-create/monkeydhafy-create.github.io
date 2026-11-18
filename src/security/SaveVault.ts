@@ -56,6 +56,11 @@ import {
   type DailyQuestBoardState,
   type DailyQuestEntry,
 } from "../world/QuestSystem.ts";
+import {
+  REPUTATION_MILESTONE_BY_ID,
+  type ReputationState,
+} from "../world/ReputationSystem.ts";
+import { PET_BY_ID } from "../world/PetSystem.ts";
 
 export interface SavedPlayerProfile {
   x: number;
@@ -87,6 +92,9 @@ export interface PlayerGameSaveV3 {
   savedOutfits?: SavedOutfitPreset[];
   policeState?: SavedPoliceState;
   questBoard?: DailyQuestBoardState;
+  reputation?: ReputationState;
+  ownedPetIds?: string[];
+  equippedPetId?: string | null;
 }
 
 export interface SaveLoadResult {
@@ -1445,6 +1453,51 @@ export function validateSavePayload(
     }
   }
 
+  let reputation: ReputationState | undefined;
+  if (obj.reputation !== undefined && obj.reputation !== null) {
+    if (typeof obj.reputation !== "object") {
+      throw new TamperError("Invalid reputation object");
+    }
+    const rep = obj.reputation as Partial<ReputationState>;
+    const repNum = (v: unknown, label: string): number => {
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+        throw new TamperError(`Invalid reputation.${label}`);
+      }
+      return Math.floor(v);
+    };
+    const rawClaimed = Array.isArray(rep.claimedIds) ? rep.claimedIds : [];
+    const claimedSet = new Set<string>();
+    for (const id of rawClaimed) {
+      if (typeof id === "string" && REPUTATION_MILESTONE_BY_ID[id]) {
+        claimedSet.add(id);
+      }
+    }
+    reputation = {
+      points: repNum(rep.points ?? 0, "points"),
+      peakGold: Math.max(gold, repNum(rep.peakGold ?? 0, "peakGold")),
+      dailyQuestsCompleted: repNum(rep.dailyQuestsCompleted ?? 0, "dailyQuestsCompleted"),
+      homeUpgradesCompleted: repNum(rep.homeUpgradesCompleted ?? 0, "homeUpgradesCompleted"),
+      rareItemsLooted: repNum(rep.rareItemsLooted ?? 0, "rareItemsLooted"),
+      redItemsLooted: repNum(rep.redItemsLooted ?? 0, "redItemsLooted"),
+      minigamesWon: repNum(rep.minigamesWon ?? 0, "minigamesWon"),
+      consumablesUsed: repNum(rep.consumablesUsed ?? 0, "consumablesUsed"),
+      claimedIds: Array.from(claimedSet),
+    };
+  }
+
+  const ownedPetSet = new Set<string>();
+  if (Array.isArray(obj.ownedPetIds)) {
+    for (const id of obj.ownedPetIds) {
+      if (typeof id === "string" && PET_BY_ID[id]) {
+        ownedPetSet.add(id);
+      }
+    }
+  }
+  const equippedPetId =
+    typeof obj.equippedPetId === "string" && ownedPetSet.has(obj.equippedPetId)
+      ? obj.equippedPetId
+      : null;
+
   return {
     schemaVersion: 3,
     inventory: {
@@ -1488,6 +1541,9 @@ export function validateSavePayload(
     savedOutfits,
     policeState,
     ...(questBoard ? { questBoard } : {}),
+    ...(reputation ? { reputation } : {}),
+    ownedPetIds: Array.from(ownedPetSet),
+    equippedPetId,
   };
 }
 

@@ -134,6 +134,12 @@ async function bootstrap(): Promise<void> {
       onOpenQuestBoard: () => {
         hud?.openQuestBoardModal();
       },
+      onOpenReputationShop: () => {
+        hud?.openReputationModal("shop");
+      },
+      onOpenPetGacha: () => {
+        hud?.openPetGachaModal();
+      },
       onMapChanged: () => {
         hud?.handleMapChanged();
       },
@@ -175,6 +181,8 @@ async function bootstrap(): Promise<void> {
     hud.openOnboardingModal();
   } else if (worldScene.isDetained()) {
     hud.showDetentionScreen(0, worldScene.getDetainedRemainingMs(), true);
+  } else {
+    hud.openGuideModal(0);
   }
   if (saveLoadResult.tamperDetected) {
     hud.showDiscoveryToast(

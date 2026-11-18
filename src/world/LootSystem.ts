@@ -49,6 +49,7 @@ export interface CollectibleItemDef {
   garmentId?: string;
   backpackId?: string;
   excludeFromRandomLoot?: boolean;
+  reputationShop?: boolean;
 }
 
 export interface RarityMetaInfo {
@@ -887,6 +888,67 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
     description: "Vòng chắn kiếm Samurai rèn từ sắt cổ khảm vàng thời Edo.",
     iconSrc: "assets/world/items/a_jp_katana_tsuba.png",
   },
+  // === REPUTATION-EXCLUSIVE S-TIER RED ITEMS ===
+  {
+    id: "rep_gym_license",
+    name: "Chứng Chỉ PT Huyền Thoại",
+    rarity: "S",
+    w: 1,
+    h: 1,
+    weightKg: 0.2,
+    valueGold: 1200,
+    homeBiome: "city",
+    description: "Huy chương Đỏ giới hạn chỉ có tại Sảnh Danh Vọng, chứng nhận thể lực đỉnh cao.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='g1' cx='50%25' cy='45%25' r='50%25'%3E%3Cstop offset='0%25' stop-color='%23f43f5e' stop-opacity='0.55'/%3E%3Cstop offset='100%25' stop-color='%23f43f5e' stop-opacity='0'/%3E%3C/radialGradient%3E%3ClinearGradient id='m1' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fef08a'/%3E%3Cstop offset='50%25' stop-color='%23f59e0b'/%3E%3Cstop offset='100%25' stop-color='%23b45309'/%3E%3C/linearGradient%3E%3ClinearGradient id='r1' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fb7185'/%3E%3Cstop offset='100%25' stop-color='%239f1239'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='34' r='28' fill='url(%23g1)'/%3E%3Cpath d='M21 8h10l3 16H24z' fill='%23be123c'/%3E%3Cpath d='M43 8H33l-3 16h10z' fill='%23e11d48'/%3E%3Cpath d='M27 8h10v14H27z' fill='%23fbbf24' opacity='0.85'/%3E%3Ccircle cx='32' cy='39' r='19' fill='url(%23m1)' stroke='%23fef9c3' stroke-width='2'/%3E%3Ccircle cx='32' cy='39' r='14.5' fill='url(%23r1)' stroke='%23fde047' stroke-width='1.5'/%3E%3Crect x='23' y='37' width='18' height='4' rx='1.5' fill='%23fef08a'/%3E%3Crect x='19' y='32' width='5' height='14' rx='2' fill='%23ffe4e6' stroke='%239f1239' stroke-width='1'/%3E%3Crect x='40' y='32' width='5' height='14' rx='2' fill='%23ffe4e6' stroke='%239f1239' stroke-width='1'/%3E%3Cpath d='M32 27l1.8 3.6 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z' fill='%23fef08a'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    reputationShop: true,
+  },
+  {
+    id: "rep_treadmill_core",
+    name: "Chip Động Cơ Không Ma Sát",
+    rarity: "S",
+    w: 1,
+    h: 1,
+    weightKg: 0.4,
+    valueGold: 1400,
+    homeBiome: "city",
+    description: "Vi mạch siêu dẫn Đỏ chế tác riêng tại Sảnh Danh Vọng, tối ưu tốc độ chuyển động.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='g2' cx='50%25' cy='50%25' r='50%25'%3E%3Cstop offset='0%25' stop-color='%23fb7185' stop-opacity='0.6'/%3E%3Cstop offset='100%25' stop-color='%23fb7185' stop-opacity='0'/%3E%3C/radialGradient%3E%3ClinearGradient id='c2' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23f43f5e'/%3E%3Cstop offset='100%25' stop-color='%234c0519'/%3E%3C/linearGradient%3E%3ClinearGradient id='rim2' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fef08a'/%3E%3Cstop offset='100%25' stop-color='%23d97706'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='29' fill='url(%23g2)'/%3E%3Cg stroke='url(%23rim2)' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M22 7v8M32 7v8M42 7v8M22 49v8M32 49v8M42 49v8M7 22h8M7 32h8M7 42h8M49 22h8M49 32h8M49 42h8'/%3E%3C/g%3E%3Cpolygon points='20,13 44,13 51,20 51,44 44,51 20,51 13,44 13,20' fill='url(%23c2)' stroke='url(%23rim2)' stroke-width='2.5'/%3E%3Cpolygon points='23,19 41,19 45,23 45,41 41,45 23,45 19,41 19,23' fill='%23230512' stroke='%23fda4af' stroke-width='1.3'/%3E%3Cpath d='M36 20L24 34h8l-4 11 13-15h-8z' fill='%23fde047' stroke='%23fef9c3' stroke-width='1' stroke-linejoin='round'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    reputationShop: true,
+  },
+  {
+    id: "rep_safebox_core",
+    name: "Lõi Khóa Vân Tay Lượng Tử",
+    rarity: "S",
+    w: 1,
+    h: 2,
+    weightKg: 1.2,
+    valueGold: 1800,
+    homeBiome: "city",
+    description: "Ổ khóa sinh trắc học Đỏ độc quyền tại Sảnh Danh Vọng, bảo mật cấp độ tối thượng.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='g3' cx='50%25' cy='55%25' r='48%25'%3E%3Cstop offset='0%25' stop-color='%23f43f5e' stop-opacity='0.55'/%3E%3Cstop offset='100%25' stop-color='%23f43f5e' stop-opacity='0'/%3E%3C/radialGradient%3E%3ClinearGradient id='b3' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fb7185'/%3E%3Cstop offset='45%25' stop-color='%23be123c'/%3E%3Cstop offset='100%25' stop-color='%234c0519'/%3E%3C/linearGradient%3E%3ClinearGradient id='sh3' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0%25' stop-color='%23fde047'/%3E%3Cstop offset='100%25' stop-color='%23d97706'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='35' r='28' fill='url(%23g3)'/%3E%3Cpath d='M20 28v-8a12 12 0 0 1 24 0v8' fill='none' stroke='url(%23sh3)' stroke-width='6' stroke-linecap='round'/%3E%3Cpath d='M20 28v-8a12 12 0 0 1 24 0v8' fill='none' stroke='%23fef9c3' stroke-width='1.5' opacity='0.7'/%3E%3Cpolygon points='15,27 49,27 52,32 52,52 46,57 18,57 12,52 12,32' fill='url(%23b3)' stroke='%23fecdd3' stroke-width='2'/%3E%3Ccircle cx='32' cy='42' r='10' fill='%23230512' stroke='%23fde047' stroke-width='2'/%3E%3Cpath d='M27 42a5 5 0 0 1 10 0M29 44a3 3 0 0 1 6 0' fill='none' stroke='%23fb7185' stroke-width='1.8' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='42' r='2' fill='%23fef08a'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    reputationShop: true,
+  },
+  {
+    id: "rep_mansion_blueprint",
+    name: "Bản Thiết Kế Biệt Phủ 9×16",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 0.5,
+    valueGold: 2200,
+    homeBiome: "city",
+    description: "Cuộn bản vẽ kiến trúc Đỏ quý hiếm tại Sảnh Danh Vọng, mở khóa không gian siêu cấp.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='g4' cx='50%25' cy='50%25' r='50%25'%3E%3Cstop offset='0%25' stop-color='%23f43f5e' stop-opacity='0.55'/%3E%3Cstop offset='100%25' stop-color='%23f43f5e' stop-opacity='0'/%3E%3C/radialGradient%3E%3ClinearGradient id='p4' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%239f1239'/%3E%3Cstop offset='100%25' stop-color='%233b071e'/%3E%3C/linearGradient%3E%3ClinearGradient id='au4' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fef08a'/%3E%3Cstop offset='100%25' stop-color='%23d97706'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='29' fill='url(%23g4)'/%3E%3Crect x='10' y='13' width='44' height='38' rx='4' fill='url(%23p4)' stroke='url(%23au4)' stroke-width='2.4'/%3E%3Crect x='6' y='10' width='8' height='44' rx='4' fill='%23881337' stroke='url(%23au4)' stroke-width='2'/%3E%3Crect x='50' y='10' width='8' height='44' rx='4' fill='%23881337' stroke='url(%23au4)' stroke-width='2'/%3E%3Cpath d='M16 24h32M16 34h32M26 15v34M38 15v34' stroke='%23fda4af' stroke-width='0.9' opacity='0.3'/%3E%3Cpath d='M20 34l12-11 12 11v12H20z' fill='%23230512' fill-opacity='0.7' stroke='%23fef08a' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M29 46v-8h6v8' fill='%23fde047'/%3E%3Ccircle cx='46' cy='19' r='4.2' fill='%23f43f5e' stroke='%23fef08a' stroke-width='1.4'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    reputationShop: true,
+  },
   ...CONSUMABLE_CATALOG.map((c): CollectibleItemDef => ({
     id: c.inventoryItemId,
     name: c.name,
@@ -940,7 +1002,7 @@ export const ITEM_BY_ID: Record<string, CollectibleItemDef> = Object.fromEntries
 export const COLLECTION_RED_ITEMS: readonly CollectibleItemDef[] = ITEM_CATALOG.filter(
   (item) =>
     item.rarity === "S" &&
-    !item.excludeFromRandomLoot &&
+    (!item.excludeFromRandomLoot || Boolean(item.reputationShop)) &&
     !item.backpackId &&
     !item.garmentId &&
     !item.consumableId,
@@ -994,6 +1056,7 @@ interface UpgradeRecipeStep {
   rarity: ItemRarity;
   count: number;
   qty: number | readonly number[];
+  fixedItemId?: string;
 }
 
 const UPGRADE_CONTRACT_RECIPES: Record<string, readonly UpgradeRecipeStep[]> = {
@@ -1007,8 +1070,9 @@ const UPGRADE_CONTRACT_RECIPES: Record<string, readonly UpgradeRecipeStep[]> = {
     { rarity: "S", count: 1, qty: 1 },
   ],
   safe_5x5: [
+    { rarity: "S", count: 1, qty: 1, fixedItemId: "rep_safebox_core" },
     { rarity: "A", count: 2, qty: 2 },
-    { rarity: "S", count: 2, qty: [2, 1] },
+    { rarity: "S", count: 1, qty: 1 },
   ],
   home_7x7: [
     { rarity: "C", count: 2, qty: 2 },
@@ -1024,8 +1088,9 @@ const UPGRADE_CONTRACT_RECIPES: Record<string, readonly UpgradeRecipeStep[]> = {
     { rarity: "S", count: 1, qty: 1 },
   ],
   home_9x16: [
+    { rarity: "S", count: 1, qty: 1, fixedItemId: "rep_mansion_blueprint" },
     { rarity: "A", count: 2, qty: [3, 2] },
-    { rarity: "S", count: 2, qty: [2, 1] },
+    { rarity: "S", count: 1, qty: 2 },
   ],
   gym_5: [
     { rarity: "C", count: 2, qty: 2 },
@@ -1036,8 +1101,9 @@ const UPGRADE_CONTRACT_RECIPES: Record<string, readonly UpgradeRecipeStep[]> = {
     { rarity: "A", count: 2, qty: 1 },
   ],
   gym_15: [
+    { rarity: "S", count: 1, qty: 1, fixedItemId: "rep_gym_license" },
     { rarity: "A", count: 2, qty: 2 },
-    { rarity: "S", count: 1, qty: 2 },
+    { rarity: "S", count: 1, qty: 1 },
   ],
   treadmill_5: [
     { rarity: "C", count: 2, qty: 2 },
@@ -1048,8 +1114,9 @@ const UPGRADE_CONTRACT_RECIPES: Record<string, readonly UpgradeRecipeStep[]> = {
     { rarity: "A", count: 2, qty: 1 },
   ],
   treadmill_20: [
+    { rarity: "S", count: 1, qty: 1, fixedItemId: "rep_treadmill_core" },
     { rarity: "A", count: 2, qty: 2 },
-    { rarity: "S", count: 1, qty: 2 },
+    { rarity: "S", count: 1, qty: 1 },
   ],
 };
 
@@ -1058,6 +1125,11 @@ function buildUpgradeRequirements(targetId: string): SafeboxQuestRequirement[] |
   if (!recipe) return null;
   const reqs: SafeboxQuestRequirement[] = [];
   for (const step of recipe) {
+    if (step.fixedItemId) {
+      const requiredCount = Array.isArray(step.qty) ? (step.qty[0] ?? 1) : step.qty;
+      reqs.push({ itemId: step.fixedItemId, requiredCount, deliveredCount: 0 });
+      continue;
+    }
     const picked = pickRandomDistinctItems(step.rarity, step.count);
     picked.forEach((item, idx) => {
       const requiredCount = Array.isArray(step.qty)
@@ -1566,6 +1638,7 @@ function shuffleArray<T>(list: T[]): T[] {
 export class InventoryManager {
   private state: PersistedInventoryState;
   private readonly onPersist?: (state: PersistedInventoryState) => void;
+  public onItemLooted?: (def: CollectibleItemDef) => void;
   private cachedBackpackWeightKg: number | null = null;
 
   constructor(
@@ -1955,6 +2028,10 @@ export class InventoryManager {
       rotated: targetRotated,
       revealed: true,
     });
+
+    if (fromZone === "container" && toZone !== "container") {
+      this.onItemLooted?.(def);
+    }
 
     this.saveState();
     return true;

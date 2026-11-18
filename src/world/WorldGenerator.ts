@@ -536,38 +536,42 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     // West Block (col 5..10)
     placeProp("city_hospital", 7, 23, 5, 3);
     placeProp("city_backpack_shop", 7, 36, 4, 2);
+    placeProp("city_pet_gacha", 7, 60, 4, 2);
     placeProp("city_police_station", 7, 72, 4, 2);
 
-    // Center Block (col 15..23) — Ryokan Home, Museum, Kimono Pavilion, Narita Airport & Harajuku Hair
+    // Center Block (col 15..23) — Ryokan Home, Kimono Pavilion, Narita Airport & Harajuku Hair
     placeProp("city_home_house", 16, 13, 3, 2);
-    placeProp("city_collection_hall", 21, 13, 4, 2);
     placeProp("city_clothing_shop", 19, 36, 4, 2);
     placeProp("city_airport", 19, 52, 5, 3);
     placeProp("city_hair_salon", 19, 60, 4, 2);
 
-    // East Safe Block (col 28..31) — Kanpo Apothecary, Quest Guild, Tokyo Ramen & Ginza Omakase
+    // East Safe Block (col 28..31) — Kanpo Apothecary, Quest Guild, Tokyo Ramen, Reputation Hall, Ginza Omakase & Isolated Collection Hall Corner
     placeProp("city_pharmacy", 29, 13, 4, 2);
     placeProp("city_quest_guild", 29, 23, 4, 2);
     placeProp("city_butcher_shop", 29, 36, 4, 2);
+    placeProp("city_reputation_hall", 29, 48, 4, 2);
     placeProp("plains_garden_inn", 29, 60, 5, 2);
+    placeProp("city_collection_hall", 29, 72, 4, 2);
   } else {
     // West Block (col 5..10)
     placeProp("city_pharmacy", 7, 13, 4, 2);
     placeProp("city_hospital", 7, 23, 5, 3);
     placeProp("city_clothing_shop", 7, 36, 4, 2);
+    placeProp("city_pet_gacha", 7, 60, 4, 2);
     placeProp("city_police_station", 7, 72, 4, 2);
 
-    // Center Safe Block (col 15..23) — Home House & Collection Hall side-by-side
+    // Center Safe Block (col 15..23)
     placeProp("city_home_house", 16, 13, 3, 2);
-    placeProp("city_collection_hall", 21, 13, 4, 2);
     placeProp("city_backpack_shop", 19, 36, 4, 2);
     placeProp("city_airport", 19, 52, 5, 3);
     placeProp("plains_garden_inn", 19, 60, 5, 2);
     placeProp("city_hair_salon", 19, 72, 4, 2);
 
-    // East Safe Strip (col 28..31)
+    // East Safe Strip (col 28..31) — Isolated Southeast Corner for Collection Hall
     placeProp("city_quest_guild", 29, 13, 4, 2);
+    placeProp("city_reputation_hall", 29, 24, 4, 2);
     placeProp("city_butcher_shop", 29, 36, 4, 2);
+    placeProp("city_collection_hall", 29, 72, 4, 2);
   }
 
   // === ZONE 2: YELLOW ZONE (col 32..104 — Urban East Tokyo + Samurai Countryside) ===

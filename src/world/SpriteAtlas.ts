@@ -77,6 +77,8 @@ const BUILDING_ASSET_ALIAS: Partial<Record<BuildingKind, string>> = {
   city_home_house: "bld-city_terrace_houses",
   city_collection_hall: "bld-city_museum",
   city_quest_guild: "bld-city_mansion_block",
+  city_reputation_hall: "bld-city_twin_towers",
+  city_pet_gacha: "bld-city_flower_shop",
 };
 
 const LPC_WALK_KEYS = [

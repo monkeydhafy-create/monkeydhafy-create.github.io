@@ -97,7 +97,9 @@ function buildBalancedReward(
   const totalBudgetGold = Math.round(baseDifficultyBudget + reimbursement);
 
   // High-difficulty quests (>= 6.0) have a controlled 12%..42% chance to award a rare S-tier Red Item
-  const sPool = Object.values(ITEM_BY_ID).filter((it) => it.rarity === "S" && !it.backpackId);
+  const sPool = Object.values(ITEM_BY_ID).filter(
+    (it) => it.rarity === "S" && !it.backpackId && !it.excludeFromRandomLoot,
+  );
   if (difficultyScore >= 6.0 && sPool.length > 0) {
     const redChance = clamp((difficultyScore - 5.5) * 0.14, 0.12, 0.42);
     if (rng() < redChance) {
@@ -339,6 +341,18 @@ export function generateDailyQuestBoard(
   }
 
   // Ensure every generated itemId is valid in ITEM_BY_ID
+  sanitizeQuestRewards(quests);
+
+  return {
+    epochIndex,
+    nextRefreshAt,
+    rerollCount,
+    mapId,
+    quests,
+  };
+}
+
+function sanitizeQuestRewards(quests: DailyQuestEntry[]): void {
   for (const q of quests) {
     if (q.reward.itemId && !ITEM_BY_ID[q.reward.itemId]) {
       q.reward.itemId = null;
@@ -346,12 +360,69 @@ export function generateDailyQuestBoard(
       q.reward.categoryLabel = "Tiền";
     }
   }
+}
+
+export function rerollPendingQuests(board: DailyQuestBoardState): DailyQuestBoardState {
+  const nextRerollCount = board.rerollCount + 1;
+  const seed =
+    ((board.epochIndex * 73856093) ^
+      (nextRerollCount * 19349663) ^
+      (board.mapId === "japan" ? 0x9e3779b9 : 0x517cc1b7)) >>>
+    0;
+  const rng = createSeededRng(seed);
+
+  const usedDeliverIds = new Set<string>();
+  const usedExploreTargets = new Set<ExploreTargetKind>();
+  for (const q of board.quests) {
+    if (q.claimed) {
+      if (q.targetItemId) usedDeliverIds.add(q.targetItemId);
+      if (q.exploreTarget) usedExploreTargets.add(q.exploreTarget);
+    }
+  }
+
+  const kinds: readonly DailyQuestKind[] = ["deliver", "explore", "minigame"];
+  const quests: DailyQuestEntry[] = board.quests.map((oldQ, i) => {
+    if (oldQ.claimed) return { ...oldQ, reward: { ...oldQ.reward } };
+
+    // Generate candidates across kinds and pick a different quest with similar difficulty & reward tier
+    let best: DailyQuestEntry | null = null;
+    let bestScore = Infinity;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const k = kinds[Math.floor(rng() * kinds.length)];
+      const cand =
+        k === "deliver"
+          ? createDeliverQuest(i, board.mapId, rng)
+          : k === "explore"
+            ? createExploreQuest(i, board.mapId, rng)
+            : createMinigameQuest(i, board.mapId, rng);
+
+      const isDuplicate =
+        (cand.targetItemId && (usedDeliverIds.has(cand.targetItemId) || cand.targetItemId === oldQ.targetItemId)) ||
+        (cand.exploreTarget &&
+          (usedExploreTargets.has(cand.exploreTarget) || cand.exploreTarget === oldQ.exploreTarget)) ||
+        cand.title === oldQ.title;
+
+      const diffDelta = Math.abs(cand.difficultyScore - oldQ.difficultyScore);
+      const score = diffDelta + (isDuplicate ? 100 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = cand;
+      }
+    }
+
+    const chosen = best ?? createDeliverQuest(i, board.mapId, rng);
+    if (chosen.targetItemId) usedDeliverIds.add(chosen.targetItemId);
+    if (chosen.exploreTarget) usedExploreTargets.add(chosen.exploreTarget);
+    return chosen;
+  });
+
+  sanitizeQuestRewards(quests);
 
   return {
-    epochIndex,
-    nextRefreshAt,
-    rerollCount,
-    mapId,
+    epochIndex: board.epochIndex,
+    nextRefreshAt: board.nextRefreshAt,
+    rerollCount: nextRerollCount,
+    mapId: board.mapId,
     quests,
   };
 }
