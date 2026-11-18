@@ -207,42 +207,46 @@
             </div>
 
             <div id="bag-personal-col" class="bag-personal-col">
-              <div id="backpack-panel" class="grid-panel">
-                <div class="grid-panel-head">
-                  <span id="backpack-panel-title">🎒 Balo Tân Thủ (4×4)</span>
-                  <span id="backpack-panel-sub" class="grid-sub"></span>
+              <div class="bag-personal-row bag-personal-row-main">
+                <div id="backpack-panel" class="grid-panel">
+                  <div class="grid-panel-head">
+                    <span id="backpack-panel-title">🎒 Balo Tân Thủ (4×4)</span>
+                    <span id="backpack-panel-sub" class="grid-sub"></span>
+                  </div>
+                  <div id="no-backpack-banner" class="no-backpack-banner is-hidden">
+                    🎒 Chưa đeo Balo (0/0 ô)
+                  </div>
+                  <div id="loot-backpack-grid" class="delta-grid" data-zone="backpack"></div>
                 </div>
-                <div id="no-backpack-banner" class="no-backpack-banner is-hidden">
-                  🎒 Chưa đeo Balo (0/0 ô)
+
+                <div id="safebox-panel" class="grid-panel safebox-panel">
+                  <div class="grid-panel-head safebox-head">
+                    <span id="safebox-panel-title">🔐 Safebox (2×2)</span>
+                    <span id="safebox-panel-sub" class="grid-sub">0/4 ô</span>
+                  </div>
+                  <div id="safebox-grid" class="delta-grid" data-zone="safebox"></div>
+                  <button id="btn-open-safebox-upgrade" class="btn-safebox-upgrade" type="button">
+                    ⬆️ Nâng cấp Safebox
+                  </button>
                 </div>
-                <div id="loot-backpack-grid" class="delta-grid" data-zone="backpack"></div>
               </div>
 
-              <div id="pocket-torso-panel" class="grid-panel is-hidden">
-                <div class="grid-panel-head">
-                  <span id="pocket-torso-title">👕 Túi Áo (2×2)</span>
-                  <span id="pocket-torso-sub" class="grid-sub">0/4 ô</span>
+              <div id="bag-pockets-row" class="bag-personal-row bag-personal-row-pockets is-hidden">
+                <div id="pocket-torso-panel" class="grid-panel is-hidden">
+                  <div class="grid-panel-head">
+                    <span id="pocket-torso-title">👕 Túi Áo (2×2)</span>
+                    <span id="pocket-torso-sub" class="grid-sub">0/4 ô</span>
+                  </div>
+                  <div id="pocket-torso-grid" class="delta-grid" data-zone="torso"></div>
                 </div>
-                <div id="pocket-torso-grid" class="delta-grid" data-zone="torso"></div>
-              </div>
 
-              <div id="pocket-legs-panel" class="grid-panel is-hidden">
-                <div class="grid-panel-head">
-                  <span id="pocket-legs-title">👖 Túi Quần (2×2)</span>
-                  <span id="pocket-legs-sub" class="grid-sub">0/4 ô</span>
+                <div id="pocket-legs-panel" class="grid-panel is-hidden">
+                  <div class="grid-panel-head">
+                    <span id="pocket-legs-title">👖 Túi Quần (2×2)</span>
+                    <span id="pocket-legs-sub" class="grid-sub">0/4 ô</span>
+                  </div>
+                  <div id="pocket-legs-grid" class="delta-grid" data-zone="legs"></div>
                 </div>
-                <div id="pocket-legs-grid" class="delta-grid" data-zone="legs"></div>
-              </div>
-
-              <div id="safebox-panel" class="grid-panel safebox-panel">
-                <div class="grid-panel-head safebox-head">
-                  <span id="safebox-panel-title">🔐 Safebox (2×2)</span>
-                  <span id="safebox-panel-sub" class="grid-sub">0/4 ô</span>
-                </div>
-                <div id="safebox-grid" class="delta-grid" data-zone="safebox"></div>
-                <button id="btn-open-safebox-upgrade" class="btn-safebox-upgrade" type="button">
-                  ⬆️ Nâng cấp Safebox
-                </button>
               </div>
             </div>
           </div>
@@ -290,6 +294,8 @@
                 <span id="shop-sell-title">💰 Thu Mua Vật Phẩm</span>
                 <div class="shop-sell-zone-tabs" role="tablist" aria-label="Nguồn đồ cần bán">
                   <button id="btn-sell-zone-bag" class="btn-sell-zone is-active" type="button">🎒 Đồ Balo</button>
+                  <button id="btn-sell-zone-torso" class="btn-sell-zone is-hidden" type="button">👕 Túi Áo</button>
+                  <button id="btn-sell-zone-legs" class="btn-sell-zone is-hidden" type="button">👖 Túi Quần</button>
                   <button id="btn-sell-zone-safebox" class="btn-sell-zone" type="button">🔐 Đồ Safebox</button>
                 </div>
               </div>

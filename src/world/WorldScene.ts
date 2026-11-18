@@ -2004,7 +2004,7 @@ export class WorldScene {
     consumable: ConsumableDef;
     count: number;
   }> {
-    const sorted = [...this.inventory.getBackpackItems()].sort((a, b) =>
+    const sorted = [...this.inventory.getCarriedItems()].sort((a, b) =>
       a.y !== b.y ? a.y - b.y : a.x - b.x,
     );
     const byId = new Map<
@@ -2118,7 +2118,7 @@ export class WorldScene {
         message: `Đang dùng ${this.pendingConsume.consumable.name}, vui lòng chờ xong!`,
       };
     }
-    const inst = this.inventory.getBackpackItems().find((i) => i.uid === uid);
+    const inst = this.inventory.getCarriedItems().find((i) => i.uid === uid);
     const itemDef = inst ? ITEM_BY_ID[inst.itemId] : null;
     const def = itemDef?.consumableId ? CONSUMABLE_BY_ID[itemDef.consumableId] : null;
     if (!inst || !def) {
@@ -2186,7 +2186,7 @@ export class WorldScene {
       const consumed = this.inventory.consumeBackpackItem(job.backpackUid);
       if (!consumed) return;
       this.applyConsumableEffect(consumed);
-      const remainingInst = this.inventory.getBackpackItems().find((i) => i.uid === job.backpackUid);
+      const remainingInst = this.inventory.getCarriedItems().find((i) => i.uid === job.backpackUid);
       const usesTitle = remainingInst
         ? `Còn ${getItemRemainingUses(remainingInst)}/${consumed.maxUses} lần`
         : `0/${consumed.maxUses} lần`;

@@ -12,6 +12,24 @@ import type { BiomeId, ItemRarity, MapId, SecurityZone } from "./types.ts";
 
 export type GridZone = "backpack" | "container" | "home" | "safebox" | "torso" | "legs";
 
+/** Zones owned by the player: can sell from / deliver from / withdraw into. */
+export type OwnedZone = "backpack" | "torso" | "legs" | "safebox" | "home";
+
+export function getOwnedZoneLabel(zone: OwnedZone): string {
+  switch (zone) {
+    case "backpack":
+      return "Balo";
+    case "torso":
+      return "Túi Áo";
+    case "legs":
+      return "Túi Quần";
+    case "safebox":
+      return "Safebox";
+    default:
+      return "Kho Nhà";
+  }
+}
+
 export const LOCKED_PUZZLE_KINDS = [
   "wires",
   "pipes",
@@ -1073,8 +1091,8 @@ export interface CollectionActionResult {
   ok: boolean;
   slot?: CollectionSlotState;
   message: string;
-  sourceZone?: "backpack" | "safebox" | "home";
-  destZone?: "backpack" | "safebox" | "home";
+  sourceZone?: OwnedZone;
+  destZone?: OwnedZone;
 }
 
 export const BACKPACK_BY_ID: Record<string, BackpackTierDef> = Object.fromEntries(
@@ -1829,36 +1847,25 @@ export class InventoryManager {
     this.saveState();
   }
 
-  public receiveAuctionItemToStorage(inst: GridItemInstance): { ok: boolean; zone: "backpack" | "safebox" | null } {
+  public receiveAuctionItemToStorage(inst: GridItemInstance): { ok: boolean; zone: OwnedZone | null } {
     const def = ITEM_BY_ID[inst.itemId];
     if (!def) return { ok: false, zone: null };
-    const bp = this.getBackpackTier();
-    if (bp) {
-      const slot = findFirstFitOnGrid(bp.cols, bp.rows, this.state.backpackItems, def, Boolean(inst.rotated));
+    for (const zone of ["backpack", "torso", "legs", "safebox", "home"] as const) {
+      const grid = this.resolveZoneGrid(zone, null);
+      if (!grid || grid.cols <= 0 || grid.rows <= 0) continue;
+      const slot = findFirstFitOnGrid(grid.cols, grid.rows, grid.items, def, Boolean(inst.rotated));
       if (slot) {
-        this.state.backpackItems.push({
+        grid.items.push({
           ...inst,
           uid: `auc_${this.state.nextUid++}`,
           x: slot.x,
           y: slot.y,
           rotated: slot.rotated,
         });
+        if (zone === "backpack") this.cachedBackpackWeightKg = null;
         this.saveState();
-        return { ok: true, zone: "backpack" };
+        return { ok: true, zone };
       }
-    }
-    const sb = this.getSafeboxTier();
-    const sbSlot = findFirstFitOnGrid(sb.cols, sb.rows, this.state.safeboxItems, def, Boolean(inst.rotated));
-    if (sbSlot) {
-      this.state.safeboxItems.push({
-        ...inst,
-        uid: `auc_${this.state.nextUid++}`,
-        x: sbSlot.x,
-        y: sbSlot.y,
-        rotated: sbSlot.rotated,
-      });
-      this.saveState();
-      return { ok: true, zone: "safebox" };
     }
     return { ok: false, zone: null };
   }
@@ -2599,8 +2606,10 @@ export class InventoryManager {
     };
   }
 
-  public sellItemInZone(zone: "backpack" | "safebox", uid: string): number {
-    const list = zone === "safebox" ? this.state.safeboxItems : this.state.backpackItems;
+  public sellItemInZone(zone: "backpack" | "safebox" | "torso" | "legs", uid: string): number {
+    const grid = this.resolveZoneGrid(zone, null);
+    if (!grid) return 0;
+    const list = grid.items;
     const idx = list.findIndex((i) => i.uid === uid);
     if (idx === -1) return 0;
     const item = list[idx];
@@ -2613,10 +2622,12 @@ export class InventoryManager {
   }
 
   public sellAllInZone(
-    zone: "backpack" | "safebox",
+    zone: "backpack" | "safebox" | "torso" | "legs",
     onlyNonFood = false,
   ): { soldCount: number; earnedGold: number } {
-    const list = zone === "safebox" ? this.state.safeboxItems : this.state.backpackItems;
+    const grid = this.resolveZoneGrid(zone, null);
+    if (!grid) return { soldCount: 0, earnedGold: 0 };
+    const list = grid.items;
     let soldCount = 0;
     let earnedGold = 0;
     const keep: GridItemInstance[] = [];
@@ -2633,8 +2644,7 @@ export class InventoryManager {
     }
 
     if (soldCount > 0) {
-      if (zone === "safebox") this.state.safeboxItems = keep;
-      else this.state.backpackItems = keep;
+      list.splice(0, list.length, ...keep);
       this.state.gold += earnedGold;
       this.saveState();
     }
@@ -2659,7 +2669,7 @@ export class InventoryManager {
   }
 
   public canFitItemInZone(
-    zone: "backpack" | "home" | "safebox",
+    zone: OwnedZone,
     itemId: string,
     ignoreUid?: string,
   ): { x: number; y: number; rotated: boolean } | null {
@@ -2672,7 +2682,7 @@ export class InventoryManager {
   }
 
   public addItemToZone(
-    zone: "backpack" | "home" | "safebox",
+    zone: OwnedZone,
     itemId: string,
     originBiome: BiomeId = "city",
   ): { ok: boolean; message: string } {
@@ -2688,7 +2698,7 @@ export class InventoryManager {
     }
     const fit = findFirstFitOnGrid(dest.cols, dest.rows, dest.items, def, false);
     if (!fit) {
-      const label = zone === "home" ? "Kho Nhà" : zone === "safebox" ? "Safebox" : "Balo";
+      const label = getOwnedZoneLabel(zone);
       return {
         ok: false,
         message:
@@ -2780,15 +2790,17 @@ export class InventoryManager {
   public countItemAcrossZones(itemId: string): {
     total: number;
     backpack: number;
+    pockets: number;
     safebox: number;
     home: number;
   } {
     const countIn = (arr: readonly GridItemInstance[]) =>
       arr.reduce((acc, it) => acc + (it.itemId === itemId ? 1 : 0), 0);
     const backpack = countIn(this.state.backpackItems);
+    const pockets = countIn(this.state.torsoItems ?? []) + countIn(this.state.legsItems ?? []);
     const safebox = countIn(this.state.safeboxItems);
     const home = countIn(this.state.homeItems);
-    return { total: backpack + safebox + home, backpack, safebox, home };
+    return { total: backpack + pockets + safebox + home, backpack, pockets, safebox, home };
   }
 
   public consumeItemsPreferred(itemId: string, count: number): number {
@@ -2809,9 +2821,13 @@ export class InventoryManager {
     this.saveState();
   }
 
-  private removeOneItemByIdPreferred(itemId: string): "backpack" | "safebox" | "home" | null {
+  private removeOneItemByIdPreferred(itemId: string): OwnedZone | null {
+    if (!this.state.torsoItems) this.state.torsoItems = [];
+    if (!this.state.legsItems) this.state.legsItems = [];
     for (const [zone, list] of [
       ["backpack", this.state.backpackItems],
+      ["torso", this.state.torsoItems],
+      ["legs", this.state.legsItems],
       ["safebox", this.state.safeboxItems],
       ["home", this.state.homeItems],
     ] as const) {
@@ -2918,7 +2934,7 @@ export class InventoryManager {
     ok: boolean;
     upgraded: boolean;
     newTier?: SafeboxTierDef;
-    removedFrom?: "backpack" | "safebox" | "home";
+    removedFrom?: OwnedZone;
     message: string;
   } {
     const meta = this.resolveUpgradeMeta(kind);
@@ -3025,7 +3041,7 @@ export class InventoryManager {
       return {
         deliveredTotal: 0,
         upgraded: false,
-        message: "Chưa có vật phẩm phù hợp nào trong Balo / Safebox / Kho Nhà để giao.",
+        message: "Chưa có vật phẩm phù hợp nào trong Balo / Túi Áo / Túi Quần / Safebox / Kho Nhà để giao.",
       };
     }
 
@@ -3105,14 +3121,13 @@ export class InventoryManager {
       return {
         ok: false,
         slot,
-        message: `Không tìm thấy ${def.name} trong Balo, Safebox hoặc Kho Nhà.`,
+        message: `Không tìm thấy ${def.name} trong Balo, Túi Áo / Quần, Safebox hoặc Kho Nhà.`,
       };
     }
     const nextSlot: CollectionSlotState = { ...slot, displayed: true };
     this.writeCollectionSlot(itemId, nextSlot);
     this.saveState();
-    const zoneLabel =
-      removedFrom === "backpack" ? "Balo" : removedFrom === "safebox" ? "Safebox" : "Kho Nhà";
+    const zoneLabel = getOwnedZoneLabel(removedFrom);
     return {
       ok: true,
       slot: { ...nextSlot },
@@ -3130,7 +3145,7 @@ export class InventoryManager {
     if (!slot.displayed) {
       return { ok: false, slot, message: `${def.name} hiện chưa được đặt trong khung.` };
     }
-    const zones: Array<"backpack" | "safebox" | "home"> = ["backpack", "safebox", "home"];
+    const zones: OwnedZone[] = ["backpack", "torso", "legs", "safebox", "home"];
     const destZone = zones.find((z) => this.canFitItemInZone(z, itemId));
     if (!destZone) {
       return {
@@ -3147,8 +3162,7 @@ export class InventoryManager {
       this.writeCollectionSlot(itemId, slot);
       return { ok: false, slot, message: added.message };
     }
-    const destLabel =
-      destZone === "backpack" ? "Balo" : destZone === "safebox" ? "Safebox" : "Kho Nhà";
+    const destLabel = getOwnedZoneLabel(destZone);
     return {
       ok: true,
       slot: { ...nextSlot },
@@ -3224,10 +3238,29 @@ export class InventoryManager {
     };
   }
 
+  /** Items the player physically carries and can use on the go: Backpack + shirt/pants pockets. */
+  public getCarriedItems(): readonly GridItemInstance[] {
+    return [
+      ...this.state.backpackItems,
+      ...(this.state.torsoItems ?? []),
+      ...(this.state.legsItems ?? []),
+    ];
+  }
+
   public consumeBackpackItem(uid: string): ConsumableDef | null {
-    const idx = this.state.backpackItems.findIndex((i) => i.uid === uid);
-    if (idx === -1) return null;
-    const item = this.state.backpackItems[idx];
+    const lists = [this.state.backpackItems, this.state.torsoItems ?? [], this.state.legsItems ?? []];
+    let list: GridItemInstance[] | null = null;
+    let idx = -1;
+    for (const l of lists) {
+      const i = l.findIndex((it) => it.uid === uid);
+      if (i !== -1) {
+        list = l;
+        idx = i;
+        break;
+      }
+    }
+    if (!list || idx === -1) return null;
+    const item = list[idx];
     const def = ITEM_BY_ID[item.itemId];
     if (!def?.consumableId) return null;
     const consumable = CONSUMABLE_BY_ID[def.consumableId];
@@ -3236,7 +3269,7 @@ export class InventoryManager {
     if (curUses > 1) {
       item.usesLeft = curUses - 1;
     } else {
-      this.state.backpackItems.splice(idx, 1);
+      list.splice(idx, 1);
     }
     this.saveState();
     return consumable;
@@ -3425,6 +3458,15 @@ export class InventoryManager {
     const [removed] = this.state.backpackItems.splice(idx, 1);
     this.saveState();
     return removed;
+  }
+
+  /** Removes a carried item (Backpack, shirt pocket or pants pocket) by uid. */
+  public removeCarriedItemByUid(uid: string): GridItemInstance | null {
+    for (const zone of ["backpack", "torso", "legs"] as const) {
+      const removed = this.removeItemFromZone(zone, uid);
+      if (removed) return removed;
+    }
+    return null;
   }
 
   public applySharedContainerSnapshot(

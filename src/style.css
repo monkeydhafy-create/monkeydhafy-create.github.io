@@ -3683,8 +3683,19 @@ button {
 
 .bag-personal-col {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
+.bag-personal-row {
+  display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-start;
   justify-content: center;
   gap: 8px 10px;
@@ -3692,20 +3703,11 @@ button {
   min-width: 0;
 }
 
-/* Visual rows: [Balo | Safebox] on top, [Túi Áo | Túi Quần] below */
-.bag-personal-col > #backpack-panel {
-  order: 1;
+.bag-personal-row.is-hidden {
+  display: none !important;
 }
-.bag-personal-col > #safebox-panel {
-  order: 2;
-}
-.bag-personal-col > #pocket-torso-panel {
-  order: 3;
-}
-.bag-personal-col > #pocket-legs-panel {
-  order: 4;
-}
-.bag-personal-col > .grid-panel {
+
+.bag-personal-row > .grid-panel {
   min-width: 0;
   max-width: 100%;
 }

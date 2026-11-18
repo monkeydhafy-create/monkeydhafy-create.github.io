@@ -28,6 +28,7 @@ import {
   getItemMaxUses,
   getItemRemainingUses,
   getItemSearchDurationMs,
+  getOwnedZoneLabel,
   getNextAuctionTier,
   getNextGymTier,
   getNextHomeTier,
@@ -307,6 +308,7 @@ export class Hud {
   private readonly safeboxSubEl: HTMLElement;
   private readonly openSafeboxUpgradeBtn: HTMLButtonElement;
   private readonly safeboxGridEl: HTMLElement;
+  private readonly pocketPanelsRowEl: HTMLElement | null;
   private readonly pocketTorsoPanelEl: HTMLElement;
   private readonly pocketTorsoTitleEl: HTMLElement;
   private readonly pocketTorsoSubEl: HTMLElement;
@@ -329,6 +331,8 @@ export class Hud {
   private readonly shopBackpacksEl: HTMLElement;
   private readonly shopSellTitleEl: HTMLElement;
   private readonly shopSellZoneBagBtn: HTMLButtonElement;
+  private readonly shopSellZoneTorsoBtn: HTMLButtonElement;
+  private readonly shopSellZoneLegsBtn: HTMLButtonElement;
   private readonly shopSellZoneSafeboxBtn: HTMLButtonElement;
   private readonly shopSellGridEl: HTMLElement;
   private readonly shopInspectorEl: HTMLElement;
@@ -523,7 +527,7 @@ export class Hud {
   private isBagOpen = false;
   private isHomeStorageOpen = false;
   private isShopOpen = false;
-  private shopSellZone: "backpack" | "safebox" = "backpack";
+  private shopSellZone: "backpack" | "torso" | "legs" | "safebox" = "backpack";
   private isSafeboxModalOpen = false;
   private isQuestBoardOpen = false;
   private isGuideModalOpen = false;
@@ -671,6 +675,7 @@ export class Hud {
     this.safeboxSubEl = document.getElementById("safebox-panel-sub")!;
     this.openSafeboxUpgradeBtn = document.getElementById("btn-open-safebox-upgrade") as HTMLButtonElement;
     this.safeboxGridEl = document.getElementById("safebox-grid")!;
+    this.pocketPanelsRowEl = document.getElementById("bag-pockets-row");
     this.pocketTorsoPanelEl = document.getElementById("pocket-torso-panel")!;
     this.pocketTorsoTitleEl = document.getElementById("pocket-torso-title")!;
     this.pocketTorsoSubEl = document.getElementById("pocket-torso-sub")!;
@@ -692,6 +697,8 @@ export class Hud {
     this.shopBackpacksEl = document.getElementById("shop-backpacks")!;
     this.shopSellTitleEl = document.getElementById("shop-sell-title")!;
     this.shopSellZoneBagBtn = document.getElementById("btn-sell-zone-bag") as HTMLButtonElement;
+    this.shopSellZoneTorsoBtn = document.getElementById("btn-sell-zone-torso") as HTMLButtonElement;
+    this.shopSellZoneLegsBtn = document.getElementById("btn-sell-zone-legs") as HTMLButtonElement;
     this.shopSellZoneSafeboxBtn = document.getElementById("btn-sell-zone-safebox") as HTMLButtonElement;
     this.shopSellGridEl = document.getElementById("shop-sell-grid")!;
     this.shopInspectorEl = document.getElementById("shop-inspector")!;
@@ -1804,14 +1811,14 @@ export class Hud {
 
     const bpTitle = document.createElement("div");
     bpTitle.className = "auction-section-title";
-    bpTitle.textContent = "🎒 Chọn vật phẩm trong Balo để treo bán (24h)";
+    bpTitle.textContent = "🎒 Chọn vật phẩm trong Balo / Túi Áo / Túi Quần để treo bán (24h)";
     this.auctionBodyEl.appendChild(bpTitle);
 
-    const bpItems = inv.getBackpackItems();
+    const bpItems = inv.getCarriedItems();
     if (bpItems.length === 0) {
       const empty = document.createElement("div");
       empty.className = "auction-empty";
-      empty.textContent = "Balo đang trống. Hãy đi loot đồ rồi quay lại treo bán nhé!";
+      empty.textContent = "Balo và túi đang trống. Hãy đi loot đồ rồi quay lại treo bán nhé!";
       this.auctionBodyEl.appendChild(empty);
       return;
     }
@@ -1943,7 +1950,7 @@ export class Hud {
       this.setAuctionStatus(res.message, true);
       return;
     }
-    this.scene.inventory.removeItemFromBackpackByUid(inst.uid);
+    this.scene.inventory.removeCarriedItemByUid(inst.uid);
     this.scene.requestSaveNow(true);
     this.refreshBagBadge();
     this.setAuctionStatus(`✅ ${res.message}`, false);
@@ -1990,10 +1997,8 @@ export class Hud {
     const placed = this.scene.inventory.receiveAuctionItemToStorage(res.itemData);
     this.scene.requestSaveNow(true);
     this.refreshBagBadge();
-    const zoneLabel = placed.ok
-      ? placed.zone === "backpack"
-        ? "Balo"
-        : "Hòm Bảo Hiểm"
+    const zoneLabel = placed.ok && placed.zone
+      ? getOwnedZoneLabel(placed.zone)
       : "Kho Nhà";
     this.setAuctionStatus(`✅ ${res.message} (Đã chuyển vào ${zoneLabel})`, false);
     await this.refreshAuctionListings(true);
@@ -3256,6 +3261,18 @@ export class Hud {
       this.renderShopModal();
     });
 
+    this.shopSellZoneTorsoBtn.addEventListener("click", () => {
+      this.shopSellZone = "torso";
+      this.selectedShopUid = null;
+      this.renderShopModal();
+    });
+
+    this.shopSellZoneLegsBtn.addEventListener("click", () => {
+      this.shopSellZone = "legs";
+      this.selectedShopUid = null;
+      this.renderShopModal();
+    });
+
     this.shopSellZoneSafeboxBtn.addEventListener("click", () => {
       this.shopSellZone = "safebox";
       this.selectedShopUid = null;
@@ -3339,7 +3356,7 @@ export class Hud {
 
     this.shopSellNonFoodBtn.addEventListener("click", () => {
       const { soldCount, earnedGold } = this.scene.inventory.sellAllInZone(this.shopSellZone, true);
-      const zoneLabel = this.shopSellZone === "safebox" ? "Safebox" : "Balo";
+      const zoneLabel = this.getSellZoneLabel();
       this.showDiscoveryToast(
         soldCount > 0 ? "🧺 Đã bán vật phẩm (trừ đồ ăn)" : "Không có vật phẩm cần bán",
         soldCount > 0
@@ -3353,7 +3370,7 @@ export class Hud {
 
     this.shopSellAllBtn.addEventListener("click", () => {
       const { soldCount, earnedGold } = this.scene.inventory.sellAllInZone(this.shopSellZone, false);
-      const zoneLabel = this.shopSellZone === "safebox" ? "Safebox" : "Balo";
+      const zoneLabel = this.getSellZoneLabel();
       this.showDiscoveryToast(
         soldCount > 0 ? `💵 Đã bán toàn bộ ${zoneLabel}` : `${zoneLabel} trống`,
         soldCount > 0 ? `Thu về +${earnedGold.toLocaleString("vi-VN")} Vàng!` : "Chưa có vật phẩm để bán.",
@@ -4294,6 +4311,7 @@ export class Hud {
       this.pocketLegsPanelEl.classList.add("is-hidden");
       this.pocketLegsGridEl.replaceChildren();
     }
+    this.pocketPanelsRowEl?.classList.toggle("is-hidden", !torsoPocket && !legsPocket);
 
     this.renderInspector();
   }
@@ -5181,6 +5199,19 @@ export class Hud {
     this.inspectorEl.append(left, actions);
   }
 
+  private getSellZoneLabel(): string {
+    switch (this.shopSellZone) {
+      case "safebox":
+        return "Safebox";
+      case "torso":
+        return "Túi Áo";
+      case "legs":
+        return "Túi Quần";
+      default:
+        return "Balo";
+    }
+  }
+
   private renderShopModal(): void {
     const bp = this.scene.inventory.getBackpackTier();
     const sb = this.scene.inventory.getSafeboxTier();
@@ -5354,20 +5385,34 @@ export class Hud {
       this.shopBackpacksEl.appendChild(card);
     }
 
-    // Sell zone switcher & grid
-    const isSellSafebox = this.shopSellZone === "safebox";
-    this.shopSellZoneBagBtn.classList.toggle("is-active", !isSellSafebox);
+    // Sell zone switcher & grid (Balo, Túi Áo, Túi Quần, Safebox)
+    const torsoPocketSize = this.scene.inventory.getPocketSize("torso");
+    const legsPocketSize = this.scene.inventory.getPocketSize("legs");
+    this.shopSellZoneTorsoBtn.classList.toggle("is-hidden", !torsoPocketSize);
+    this.shopSellZoneLegsBtn.classList.toggle("is-hidden", !legsPocketSize);
+    if (
+      (this.shopSellZone === "torso" && !torsoPocketSize) ||
+      (this.shopSellZone === "legs" && !legsPocketSize)
+    ) {
+      this.shopSellZone = "backpack";
+    }
+    const sellZone = this.shopSellZone;
+    const isSellSafebox = sellZone === "safebox";
+    this.shopSellZoneBagBtn.classList.toggle("is-active", sellZone === "backpack");
+    this.shopSellZoneTorsoBtn.classList.toggle("is-active", sellZone === "torso");
+    this.shopSellZoneLegsBtn.classList.toggle("is-active", sellZone === "legs");
     this.shopSellZoneSafeboxBtn.classList.toggle("is-active", isSellSafebox);
-    this.shopSellTitleEl.textContent = isSellSafebox
-      ? "💰 Bán Đồ Trong Safebox (Chạm item)"
-      : "💰 Bán Đồ Trong Balo (Chạm item)";
-    this.shopSellAllBtn.textContent = isSellSafebox ? "💵 Bán toàn bộ Safebox" : "💵 Bán toàn bộ Balo";
+    const sellZoneLabel = this.getSellZoneLabel();
+    this.shopSellTitleEl.textContent = `💰 Bán Đồ Trong ${sellZoneLabel} (Chạm item)`;
+    this.shopSellAllBtn.textContent = `💵 Bán toàn bộ ${sellZoneLabel}`;
 
-    const sellItems = isSellSafebox
+    const sellItems: readonly GridItemInstance[] = isSellSafebox
       ? this.scene.inventory.getSafeboxItems()
-      : this.scene.inventory.getBackpackItems();
+      : sellZone === "torso" || sellZone === "legs"
+        ? this.scene.inventory.getPocketItems(sellZone)
+        : this.scene.inventory.getBackpackItems();
 
-    if (!isSellSafebox && !bp) {
+    if (sellZone === "backpack" && !bp) {
       this.shopSellGridEl.replaceChildren();
       this.shopSellGridEl.style.gridTemplateColumns = "1fr";
       this.shopSellGridEl.style.gridTemplateRows = "auto";
@@ -5376,8 +5421,9 @@ export class Hud {
       emptyMsg.textContent = "Chưa đeo Balo.";
       this.shopSellGridEl.appendChild(emptyMsg);
     } else {
-      const gridCols = isSellSafebox ? sb.cols : bp!.cols;
-      const gridRows = isSellSafebox ? sb.rows : bp!.rows;
+      const pocketDims = sellZone === "torso" ? torsoPocketSize : sellZone === "legs" ? legsPocketSize : null;
+      const gridCols = isSellSafebox ? sb.cols : pocketDims ? pocketDims.cols : bp!.cols;
+      const gridRows = isSellSafebox ? sb.rows : pocketDims ? pocketDims.rows : bp!.rows;
       this.renderDeltaGrid(
         this.shopSellGridEl,
         gridCols,
