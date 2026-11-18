@@ -6,7 +6,8 @@
   "scripts": {
     "start": "npm run dev",
     "dev": "vite",
-    "build": "oxlint && tsc && vite build",
+    "verify:security": "node scripts/check-save-architecture.mjs",
+    "build": "node scripts/check-save-architecture.mjs && oxlint && tsc && vite build",
     "preview": "vite preview",
     "lint": "oxlint",
     "format": "oxfmt"

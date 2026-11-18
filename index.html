@@ -2,66 +2,542 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/assets/world/items/s_royal_chest_pack.png" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <link rel="stylesheet" href="/style.css" />
-    <title>PixiJS v8 — 2D Open-World Template</title>
+    <title>Săn Kho Báu &amp; Sinh Tồn — Thế Giới Mở 2D</title>
   </head>
   <body>
     <div id="app">
       <div id="pixi-container"></div>
+      <div id="survival-vignette" class="survival-vignette" aria-hidden="true"></div>
+      <div id="hospital-overlay" class="hospital-overlay" role="alert" aria-live="assertive">
+        <div class="hospital-card">
+          <div class="hospital-icon">🚑</div>
+          <div id="hospital-title" class="hospital-title">Ngất xỉu vì kiệt sức!</div>
+          <div id="hospital-sub" class="hospital-sub">Xe cứu thương đang đưa bạn về Bệnh Viện Thành Phố...</div>
+        </div>
+      </div>
 
-      <!-- Retina-Crisp HTML/CSS Overlay HUD -->
+      <div id="detention-overlay" class="detention-banner" role="status" aria-live="polite">
+        <div class="detention-banner-head">
+          <span class="detention-banner-badge">🚓 PHÒNG TẠM GIAM PHƯỜNG</span>
+          <span id="detention-countdown" class="detention-countdown">⏳ Còn 60s</span>
+        </div>
+        <div id="detention-sub" class="detention-banner-sub"></div>
+      </div>
+
+      <!-- Minimalist Clean HUD Overlay -->
       <div id="hud" aria-label="Game HUD">
-        <!-- Top Bar -->
+        <!-- Top Bar: Compact Survival Telemetry (left) + Expandable Minimap (right) -->
         <div class="hud-top">
-          <div class="hud-pill">
-            <div class="hud-dot"></div>
-            <div class="hud-meta">
-              <div id="hud-biome" class="hud-biome">Quảng Trường Cổ</div>
-              <div class="hud-subrow">
-                <span id="hud-coords">X:48 Y:49</span>
-                <span class="hud-sep">•</span>
-                <span id="hud-fps">60 FPS</span>
+          <div id="survival-panel" class="survival-panel" aria-label="Chỉ số sinh tồn">
+            <div class="sv-bars">
+              <div class="sv-row">
+                <span class="sv-ico" title="Máu">❤️</span>
+                <div class="sv-track"><div id="sv-hp-bar" class="sv-fill is-hp"></div></div>
+                <span id="sv-hp-val" class="sv-num">100</span>
+              </div>
+              <div class="sv-row">
+                <span class="sv-ico" title="Độ no">🍗</span>
+                <div class="sv-track"><div id="sv-hunger-bar" class="sv-fill is-hunger"></div></div>
+                <span id="sv-hunger-val" class="sv-num">100</span>
+              </div>
+              <div class="sv-row">
+                <span class="sv-ico" title="Thể lực (Mệt mỏi)">⚡</span>
+                <div class="sv-track"><div id="sv-stamina-bar" class="sv-fill is-stamina"></div></div>
+                <span id="sv-stamina-val" class="sv-num">100</span>
+              </div>
+            </div>
+            <div id="sv-thermal-text" class="sv-thermal">🌡️ 36.8°C • 🌤️ 25°C</div>
+          </div>
+
+          <button
+            id="btn-minimap"
+            class="hud-minimap-wrap"
+            type="button"
+            title="Chạm để mở bản đồ lớn"
+            aria-label="Mở bản đồ lớn"
+          >
+            <canvas id="hud-minimap" width="146" height="84"></canvas>
+            <span class="minimap-badge">🗺️</span>
+          </button>
+        </div>
+
+        <!-- Bottom Stack: Context Interact Pill + Wardrobe & Backpack Buttons -->
+        <div class="hud-footer-stack">
+          <div id="interact-bar" class="interact-bar" aria-live="polite">
+            <button id="btn-interact" class="btn-interact" type="button"></button>
+          </div>
+
+          <div class="hud-bottom hud-bottom-end">
+            <div id="hud-controls" class="hud-controls">
+              <button id="btn-quick-use" class="hud-pill-btn hud-quick-btn" type="button" aria-label="Dùng nhanh vật phẩm">
+                ⚡ Dùng nhanh
+              </button>
+              <button id="btn-wardrobe" class="hud-pill-btn hud-wardrobe-btn" type="button" aria-label="Nhân vật & Trang bị">
+                👤 Trang bị
+              </button>
+              <button id="btn-bag" class="hud-pill-btn hud-bag-btn" type="button" aria-label="Mở balo nhân vật">
+                🎒 Balo (0/16)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Discovery / Loot Banner Toast (rendered above all modals) -->
+      <div id="hud-toast" class="hud-toast" role="status" aria-live="polite">
+        <div id="hud-toast-title" class="hud-toast-title"></div>
+        <div id="hud-toast-sub" class="hud-toast-sub"></div>
+      </div>
+
+      <!-- Large Interactive World Map Modal -->
+      <div id="fullmap-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="fullmap-title">
+        <div class="bag-card fullmap-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="fullmap-title" class="bag-title">🗺️ Bản Đồ Thế Giới (3 Khu Vực)</h2>
+              <div id="fullmap-meta" class="bag-stats"></div>
+            </div>
+            <button id="btn-fullmap-close" class="bag-close" type="button" aria-label="Đóng bản đồ">✕</button>
+          </div>
+          <div class="fullmap-wrap">
+            <canvas id="fullmap-canvas" width="730" height="420"></canvas>
+          </div>
+          <div class="bag-footer">
+            <span class="fullmap-legend">🏠 Nhà • 🏛️ Sưu Tầm • 🏪 Shop Balo • 👔 Shop Áo • 💇 Tiệm Tóc • 🍜 Quán Ăn • 💊 Nhà Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spatial Delta-Force Grid Inventory & Container Search Modal -->
+      <div id="bag-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="bag-title">
+        <div class="bag-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="bag-title" class="bag-title">🎒 Kho Đồ & Tìm Kiếm</h2>
+              <div id="bag-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-bag-close" class="bag-close" type="button" aria-label="Đóng">✕</button>
+          </div>
+
+          <div id="bag-grids-wrap" class="bag-grids-wrap">
+            <div id="container-panel" class="grid-panel">
+              <div class="grid-panel-head">
+                <span id="container-panel-title">📦 Nơi tìm kiếm (6×6)</span>
+                <span id="container-panel-sub" class="grid-sub"></span>
+              </div>
+              <div id="loot-container-grid" class="delta-grid" data-zone="container"></div>
+              <button id="btn-open-home-upgrade" class="btn-safebox-upgrade is-hidden" type="button">
+                ⬆️ Nâng cấp (Kho • Gym • Máy chạy)
+              </button>
+            </div>
+
+            <div id="bag-personal-col" class="bag-personal-col">
+              <div id="backpack-panel" class="grid-panel">
+                <div class="grid-panel-head">
+                  <span id="backpack-panel-title">🎒 Balo Tân Thủ (4×4)</span>
+                  <span id="backpack-panel-sub" class="grid-sub"></span>
+                </div>
+                <div id="no-backpack-banner" class="no-backpack-banner is-hidden">
+                  🎒 Chưa đeo Balo (0/0 ô)
+                </div>
+                <div id="loot-backpack-grid" class="delta-grid" data-zone="backpack"></div>
+              </div>
+
+              <div id="safebox-panel" class="grid-panel safebox-panel">
+                <div class="grid-panel-head safebox-head">
+                  <span id="safebox-panel-title">🔐 Safebox (2×2)</span>
+                  <span id="safebox-panel-sub" class="grid-sub">0/4 ô</span>
+                </div>
+                <div id="safebox-grid" class="delta-grid" data-zone="safebox"></div>
+                <button id="btn-open-safebox-upgrade" class="btn-safebox-upgrade" type="button">
+                  ⬆️ Nâng cấp Safebox
+                </button>
               </div>
             </div>
           </div>
 
-          <div class="hud-minimap-wrap">
-            <canvas
-              id="hud-minimap"
-              width="96"
-              height="96"
-              title="Chạm bản đồ nhỏ để di chuyển tới vị trí"
-            ></canvas>
-          </div>
+          <div id="item-inspector" class="item-inspector is-hidden"></div>
         </div>
+      </div>
 
-        <!-- Discovery Banner Toast -->
-        <div id="hud-toast" class="hud-toast" role="status" aria-live="polite">
-          <div id="hud-toast-title" class="hud-toast-title"></div>
-          <div id="hud-toast-sub" class="hud-toast-sub"></div>
-        </div>
-
-        <!-- Bottom Bar -->
-        <div class="hud-bottom">
-          <div class="hud-hint">
-            <span class="hint-mobile">Chạm hoặc kéo trên mặt đất để di chuyển</span>
-            <span class="hint-desktop">Click / Giữ chuột hoặc WASD để đi • Cuộn chuột để Zoom</span>
+      <!-- Backpack & Merchant Shop Modal -->
+      <div id="shop-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="shop-title">
+        <div class="bag-card shop-card" data-shop-tab="sell">
+          <div class="bag-header">
+            <div>
+              <h2 id="shop-title" class="bag-title">🏪 Shop Balo & Thu Mua Vật Phẩm</h2>
+              <div id="shop-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-shop-close" class="bag-close" type="button" aria-label="Đóng shop">✕</button>
           </div>
 
-          <div id="hud-controls" class="hud-controls">
-            <button id="btn-skin" class="hud-skin-btn" type="button" aria-label="Đổi nhân vật">
-              🥷 Samurai Xanh
+          <div id="shop-mobile-tabs" class="mobile-tabs" role="tablist" aria-label="Chức năng Shop Balo">
+            <button id="tab-shop-sell" class="mobile-tab-btn is-active" type="button" role="tab" aria-selected="true">
+              💰 Bán Đồ
             </button>
-            <button id="btn-zoom-out" type="button" aria-label="Thu nhỏ">−</button>
-            <button id="btn-zoom-in" type="button" aria-label="Phóng to">+</button>
-            <button id="btn-center" type="button" aria-label="Về nhân vật">⌖</button>
-            <button id="btn-sound" type="button" aria-label="Tắt âm thanh">🔊</button>
+            <button id="tab-shop-upgrade" class="mobile-tab-btn" type="button" role="tab" aria-selected="false">
+              🎒 Mua & Bán Balo
+            </button>
           </div>
+
+          <div class="shop-body">
+            <div class="shop-section shop-section-upgrade">
+              <div class="grid-panel-head">
+                <span>🎒 Mua & Bán Balo (Chỉ đeo 1 chiếc)</span>
+                <button id="btn-shop-open-safebox" class="btn-safebox-upgrade" type="button">
+                  🔐 Nâng cấp Safebox
+                </button>
+              </div>
+              <div id="shop-equipped-bp-bar" class="shop-equipped-bp-bar"></div>
+              <div id="shop-backpacks" class="shop-backpacks"></div>
+            </div>
+
+            <div class="shop-section shop-section-sell">
+              <div class="grid-panel-head shop-sell-head">
+                <span id="shop-sell-title">💰 Thu Mua Vật Phẩm</span>
+                <div class="shop-sell-zone-tabs" role="tablist" aria-label="Nguồn đồ cần bán">
+                  <button id="btn-sell-zone-bag" class="btn-sell-zone is-active" type="button">🎒 Đồ Balo</button>
+                  <button id="btn-sell-zone-safebox" class="btn-sell-zone" type="button">🔐 Đồ Safebox</button>
+                </div>
+              </div>
+              <div class="shop-sell-workspace">
+                <div class="shop-sell-grid-scroll">
+                  <div id="shop-sell-grid" class="delta-grid is-tap-only"></div>
+                </div>
+                <div class="shop-sell-sticky">
+                  <div id="shop-inspector" class="item-inspector">
+                    <div class="inspector-placeholder">Chạm vật phẩm để bán.</div>
+                  </div>
+                  <div class="shop-sell-actions">
+                    <button id="btn-shop-sell-c" class="btn-sell-junk" type="button">♻️ Bán hết Rác (C)</button>
+                    <button id="btn-shop-sell-all" class="btn-sell-all" type="button">💵 Bán toàn bộ Balo</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Character Wardrobe & Equipped Stats Modal -->
+      <div id="wardrobe-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="wardrobe-title">
+        <div class="bag-card wardrobe-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="wardrobe-title" class="bag-title">👤 Nhân Vật & Trang Bị</h2>
+              <div id="wardrobe-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-wardrobe-close" class="bag-close" type="button" aria-label="Đóng tủ đồ">✕</button>
+          </div>
+          <div class="wardrobe-body">
+            <div class="wardrobe-preview-col">
+              <div class="doll-preview-box">
+                <canvas id="wardrobe-preview-canvas" width="128" height="128"></canvas>
+              </div>
+              <div id="wardrobe-thermal-card" class="thermal-summary-box"></div>
+            </div>
+            <div class="wardrobe-owned-col">
+              <div class="hair-picker-wrap">
+                <div class="grid-panel-head"><span>💇 Kiểu Tóc</span></div>
+                <div id="wardrobe-hair-list" class="hair-chip-row"></div>
+              </div>
+              <div class="grid-panel-head">
+                <span>🧷 Trang Bị Trên Người (bấm để tháo)</span>
+                <button id="btn-wardrobe-save-preset" class="btn-safebox-upgrade" type="button">
+                  💾 Lưu bộ này
+                </button>
+              </div>
+              <div id="wardrobe-slots" class="wardrobe-slot-list"></div>
+              <div class="grid-panel-head"><span>👕 Trang Bị Trong Balo</span></div>
+              <div id="wardrobe-owned-list" class="garment-grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clothing & Gear Shop Modal -->
+      <div id="clothing-shop-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="clothshop-title">
+        <div class="bag-card wardrobe-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="clothshop-title" class="bag-title">👔 Shop Quần Áo & Trang Bị Thời Tiết</h2>
+              <div id="clothshop-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-clothshop-close" class="bag-close" type="button" aria-label="Đóng shop quần áo">✕</button>
+          </div>
+          <div class="wardrobe-body">
+            <div class="wardrobe-preview-col">
+              <div class="doll-preview-box">
+                <canvas id="clothshop-preview-canvas" width="128" height="128"></canvas>
+              </div>
+              <div id="clothshop-equip-summary" class="thermal-summary-box"></div>
+            </div>
+            <div class="wardrobe-owned-col">
+              <div id="clothshop-presets-panel" class="cloth-presets-panel">
+                <div class="grid-panel-head">
+                  <span>💾 Bộ Đồ Đã Lưu (Mua nhanh cả bộ)</span>
+                  <button id="btn-clothshop-save-preset" class="btn-safebox-upgrade" type="button">
+                    💾 Lưu bộ hiện tại
+                  </button>
+                </div>
+                <div id="clothshop-presets-list" class="cloth-presets-list"></div>
+              </div>
+              <div class="grid-panel-head">
+                <span>🛍️ Kệ Hàng Thời Trang</span>
+              </div>
+              <div id="clothshop-list" class="garment-grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Food & Refreshment Shop Modal -->
+      <div id="food-shop-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="foodshop-title">
+        <div class="bag-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="foodshop-title" class="bag-title">🍜 Quán Ăn & Giải Khát</h2>
+              <div id="foodshop-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-foodshop-close" class="bag-close" type="button" aria-label="Đóng quán ăn">✕</button>
+          </div>
+          <div id="foodshop-list" class="food-grid"></div>
+        </div>
+      </div>
+
+      <!-- Hair Salon & Styling Shop Modal -->
+      <div id="hair-shop-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="hairshop-title">
+        <div class="bag-card wardrobe-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="hairshop-title" class="bag-title">💇 Tiệm Tóc & Tạo Mẫu</h2>
+              <div id="hairshop-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-hairshop-close" class="bag-close" type="button" aria-label="Đóng tiệm tóc">✕</button>
+          </div>
+          <div class="wardrobe-body">
+            <div class="wardrobe-preview-col">
+              <div class="doll-preview-box">
+                <canvas id="hairshop-preview-canvas" width="128" height="128"></canvas>
+              </div>
+              <div id="hairshop-summary" class="thermal-summary-box"></div>
+            </div>
+            <div class="wardrobe-owned-col">
+              <div class="grid-panel-head"><span>✂️ Kiểu Tóc & Màu</span></div>
+              <div id="hairshop-list" class="garment-grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- International Airport -> Thailand Gender Switch Modal -->
+      <div id="airport-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="airport-title">
+        <div class="bag-card airport-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="airport-title" class="bag-title">✈️ Sân Bay Quốc Tế — Quầy Bay Thái Lan</h2>
+              <div id="airport-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-airport-close" class="bag-close" type="button" aria-label="Đóng quầy sân bay">✕</button>
+          </div>
+          <div class="airport-body">
+            <div class="airport-route-banner">
+              <span>🛫 Hà Nội (HAN)</span>
+              <span class="airport-route-arrow">────── ✈️ ──────▶</span>
+              <span>🛬 Bangkok, Thái Lan (BKK)</span>
+            </div>
+            <div class="airport-compare">
+              <div class="airport-preview-box">
+                <div class="airport-preview-label" id="airport-cur-label">Hiện tại: Nam</div>
+                <div class="doll-preview-box">
+                  <canvas id="airport-cur-canvas" width="128" height="128"></canvas>
+                </div>
+              </div>
+              <div class="airport-swap-arrow">⇄</div>
+              <div class="airport-preview-box is-target">
+                <div class="airport-preview-label" id="airport-next-label">Sau chuyến bay: Nữ</div>
+                <div class="doll-preview-box">
+                  <canvas id="airport-next-canvas" width="128" height="128"></canvas>
+                </div>
+              </div>
+            </div>
+            <div id="airport-note" class="thermal-summary-box"></div>
+            <div class="airport-actions">
+              <button id="btn-airport-fly" class="btn-card-primary airport-fly-btn" type="button">
+                ✈️ Bay sang Thái Lan & Đổi Giới Tính
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Police 4x4 Memory Challenge Modal -->
+      <div id="police-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="police-title">
+        <div class="bag-card police-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="police-title" class="bag-title">🚓 Kiểm Tra Hành Chính — Ghi Nhớ 4×4</h2>
+              <div id="police-stats" class="bag-stats"></div>
+            </div>
+          </div>
+          <div class="police-body">
+            <div id="police-status" class="police-status">👀 Ghi nhớ 5 ô phát sáng theo thứ tự...</div>
+            <div id="police-timer-track" class="consume-progress-track">
+              <div id="police-timer-fill" class="police-timer-fill"></div>
+            </div>
+            <div id="police-memory-grid" class="police-memory-grid"></div>
+            <div id="police-arcade-stage" class="vp-board-wrap is-hidden"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- High-Value Vault / Chest Puzzle Modal (No Timer) -->
+      <div id="vault-puzzle-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="vault-puzzle-title">
+        <div class="bag-card vp-card">
+          <div class="bag-header">
+            <div>
+              <div id="vault-puzzle-badge" class="vp-badge">🔐 GIẢI ĐỐ MỞ KÉT</div>
+              <h2 id="vault-puzzle-title" class="bag-title">Mở Khóa Kho Báu</h2>
+              <div id="vault-puzzle-subtitle" class="vp-subtitle"></div>
+            </div>
+            <button id="btn-vault-puzzle-close" class="btn-close" type="button" aria-label="Đóng giải đố">✕</button>
+          </div>
+          <div class="vp-body">
+            <div id="vault-puzzle-guide" class="vp-guide"></div>
+            <div id="vault-puzzle-status" class="vp-status"></div>
+            <div id="vault-puzzle-board" class="vp-board-wrap"></div>
+            <div class="vp-footer">
+              <button id="btn-vault-puzzle-reset" class="btn-card-secondary" type="button">🔄 Làm mới</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick-Use Radial Wheel (Top 6 Consumables in Backpack) -->
+      <div id="quick-wheel-modal" class="quick-wheel-modal" role="dialog" aria-modal="true" aria-label="Dùng nhanh vật phẩm">
+        <div class="quick-wheel-panel">
+          <div class="quick-wheel-title">⚡ Dùng Nhanh (6 món đầu trong Balo)</div>
+          <div id="quick-wheel-ring" class="quick-wheel-ring">
+            <button id="btn-quick-wheel-close" class="quick-wheel-center" type="button" aria-label="Đóng vòng tròn">
+              ✕<br /><span>Đóng</span>
+            </button>
+          </div>
+          <div id="quick-wheel-empty" class="quick-wheel-empty is-hidden">
+            Chưa có vật phẩm sử dụng được trong Balo.
+          </div>
+        </div>
+      </div>
+
+      <!-- Shared Shop Purchase & Payment Confirmation Modal -->
+      <div id="purchase-confirm-modal" class="bag-modal is-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="pc-title">
+        <div class="bag-card pc-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="pc-title" class="bag-title">💳 Xác Nhận Mua & Thanh Toán</h2>
+              <div id="pc-subtitle" class="vp-subtitle"></div>
+            </div>
+            <button id="btn-pc-close" class="bag-close" type="button" aria-label="Hủy thanh toán">✕</button>
+          </div>
+          <div class="pc-body">
+            <div id="pc-item-box" class="pc-item-box"></div>
+            <div id="pc-receipt" class="pc-receipt"></div>
+            <div id="pc-warning" class="pc-warning is-hidden"></div>
+            <div class="pc-actions">
+              <button id="btn-pc-cancel" class="btn-card-secondary" type="button">✕ Hủy</button>
+              <button id="btn-pc-alt" class="btn-card-try is-hidden" type="button"></button>
+              <button id="btn-pc-confirm" class="btn-card-primary" type="button">💳 Xác nhận Thanh toán</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Permanent Safebox & Home Storage Trade-In Upgrade Modal -->
+      <div id="safebox-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="sb-title">
+        <div class="bag-card sb-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="sb-title" class="bag-title">⬆️ Nâng Cấp Vĩnh Viễn</h2>
+              <div class="sb-mode-tabs" role="tablist" aria-label="Chọn loại nâng cấp">
+                <button id="btn-up-tab-safebox" class="btn-sell-zone is-active" type="button">🔐 Safebox</button>
+                <button id="btn-up-tab-home" class="btn-sell-zone" type="button">🏠 Kho Nhà</button>
+                <button id="btn-up-tab-gym" class="btn-sell-zone" type="button">🏋️ Phòng Gym</button>
+                <button id="btn-up-tab-treadmill" class="btn-sell-zone" type="button">🏃 Máy Chạy Bộ</button>
+              </div>
+              <div id="sb-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-sb-close" class="bag-close" type="button" aria-label="Đóng nâng cấp">✕</button>
+          </div>
+          <div id="sb-tier-banner" class="sb-tier-banner"></div>
+          <div id="sb-requirements-list" class="sb-requirements-list"></div>
+          <div class="sb-footer">
+            <button id="btn-sb-deliver-all" class="btn-card-primary" type="button">
+              📦 Giao tất cả vật phẩm đang có
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Red Item Collection Hall Modal -->
+      <div id="collection-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="coll-title">
+        <div class="bag-card coll-card-shell">
+          <div class="bag-header">
+            <div>
+              <h2 id="coll-title" class="bag-title">🏛️ Phòng Sưu Tầm Đồ Đỏ</h2>
+              <div id="coll-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-coll-close" class="bag-close" type="button" aria-label="Đóng phòng sưu tầm">✕</button>
+          </div>
+          <div id="collection-grid" class="coll-grid"></div>
+        </div>
+      </div>
+
+      <!-- First-Time Character Gender Onboarding Modal -->
+      <div id="onboarding-modal" class="bag-modal is-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="onboard-title">
+        <div class="bag-card onboard-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="onboard-title" class="bag-title">🧑 Chọn Giới Tính Nhân Vật</h2>
+            </div>
+          </div>
+          <div class="onboard-body">
+            <div class="onboard-grid">
+              <button id="btn-onboard-male" class="onboard-option is-active" data-onboard-gender="male" type="button">
+                <div class="doll-preview-box onboard-doll-box">
+                  <canvas id="onboard-male-canvas" width="96" height="96"></canvas>
+                </div>
+                <span class="onboard-option-title">👨 Nam</span>
+              </button>
+              <button id="btn-onboard-female" class="onboard-option" data-onboard-gender="female" type="button">
+                <div class="doll-preview-box onboard-doll-box">
+                  <canvas id="onboard-female-canvas" width="96" height="96"></canvas>
+                </div>
+                <span class="onboard-option-title">👩 Nữ</span>
+              </button>
+            </div>
+            <div class="onboard-starter-grant">
+              🎒 Khởi đầu: 1 Áo • 1 Quần • 1 Balo Tân Thủ (4×4) • 1 Đồ ăn &amp; 1 Nước thể lực rẻ nhất
+            </div>
+            <button id="btn-onboard-start" class="btn-card-primary onboard-start-btn" type="button">
+              ▶️ Bắt đầu
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-Time Consumption / Medicine Loading Bar -->
+      <div id="consume-progress-toast" class="consume-progress-toast" role="status" aria-live="polite">
+        <div class="consume-progress-head">
+          <span id="consume-progress-label">⏳ Đang sử dụng...</span>
+          <span id="consume-progress-time" class="consume-progress-time">0.0s</span>
+        </div>
+        <div class="consume-progress-track">
+          <div id="consume-progress-fill" class="consume-progress-fill"></div>
         </div>
       </div>
     </div>

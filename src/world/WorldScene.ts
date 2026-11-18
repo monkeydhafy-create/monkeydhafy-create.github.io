@@ -1,23 +1,84 @@
 import { sound } from "@pixi/sound";
-import { Container, Graphics, Sprite } from "pixi.js";
+import { Container, Graphics, Sprite, Text } from "pixi.js";
 import type { Application, FederatedPointerEvent, Texture } from "pixi.js";
+import type { PlayerGameSaveV3 } from "../security/SaveVault.ts";
+import type { ArcadeMinigameKind } from "../ui/ArcadeMinigames.ts";
+import { AtmosphereSystem } from "./AtmosphereSystem.ts";
+import {
+  AIRPORT_GENDER_CHANGE_COST,
+  CONSUMABLE_BY_ID,
+  DEFAULT_OWNED_HAIR_IDS,
+  GARMENT_BY_ID,
+  HAIR_BY_ID,
+  HAIR_OPTIONS,
+  MAX_BLEND_CHANCE,
+  MAX_SAVED_OUTFIT_PRESETS,
+  computeEquipmentStats,
+  createDefaultEquippedGear,
+  createPrisonerEquippedGear,
+  type ConsumableDef,
+  type EquipmentSlot,
+  type EquipmentStats,
+  type EquippedGear,
+  type GarmentDef,
+  type SavedOutfitPreset,
+} from "./EquipmentCatalog.ts";
+import {
+  SURVIVAL_IDEAL_TEMP_C,
+  createDefaultSurvivalState,
+  evaluateThermalState,
+  getActiveStaminaMax,
+  stepSurvivalState,
+  type SurvivalState,
+  type SurvivalTickResult,
+} from "./SurvivalSystem.ts";
+import {
+  HanoiWeatherService,
+  type EnvironmentPreset,
+  type EnvironmentState,
+} from "./HanoiWeatherService.ts";
+import {
+  InventoryManager,
+  ITEM_BY_ID,
+  findFirstFitOnGrid,
+  type CollectibleItemDef,
+  type ContainerLootState,
+  type GridItemInstance,
+  type GridZone,
+  type LootSourceType,
+  type UpgradeKind,
+} from "./LootSystem.ts";
 import { Pathfinder } from "./Pathfinder.ts";
 import { Player } from "./Player.ts";
 import { createWorldAtlas, type WorldAtlas } from "./SpriteAtlas.ts";
 import {
+  BUILDING_META,
+  BUILDING_PIXEL_SCALE,
   CHUNK_TILES,
+  GREEN_END_COL,
+  isBuildingProp,
   PIXEL_SCALE,
   TILE_SIZE,
   WORLD_HEIGHT,
   WORLD_WIDTH,
+  YELLOW_END_COL,
   type BiomeId,
+  type BuildingKind,
+  type CharacterGender,
   type CharacterSkinId,
   type Point,
+  type PropKind,
+  type SecurityZone,
+  type SurfaceState,
   type TileType,
+  type WorldChest,
   type WorldData,
   type WorldLandmark,
   type WorldProp,
 } from "./types.ts";
+import { JAIL_HEIGHT, JAIL_WIDTH, JailRoom } from "./JailRoom.ts";
+import { PoliceSystem, type PoliceOfficerMarker } from "./PoliceSystem.ts";
+import { WeatherParticles } from "./WeatherParticles.ts";
 
 interface RippleEffect {
   x: number;
@@ -27,43 +88,164 @@ interface RippleEffect {
   color: number;
 }
 
-interface LeafBreeze {
-  sprite: Sprite;
+interface WaterWake {
+  x: number;
+  y: number;
+  age: number;
+  duration: number;
+  maxRadiusX: number;
+  maxRadiusY: number;
+}
+
+interface WaterDroplet {
+  x: number;
+  y: number;
   vx: number;
   vy: number;
-  swayPhase: number;
-  spin: number;
+  age: number;
+  duration: number;
 }
+
+interface OccludableProp {
+  container: Container;
+  prop: WorldProp;
+  x: number;
+  bottomY: number;
+  topY: number;
+  depthY: number;
+  halfW: number;
+}
+
+interface ChestVisual {
+  chest: WorldChest;
+  container: Container;
+  sprite: Sprite;
+  aura: Graphics;
+}
+
+export type ShopKind = "backpack" | "clothing" | "food" | "hair" | "pharmacy";
+
+export interface PendingVaultTarget {
+  containerId: string;
+  title: string;
+  sourceType: "chest_royal" | "house_vault";
+  biome: BiomeId;
+  chestId?: string;
+}
+
+export type NearbyInteraction =
+  | {
+      type: "chest";
+      chest: WorldChest;
+      label: string;
+      searched: boolean;
+      remainingMs: number | null;
+      locked?: boolean;
+    }
+  | {
+      type: "shop";
+      name: string;
+      shopKind: ShopKind;
+    }
+  | {
+      type: "home";
+      name: string;
+    }
+  | {
+      type: "collection";
+      name: string;
+    }
+  | {
+      type: "airport";
+      name: string;
+    }
+  | {
+      type: "jail_minigame";
+      stationId: string;
+      kind: ArcadeMinigameKind;
+      label: string;
+    }
+  | {
+      type: "building";
+      propId: number;
+      kind: BuildingKind;
+      name: string;
+      tier: "standard" | "landmark";
+      isVault: boolean;
+      biome: BiomeId;
+      searched: boolean;
+      remainingCount: number;
+      remainingMs: number | null;
+      x: number;
+      y: number;
+    };
 
 export interface WorldCallbacks {
   onLandmarkDiscovered?: (landmark: WorldLandmark) => void;
+  onOpenContainer?: (container: ContainerLootState) => void;
+  onOpenVaultPuzzle?: (target: PendingVaultTarget) => void;
+  onOpenJailMinigame?: (station: { stationId: string; kind: ArcadeMinigameKind }) => void;
+  onOpenShop?: (shopKind: ShopKind) => void;
+  onOpenHomeStorage?: () => void;
+  onOpenCollectionHall?: () => void;
+  onOpenAirport?: () => void;
+  onConsumeCompleted?: (title: string, message: string) => void;
+  onPoliceChallenge?: (officer: { id: string; name: string; biome: BiomeId; zone: SecurityZone }) => void;
+  onPoliceBlendIgnored?: (officerName: string, chancePct: number) => void;
+  onPoliceDetained?: (lostItemCount: number, durationMs: number, lostBackpack?: boolean) => void;
+  onDetentionEnded?: () => void;
+  onContainersRefreshed?: (containerIds: string[]) => void;
+  onFaintedToHospital?: (reason: string, hospitalFeeGold: number) => void;
+  onRequestSave?: (immediate: boolean) => void;
 }
 
 /**
- * Main PixiJS v8 Open-World Scene rendering CC0 pixel-art terrain chunks,
- * 2.5D Y-sorted buildings & foliage, animated lilypads & drifting leaves,
- * and unified mobile/PC Tap-to-Move pathfinding.
+ * Main PixiJS v8 Open-World Scene integrating:
+ * - CC0 pixel-art chunked terrain + 2.5D Y-sorted structures & flora
+ * - Unified Mobile/PC Tap-to-Move A* pathfinding
+ * - Live Hanoi time & Open-Meteo weather (sunbeams, clouds, readable night + lanterns,
+ *   wind-driven rain + splashes, falling leaves, dust motes & night fireflies)
  */
 export class WorldScene {
+  public readonly stageLayer: Container;
   public readonly worldContainer: Container;
+  public readonly worldLightsContainer: Container;
   public readonly data: WorldData;
   public readonly atlas: WorldAtlas;
   public readonly pathfinder: Pathfinder;
   public readonly player: Player;
+  public readonly weatherService: HanoiWeatherService;
+  public readonly inventory: InventoryManager;
 
   private readonly app: Application;
   private readonly callbacks: WorldCallbacks;
 
   private readonly groundLayer: Container;
   private readonly waterAnimLayer: Container;
+  private readonly waterWakeLayer: Graphics;
   private readonly pathOverlayLayer: Graphics;
   private readonly entityLayer: Container;
-  private readonly atmosphereLayer: Container;
+  private readonly atmosphere: AtmosphereSystem;
+  private readonly weatherParticles: WeatherParticles;
+  private readonly police: PoliceSystem;
+  private readonly jailRoom: JailRoom;
 
-  private readonly lilypadSprites: Array<{ sprite: Sprite; phase: number }> = [];
-  private readonly leafParticles: LeafBreeze[] = [];
+  private readonly lilypadSprites: Array<{ sprite: Sprite; x: number; y: number; phase: number }> = [];
+  private readonly propNodes: Array<{ node: Container; x: number; y: number }> = [];
+  private readonly foodCartProps: WorldProp[] = [];
+  private readonly occludableProps: OccludableProp[] = [];
+  private readonly buildingOccludables: OccludableProp[] = [];
+  private readonly chestVisuals: ChestVisual[] = [];
   private readonly ripples: RippleEffect[] = [];
-  private readonly terrainChunks: Array<{ node: Container; minX: number; minY: number; maxX: number; maxY: number }> = [];
+  private readonly waterWakes: WaterWake[] = [];
+  private readonly waterDroplets: WaterDroplet[] = [];
+  private readonly terrainChunks: Array<{
+    node: Container;
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  }> = [];
 
   private camX: number;
   private camY: number;
@@ -75,53 +257,1076 @@ export class WorldScene {
   private lastDragPathAt = 0;
   private readonly keysDown = new Set<string>();
   private elapsed = 0;
+  private refreshCheckAccumulator = 0;
+  private positionSaveAccumulator = 0;
+  private survivalSaveAccumulator = 0;
+  private faintRespawnCooldown = 0;
+  private lastSavedPlayerX: number;
+  private lastSavedPlayerY: number;
+  private isSceneReady = false;
 
-  constructor(app: Application, data: WorldData, callbacks: WorldCallbacks = {}) {
+  private survival: SurvivalState;
+  private equipment: EquippedGear;
+  private savedOutfits: SavedOutfitPreset[];
+  private hairId: string;
+  private ownedHairIds: Set<string>;
+  private gender: CharacterGender;
+  private onboardingDone: boolean;
+  private cachedEquipStats: EquipmentStats;
+  private lastSurvivalTick: SurvivalTickResult;
+  private detainedUntil = 0;
+  private isInJail = false;
+  private ignoreUntilByOfficer: Record<string, number> = {};
+  private globalPoliceIgnoreUntil = 0;
+  private activePoliceChallengeOfficerId: string | null = null;
+  private activeVaultPuzzle: PendingVaultTarget | null = null;
+  private activeJailStationId: string | null = null;
+  private isLootingContainerOpen = false;
+  private lootingCheckAccum = 0;
+  private pendingConsume: {
+    consumable: ConsumableDef;
+    backpackUid: string | null;
+    priceGold: number;
+    elapsedMs: number;
+    durationMs: number;
+  } | null = null;
+
+  constructor(
+    app: Application,
+    data: WorldData,
+    callbacks: WorldCallbacks = {},
+    initialSave?: PlayerGameSaveV3,
+  ) {
     this.app = app;
     this.data = data;
     this.callbacks = callbacks;
+    this.inventory = new InventoryManager(initialSave?.inventory, () => {
+      if (this.isSceneReady) {
+        this.callbacks.onRequestSave?.(true);
+      }
+    });
     this.atlas = createWorldAtlas();
 
+    this.survival = initialSave?.survival
+      ? { ...initialSave.survival }
+      : createDefaultSurvivalState();
+    this.equipment = initialSave?.equipment
+      ? { ...initialSave.equipment }
+      : createDefaultEquippedGear();
+    this.savedOutfits = initialSave?.savedOutfits
+      ? initialSave.savedOutfits.map((p) => ({ ...p, gear: { ...p.gear } }))
+      : [];
+    this.ownedHairIds = new Set<string>(
+      initialSave?.ownedHairIds?.length ? initialSave.ownedHairIds : DEFAULT_OWNED_HAIR_IDS,
+    );
+    this.hairId =
+      initialSave?.hairId && this.ownedHairIds.has(initialSave.hairId)
+        ? initialSave.hairId
+        : HAIR_OPTIONS[0].id;
+    this.gender = initialSave?.profile?.gender === "female" ? "female" : "male";
+    this.onboardingDone = initialSave?.profile?.onboardingDone ?? true;
+    this.cachedEquipStats = computeEquipmentStats(this.equipment);
+
     this.pathfinder = new Pathfinder(data.cols, data.rows, data.tileSize, data.collision);
-    this.player = new Player(data.spawn.x, data.spawn.y, this.atlas);
+    const savedProfile = initialSave?.profile;
+    const startX =
+      savedProfile && this.pathfinder.isWalkableWorld(savedProfile.x, savedProfile.y)
+        ? savedProfile.x
+        : data.spawn.x;
+    const startY =
+      savedProfile && this.pathfinder.isWalkableWorld(savedProfile.x, savedProfile.y)
+        ? savedProfile.y
+        : data.spawn.y;
 
-    this.camX = data.spawn.x;
-    this.camY = data.spawn.y;
+    this.player = new Player(startX, startY, this.atlas, {
+      getSurfaceAt: (x, y) => this.getSurfaceAt(x, y),
+      onWaterStep: (x, y, mode) => this.spawnWaterStepEffect(x, y, mode),
+    });
 
+    if (savedProfile) {
+      this.player.setSkin(savedProfile.skinId);
+      this.player.setFacing(savedProfile.facing);
+      this.soundEnabled = savedProfile.soundEnabled;
+      if (!savedProfile.soundEnabled) {
+        sound.muteAll();
+      }
+      const discoveredSet = new Set(savedProfile.discoveredLandmarkIds);
+      for (const lm of this.data.landmarks) {
+        if (discoveredSet.has(lm.id)) {
+          lm.discovered = true;
+        }
+      }
+    }
+
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.lastSavedPlayerX = startX;
+    this.lastSavedPlayerY = startY;
+
+    this.weatherService = new HanoiWeatherService();
+    this.weatherService.start();
+    const initialEnv = this.weatherService.getEnvironmentState();
+    this.lastSurvivalTick = {
+      thermal: evaluateThermalState(
+        initialEnv,
+        this.getSurfaceAt(startX, startY),
+        this.cachedEquipStats,
+        this.survival.bodyTempC,
+      ),
+      blurIntensity: 0,
+      speedMultiplier: 1,
+      fainted: false,
+      faintReason: null,
+    };
+
+    this.camX = startX;
+    this.camY = startY;
+
+    this.stageLayer = new Container();
     this.worldContainer = new Container();
+    this.worldLightsContainer = new Container();
+
     this.groundLayer = new Container();
     this.waterAnimLayer = new Container();
+    this.waterWakeLayer = new Graphics();
     this.pathOverlayLayer = new Graphics();
     this.entityLayer = new Container();
     this.entityLayer.sortableChildren = true;
-    this.atmosphereLayer = new Container();
+
+    this.atmosphere = new AtmosphereSystem(data);
+    this.weatherParticles = new WeatherParticles(this.atlas.leafFrames);
 
     this.buildTerrainChunks();
+    this.buildZoneBoundaryMarkers();
     this.buildLilypads();
     this.buildPropsAndBuildings();
-    this.buildDriftingLeaves();
+    this.buildChests();
+
+    this.police = new PoliceSystem(data, this.atlas, this.entityLayer);
+    this.jailRoom = new JailRoom(this.atlas);
+
+    const savedPolice = initialSave?.policeState;
+    if (savedPolice) {
+      this.detainedUntil = savedPolice.detainedUntil;
+      this.ignoreUntilByOfficer = { ...savedPolice.ignoreUntilByOfficer };
+      this.globalPoliceIgnoreUntil = savedPolice.globalIgnoreUntil ?? 0;
+      // If player refreshed mid-police-challenge to evade, enforce arrest & 5-minute detention
+      if (savedPolice.pendingArrestOfficerId) {
+        this.inventory.confiscateOnArrest();
+        this.equipment = createPrisonerEquippedGear();
+        this.cachedEquipStats = computeEquipmentStats(this.equipment);
+        this.player.setAppearance(this.equipment, this.hairId, this.gender);
+        this.player.position.set(data.policeDetainRespawn.x, data.policeDetainRespawn.y);
+        this.player.setFacing("down");
+        this.camX = data.policeDetainRespawn.x;
+        this.camY = data.policeDetainRespawn.y;
+        this.detainedUntil = Date.now() + 300_000;
+        this.ignoreUntilByOfficer[savedPolice.pendingArrestOfficerId] = Date.now() + 315_000;
+      }
+    }
 
     this.entityLayer.addChild(this.player);
 
     this.worldContainer.addChild(
       this.groundLayer,
       this.waterAnimLayer,
+      this.waterWakeLayer,
       this.pathOverlayLayer,
       this.entityLayer,
-      this.atmosphereLayer,
+      this.atmosphere.cloudShadowLayer,
+      this.weatherParticles.worldShadedLayer,
     );
+
+    // Keep additive lantern lights + night fireflies outside tinted worldContainer
+    // while maintaining exact world camera transform
+    this.worldLightsContainer.addChild(
+      this.atmosphere.worldLightLayer,
+      this.weatherParticles.worldLuminousLayer,
+    );
+
+    this.stageLayer.addChild(
+      this.worldContainer,
+      this.worldLightsContainer,
+      this.atmosphere.screenOverlayLayer,
+      this.jailRoom.container,
+    );
+
+    this.atmosphere.resize(app.screen.width, app.screen.height);
 
     this.updateResponsiveBaseZoom(app.screen.width, app.screen.height, true);
     this.syncCameraTransform();
+    if (this.isDetained()) {
+      this.enterJailRoom();
+    }
     this.bindInputs();
+    this.isSceneReady = true;
+  }
+
+  public getSaveSnapshot(): PlayerGameSaveV3 {
+    const saveX = this.isInJail ? this.data.policeDetainRespawn.x : this.player.x;
+    const saveY = this.isInJail ? this.data.policeDetainRespawn.y : this.player.y;
+    return {
+      schemaVersion: 3,
+      inventory: this.inventory.getPersistedState(),
+      profile: {
+        x: Math.round(saveX * 10) / 10,
+        y: Math.round(saveY * 10) / 10,
+        facing: this.player.getFacing(),
+        skinId: this.player.getSkin(),
+        gender: this.gender,
+        onboardingDone: this.onboardingDone,
+        discoveredLandmarkIds: this.data.landmarks
+          .filter((lm) => lm.discovered)
+          .map((lm) => lm.id),
+        soundEnabled: this.soundEnabled,
+      },
+      survival: {
+        hp: Math.round(this.survival.hp * 10) / 10,
+        hunger: Math.round(this.survival.hunger * 10) / 10,
+        stamina: Math.round(this.survival.stamina * 10) / 10,
+        bodyTempC: Math.round(this.survival.bodyTempC * 100) / 100,
+        staminaBuff: this.survival.staminaBuff ? { ...this.survival.staminaBuff } : null,
+      },
+      equipment: { ...this.equipment },
+      savedOutfits: this.savedOutfits.map((p) => ({ ...p, gear: { ...p.gear } })),
+      hairId: this.hairId,
+      ownedHairIds: Array.from(this.ownedHairIds),
+      policeState: {
+        detainedUntil: this.detainedUntil,
+        ignoreUntilByOfficer: { ...this.ignoreUntilByOfficer },
+        globalIgnoreUntil: this.globalPoliceIgnoreUntil,
+        pendingArrestOfficerId: this.activePoliceChallengeOfficerId,
+      },
+    };
+  }
+
+  public getSurvivalSnapshot(): {
+    state: SurvivalState;
+    result: SurvivalTickResult;
+    equipStats: EquipmentStats;
+    totalWeightKg: number;
+  } {
+    return {
+      state: { ...this.survival },
+      result: this.lastSurvivalTick,
+      equipStats: this.cachedEquipStats,
+      totalWeightKg: this.inventory.getCarriedWeightKg(this.cachedEquipStats.weightKg),
+    };
+  }
+
+  public getEquippedGear(): EquippedGear {
+    return { ...this.equipment };
+  }
+
+  public getGender(): CharacterGender {
+    return this.gender;
+  }
+
+  public needsOnboarding(): boolean {
+    return !this.onboardingDone;
+  }
+
+  public completeOnboarding(chosenGender: CharacterGender): void {
+    this.gender = chosenGender;
+    this.equipment = createDefaultEquippedGear();
+    this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.onboardingDone = true;
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.callbacks.onRequestSave?.(true);
+  }
+
+  public getOwnedHairIds(): string[] {
+    return Array.from(this.ownedHairIds);
+  }
+
+  public getHairId(): string {
+    return this.hairId;
+  }
+
+  public setHairId(hairId: string): { ok: boolean; message: string } {
+    const def = HAIR_BY_ID[hairId];
+    if (!def) return { ok: false, message: "Kiểu tóc không tồn tại." };
+    if (!this.ownedHairIds.has(hairId)) {
+      return { ok: false, message: "Hãy đến 💇 Tiệm Tóc để mua kiểu tóc này trước!" };
+    }
+    this.hairId = hairId;
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.callbacks.onRequestSave?.(true);
+    return { ok: true, message: `Đã đổi sang ${def.name}!` };
+  }
+
+  public buyOrEquipHair(hairId: string): { ok: boolean; message: string } {
+    const def = HAIR_BY_ID[hairId];
+    if (!def) return { ok: false, message: "Kiểu tóc không tồn tại." };
+    if (this.ownedHairIds.has(hairId)) {
+      this.hairId = hairId;
+      this.player.setAppearance(this.equipment, this.hairId, this.gender);
+      this.callbacks.onRequestSave?.(true);
+      return { ok: true, message: `Đã tạo kiểu ${def.name}!` };
+    }
+    if (!this.inventory.trySpendGold(def.priceGold)) {
+      return {
+        ok: false,
+        message: `Cần ${def.priceGold.toLocaleString("vi-VN")} Vàng để cắt/nhuộm ${def.name}.`,
+      };
+    }
+    this.ownedHairIds.add(hairId);
+    this.hairId = hairId;
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.callbacks.onRequestSave?.(true);
+    return { ok: true, message: `Đã mua & đổi sang ${def.name}!` };
+  }
+
+  public flyToThailandChangeGender(): { ok: boolean; nextGender: CharacterGender; message: string } {
+    const nextGender: CharacterGender = this.gender === "male" ? "female" : "male";
+    if (!this.inventory.trySpendGold(AIRPORT_GENDER_CHANGE_COST)) {
+      return {
+        ok: false,
+        nextGender,
+        message: `Cần ${AIRPORT_GENDER_CHANGE_COST.toLocaleString("vi-VN")} Vàng cho vé máy bay & thủ tục tại Thái Lan!`,
+      };
+    }
+    this.gender = nextGender;
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.callbacks.onRequestSave?.(true);
+    return {
+      ok: true,
+      nextGender,
+      message:
+        nextGender === "female"
+          ? "✈️ Đã bay sang Thái Lan (Bangkok) & chuyển sang Nhân Vật Nữ thành công!"
+          : "✈️ Đã bay sang Thái Lan (Bangkok) & chuyển sang Nhân Vật Nam thành công!",
+    };
+  }
+
+  public buyOrEquipGarment(
+    garmentId: string,
+    mode: "equip" | "pack" = "equip",
+  ): { ok: boolean; message: string } {
+    const def = GARMENT_BY_ID[garmentId];
+    if (!def || def.excludeFromShop) return { ok: false, message: "Trang bị không tồn tại." };
+
+    if (this.inventory.getGold() < def.priceGold) {
+      return {
+        ok: false,
+        message: `Cần ${def.priceGold.toLocaleString("vi-VN")} Vàng để mua ${def.name}.`,
+      };
+    }
+
+    if (mode === "pack") {
+      const addRes = this.inventory.addItemToZone("backpack", def.inventoryItemId, "city");
+      if (!addRes.ok) return addRes;
+      this.inventory.trySpendGold(def.priceGold);
+      this.callbacks.onRequestSave?.(true);
+      return { ok: true, message: `Đã mua & cất ${def.name} vào Balo!` };
+    }
+
+    // Physical equipment rule: replacing an already-worn garment must fit the old one into Balo
+    // (0-value prisoner uniform is automatically replaced if Balo is missing or full).
+    const prevId = this.equipment[def.slot];
+    const prevDef = prevId ? GARMENT_BY_ID[prevId] : null;
+    if (prevDef && !prevDef.excludeFromShop) {
+      const fit = this.inventory.canFitItemInZone("backpack", prevDef.inventoryItemId);
+      if (!fit) {
+        return {
+          ok: false,
+          message: `Balo không đủ chỗ (${prevDef.gridW}×${prevDef.gridH} ô) để cất ${prevDef.name} cũ! Hãy dọn Balo hoặc gửi đồ về Nhà.`,
+        };
+      }
+    }
+
+    if (!this.inventory.trySpendGold(def.priceGold)) {
+      return { ok: false, message: "Không đủ Vàng." };
+    }
+
+    if (prevDef) {
+      if (!prevDef.excludeFromShop || this.inventory.canFitItemInZone("backpack", prevDef.inventoryItemId)) {
+        this.inventory.addItemToZone("backpack", prevDef.inventoryItemId, "city");
+      }
+    }
+
+    this.equipment[def.slot] = def.id;
+    this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.callbacks.onRequestSave?.(true);
+
+    return {
+      ok: true,
+      message: prevDef
+        ? `Đã mua & mặc ${def.name}${prevDef.excludeFromShop ? "" : " (đồ cũ cất vào Balo)"}!`
+        : `Mua & mặc ${def.name} thành công!`,
+    };
+  }
+
+  public unequipSlotTo(
+    slot: EquipmentSlot,
+    destZone: "backpack" | "home" | "safebox",
+  ): { ok: boolean; message: string } {
+    const curId = this.equipment[slot];
+    if (!curId) return { ok: false, message: "Ô trang bị đang trống." };
+    const def = GARMENT_BY_ID[curId];
+    if (!def) return { ok: false, message: "Trang bị không hợp lệ." };
+
+    const addRes = this.inventory.addItemToZone(destZone, def.inventoryItemId, "city");
+    if (!addRes.ok) return addRes;
+
+    this.equipment[slot] = null;
+    this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.callbacks.onRequestSave?.(true);
+    const label = destZone === "home" ? "Kho Nhà" : destZone === "safebox" ? "Safebox" : "Balo";
+    return {
+      ok: true,
+      message: `Đã tháo ${def.name} cất vào ${label}.`,
+    };
+  }
+
+  public equipGarmentFromInventory(
+    zone: "backpack" | "home" | "safebox",
+    uid: string,
+  ): { ok: boolean; message: string } {
+    const sourceItems =
+      zone === "home"
+        ? this.inventory.getHomeItems()
+        : zone === "safebox"
+          ? this.inventory.getSafeboxItems()
+          : this.inventory.getBackpackItems();
+    const inst = sourceItems.find((i) => i.uid === uid);
+    if (!inst) return { ok: false, message: "Không tìm thấy trang bị." };
+    const itemDef = ITEM_BY_ID[inst.itemId];
+    const garmentDef = itemDef?.garmentId ? GARMENT_BY_ID[itemDef.garmentId] : null;
+    if (!garmentDef) return { ok: false, message: "Vật phẩm này không phải quần áo/trang bị." };
+
+    const zoneLabel = zone === "home" ? "Kho Nhà" : zone === "safebox" ? "Safebox" : "Balo";
+    const prevId = this.equipment[garmentDef.slot];
+    if (prevId) {
+      const prevDef = GARMENT_BY_ID[prevId];
+      if (prevDef) {
+        const fit = this.inventory.canFitItemInZone(zone, prevDef.inventoryItemId, uid);
+        if (!fit) {
+          return {
+            ok: false,
+            message: `${zoneLabel} không đủ ô (${prevDef.gridW}×${prevDef.gridH}) để hoán đổi với ${prevDef.name}!`,
+          };
+        }
+      }
+    }
+
+    this.inventory.removeItemFromZone(zone, uid);
+    if (prevId) {
+      const prevDef = GARMENT_BY_ID[prevId];
+      if (prevDef) {
+        this.inventory.addItemToZone(zone, prevDef.inventoryItemId, inst.originBiome);
+      }
+    }
+
+    this.equipment[garmentDef.slot] = garmentDef.id;
+    this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.callbacks.onRequestSave?.(true);
+
+    return {
+      ok: true,
+      message: prevId
+        ? `Đã mặc ${garmentDef.name} (cất đồ cũ vào ${zoneLabel}).`
+        : `Đã mặc ${garmentDef.name} lên người!`,
+    };
+  }
+
+  public buyBackpack(
+    tierId: string,
+    mode: "equip" | "pack" = "equip",
+    packZone: "backpack" | "safebox" = "backpack",
+  ): { ok: boolean; message: string } {
+    const res = this.inventory.buyBackpack(tierId, mode, packZone);
+    if (res.ok) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public equipBackpackFromInventory(
+    zone: GridZone,
+    uid: string,
+    containerId: string | null = null,
+  ): { ok: boolean; message: string } {
+    const res = this.inventory.equipBackpackFromInventory(zone, uid, containerId);
+    if (res.ok) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public unequipEquippedBackpackTo(destZone: "home" | "safebox"): { ok: boolean; message: string } {
+    const res = this.inventory.unequipBackpackTo(destZone);
+    if (res.ok) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public sellEquippedBackpack(): { ok: boolean; earnedGold: number; message: string } {
+    const res = this.inventory.sellEquippedBackpack();
+    if (res.ok) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public isAtHome(): boolean {
+    if (this.isInJail) return false;
+    return this.getNearbyInteraction()?.type === "home";
+  }
+
+  public isAtCollectionHall(): boolean {
+    if (this.isInJail) return false;
+    return this.getNearbyInteraction()?.type === "collection";
+  }
+
+  public depositCollectionItem(itemId: string) {
+    const res = this.inventory.depositCollectionDisplayItem(itemId);
+    if (res.ok) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public withdrawCollectionItem(itemId: string) {
+    const res = this.inventory.withdrawCollectionDisplayItem(itemId);
+    if (res.ok) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public upgradeCollectionLight(itemId: string) {
+    const res = this.inventory.upgradeCollectionLight(itemId);
+    if (res.ok) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public deliverUpgradeItem(
+    kind: UpgradeKind,
+    itemId: string,
+    openedFromHome = false,
+  ) {
+    const res = this.inventory.deliverUpgradeItem(kind, itemId, openedFromHome || this.isAtHome());
+    if (res.ok) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public deliverAllUpgradeItems(kind: UpgradeKind, openedFromHome = false) {
+    const res = this.inventory.deliverAllUpgradeItems(kind, openedFromHome || this.isAtHome());
+    if (res.deliveredTotal > 0) this.callbacks.onRequestSave?.(true);
+    return res;
+  }
+
+  public deliverSafeboxItem(itemId: string, openedFromHome = false) {
+    return this.deliverUpgradeItem("safebox", itemId, openedFromHome);
+  }
+
+  public deliverAllSafeboxItems(openedFromHome = false) {
+    return this.deliverAllUpgradeItems("safebox", openedFromHome);
+  }
+
+  public getSavedOutfits(): readonly SavedOutfitPreset[] {
+    return this.savedOutfits.map((p) => ({ ...p, gear: { ...p.gear } }));
+  }
+
+  public saveCurrentOutfitPreset(
+    sourceGear?: EquippedGear | null,
+    customName?: string,
+  ): { ok: boolean; preset?: SavedOutfitPreset; message: string } {
+    const raw = sourceGear ?? this.equipment;
+    const slots: readonly EquipmentSlot[] = ["hat", "torso", "legs", "feet", "accessory"];
+    const cleanGear: EquippedGear = {
+      hat: null,
+      torso: null,
+      legs: null,
+      feet: null,
+      accessory: null,
+    };
+
+    for (const slot of slots) {
+      const id = raw[slot];
+      if (!id) continue;
+      const def = GARMENT_BY_ID[id];
+      if (!def || def.slot !== slot || def.excludeFromShop) continue;
+      cleanGear[slot] = def.id;
+    }
+
+    if (!Object.values(cleanGear).some(Boolean)) {
+      return {
+        ok: false,
+        message: "Chưa có trang bị hợp lệ (không tính đồ tù nhân) để lưu bộ!",
+      };
+    }
+
+    const dup = this.savedOutfits.find((p) =>
+      slots.every((s) => (p.gear[s] ?? null) === (cleanGear[s] ?? null)),
+    );
+    if (dup) {
+      return {
+        ok: false,
+        message: `Bộ trang phục này đã được lưu sẵn (${dup.name})!`,
+      };
+    }
+
+    if (this.savedOutfits.length >= MAX_SAVED_OUTFIT_PRESETS) {
+      return {
+        ok: false,
+        message: `Chỉ lưu tối đa ${MAX_SAVED_OUTFIT_PRESETS} bộ — hãy xóa bớt bộ cũ trước!`,
+      };
+    }
+
+    const mainId = cleanGear.torso ?? cleanGear.legs ?? cleanGear.hat ?? cleanGear.feet ?? cleanGear.accessory;
+    const mainName = mainId && GARMENT_BY_ID[mainId] ? GARMENT_BY_ID[mainId].name : "Phong cách";
+    const preset: SavedOutfitPreset = {
+      id: `outfit_${Date.now().toString(36)}_${Math.floor(Math.random() * 999)}`,
+      name:
+        customName && customName.trim().length > 0
+          ? customName.trim().slice(0, 38)
+          : `Bộ #${this.savedOutfits.length + 1} • ${mainName.slice(0, 18)}`,
+      gear: cleanGear,
+      savedAt: Date.now(),
+    };
+    this.savedOutfits.push(preset);
+    this.callbacks.onRequestSave?.(true);
+    return {
+      ok: true,
+      preset,
+      message: `💾 Đã lưu "${preset.name}" để mua nhanh sau này!`,
+    };
+  }
+
+  public deleteSavedOutfitPreset(presetId: string): boolean {
+    const idx = this.savedOutfits.findIndex((p) => p.id === presetId);
+    if (idx === -1) return false;
+    this.savedOutfits.splice(idx, 1);
+    this.callbacks.onRequestSave?.(true);
+    return true;
+  }
+
+  public previewOutfitPresetPurchase(presetId: string): {
+    ok: boolean;
+    preset?: SavedOutfitPreset;
+    alreadyWorn: GarmentDef[];
+    equipFromOwned: Array<{ slot: EquipmentSlot; def: GarmentDef; zone: "backpack" | "safebox"; uid: string }>;
+    missingBuy: Array<{ slot: EquipmentSlot; def: GarmentDef }>;
+    unavailableStarter: GarmentDef[];
+    displacedSlots: Array<{ slot: EquipmentSlot; prevDef: GarmentDef; destZone: "backpack" | "safebox" }>;
+    totalCost: number;
+    blockedReason?: string;
+  } {
+    const preset = this.savedOutfits.find((p) => p.id === presetId);
+    if (!preset) {
+      return {
+        ok: false,
+        alreadyWorn: [],
+        equipFromOwned: [],
+        missingBuy: [],
+        unavailableStarter: [],
+        displacedSlots: [],
+        totalCost: 0,
+        blockedReason: "Không tìm thấy bộ trang phục đã lưu.",
+      };
+    }
+
+    const slots: readonly EquipmentSlot[] = ["hat", "torso", "legs", "feet", "accessory"];
+    const alreadyWorn: GarmentDef[] = [];
+    const equipFromOwned: Array<{ slot: EquipmentSlot; def: GarmentDef; zone: "backpack" | "safebox"; uid: string }> = [];
+    const missingBuy: Array<{ slot: EquipmentSlot; def: GarmentDef }> = [];
+    const unavailableStarter: GarmentDef[] = [];
+    const claimedOwnedUids = new Set<string>();
+    const activeSlotsToChange: Array<{ slot: EquipmentSlot; targetDef: GarmentDef }> = [];
+
+    const bpItems = this.inventory.getBackpackItems();
+    const sbItems = this.inventory.getSafeboxItems();
+
+    for (const slot of slots) {
+      const targetId = preset.gear[slot];
+      if (!targetId) continue;
+      const def = GARMENT_BY_ID[targetId];
+      if (!def) continue;
+
+      if (this.equipment[slot] === def.id) {
+        alreadyWorn.push(def);
+        continue;
+      }
+
+      const ownedBp = bpItems.find((i) => i.itemId === def.inventoryItemId && !claimedOwnedUids.has(i.uid));
+      if (ownedBp) {
+        claimedOwnedUids.add(ownedBp.uid);
+        equipFromOwned.push({ slot, def, zone: "backpack", uid: ownedBp.uid });
+        activeSlotsToChange.push({ slot, targetDef: def });
+        continue;
+      }
+      const ownedSb = sbItems.find((i) => i.itemId === def.inventoryItemId && !claimedOwnedUids.has(i.uid));
+      if (ownedSb) {
+        claimedOwnedUids.add(ownedSb.uid);
+        equipFromOwned.push({ slot, def, zone: "safebox", uid: ownedSb.uid });
+        activeSlotsToChange.push({ slot, targetDef: def });
+        continue;
+      }
+
+      if (def.priceGold <= 0) {
+        unavailableStarter.push(def);
+        continue;
+      }
+
+      missingBuy.push({ slot, def });
+      activeSlotsToChange.push({ slot, targetDef: def });
+    }
+
+    const totalCost = missingBuy.reduce((acc, m) => acc + m.def.priceGold, 0);
+
+    // Simulate placing replaced worn non-prison garments into freed Backpack / Safebox grids
+    const bpTier = this.inventory.getBackpackTier();
+    const sbTier = this.inventory.getSafeboxTier();
+    const simBp: GridItemInstance[] = bpItems.filter((i) => !claimedOwnedUids.has(i.uid)).map((i) => ({ ...i }));
+    const simSb: GridItemInstance[] = sbItems.filter((i) => !claimedOwnedUids.has(i.uid)).map((i) => ({ ...i }));
+
+    const displacedSlots: Array<{ slot: EquipmentSlot; prevDef: GarmentDef; destZone: "backpack" | "safebox" }> = [];
+    for (const { slot } of activeSlotsToChange) {
+      const prevId = this.equipment[slot];
+      if (!prevId) continue;
+      const prevDef = GARMENT_BY_ID[prevId];
+      if (!prevDef || prevDef.excludeFromShop) continue;
+
+      const prevItemDef = ITEM_BY_ID[prevDef.inventoryItemId];
+      if (!prevItemDef) continue;
+
+      const fitBp = bpTier
+        ? findFirstFitOnGrid(bpTier.cols, bpTier.rows, simBp, prevItemDef, false)
+        : null;
+      if (fitBp) {
+        simBp.push({
+          uid: `sim_${displacedSlots.length}`,
+          itemId: prevItemDef.id,
+          x: fitBp.x,
+          y: fitBp.y,
+          rotated: fitBp.rotated,
+          originBiome: "city",
+          revealed: true,
+        });
+        displacedSlots.push({ slot, prevDef, destZone: "backpack" });
+        continue;
+      }
+
+      const fitSb = findFirstFitOnGrid(sbTier.cols, sbTier.rows, simSb, prevItemDef, false);
+      if (fitSb) {
+        simSb.push({
+          uid: `sim_${displacedSlots.length}`,
+          itemId: prevItemDef.id,
+          x: fitSb.x,
+          y: fitSb.y,
+          rotated: fitSb.rotated,
+          originBiome: "city",
+          revealed: true,
+        });
+        displacedSlots.push({ slot, prevDef, destZone: "safebox" });
+        continue;
+      }
+
+      return {
+        ok: false,
+        preset,
+        alreadyWorn,
+        equipFromOwned,
+        missingBuy,
+        unavailableStarter,
+        displacedSlots,
+        totalCost,
+        blockedReason: `Balo & Safebox không đủ chỗ (${prevDef.gridW}×${prevDef.gridH} ô) để cất lại ${prevDef.name} đang mặc!`,
+      };
+    }
+
+    return {
+      ok: true,
+      preset,
+      alreadyWorn,
+      equipFromOwned,
+      missingBuy,
+      unavailableStarter,
+      displacedSlots,
+      totalCost,
+    };
+  }
+
+  public buyAndEquipOutfitPreset(presetId: string): {
+    ok: boolean;
+    message: string;
+    spentGold: number;
+  } {
+    const plan = this.previewOutfitPresetPurchase(presetId);
+    if (!plan.ok || !plan.preset) {
+      return {
+        ok: false,
+        message: plan.blockedReason ?? "Không thể mặc bộ trang phục.",
+        spentGold: 0,
+      };
+    }
+
+    if (plan.equipFromOwned.length === 0 && plan.missingBuy.length === 0) {
+      return {
+        ok: false,
+        message: "Bạn đang mặc đầy đủ bộ trang phục này rồi!",
+        spentGold: 0,
+      };
+    }
+
+    if (this.inventory.getGold() < plan.totalCost) {
+      return {
+        ok: false,
+        message: `Cần ${plan.totalCost.toLocaleString("vi-VN")} Vàng để mua phần còn thiếu của bộ "${plan.preset.name}".`,
+        spentGold: 0,
+      };
+    }
+
+    if (plan.totalCost > 0 && !this.inventory.trySpendGold(plan.totalCost)) {
+      return { ok: false, message: "Không đủ Vàng.", spentGold: 0 };
+    }
+
+    for (const owned of plan.equipFromOwned) {
+      this.inventory.removeItemFromZone(owned.zone, owned.uid);
+    }
+    for (const disp of plan.displacedSlots) {
+      this.inventory.addItemToZone(disp.destZone, disp.prevDef.inventoryItemId, "city");
+    }
+    for (const owned of plan.equipFromOwned) {
+      this.equipment[owned.slot] = owned.def.id;
+    }
+    for (const buy of plan.missingBuy) {
+      this.equipment[buy.slot] = buy.def.id;
+    }
+
+    this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    this.callbacks.onRequestSave?.(true);
+
+    return {
+      ok: true,
+      spentGold: plan.totalCost,
+      message:
+        plan.totalCost > 0
+          ? `⚡ Đã mua (${plan.totalCost.toLocaleString("vi-VN")} Vàng) & mặc nhanh "${plan.preset.name}"!`
+          : `👕 Đã mặc nhanh "${plan.preset.name}" từ đồ sẵn có!`,
+    };
+  }
+
+  public getQuickUseConsumables(limit = 6): Array<{
+    uid: string;
+    itemDef: CollectibleItemDef;
+    consumable: ConsumableDef;
+    count: number;
+  }> {
+    const sorted = [...this.inventory.getBackpackItems()].sort((a, b) =>
+      a.y !== b.y ? a.y - b.y : a.x - b.x,
+    );
+    const byId = new Map<
+      string,
+      {
+        uid: string;
+        itemDef: CollectibleItemDef;
+        consumable: ConsumableDef;
+        count: number;
+      }
+    >();
+    const results: Array<{
+      uid: string;
+      itemDef: CollectibleItemDef;
+      consumable: ConsumableDef;
+      count: number;
+    }> = [];
+    for (const inst of sorted) {
+      const itemDef = ITEM_BY_ID[inst.itemId];
+      const consumable = itemDef?.consumableId ? CONSUMABLE_BY_ID[itemDef.consumableId] : null;
+      if (!itemDef || !consumable) continue;
+      const existing = byId.get(consumable.id);
+      if (existing) {
+        existing.count += 1;
+        continue;
+      }
+      if (results.length >= limit) continue;
+      const entry = { uid: inst.uid, itemDef, consumable, count: 1 };
+      byId.set(consumable.id, entry);
+      results.push(entry);
+    }
+    return results;
+  }
+
+  public getPendingConsumeProgress(): {
+    name: string;
+    emoji: string;
+    progress01: number;
+    remainingSec: number;
+  } | null {
+    if (!this.pendingConsume) return null;
+    const { consumable, elapsedMs, durationMs } = this.pendingConsume;
+    const progress01 = Math.min(1, Math.max(0, elapsedMs / Math.max(1, durationMs)));
+    const remainingSec = Math.max(0, (durationMs - elapsedMs) / 1000);
+    return {
+      name: consumable.name,
+      emoji: consumable.emoji,
+      progress01,
+      remainingSec,
+    };
+  }
+
+  public buyConsumable(
+    consumableId: string,
+    mode: "eat" | "pack",
+  ): { ok: boolean; started?: boolean; message: string } {
+    const def = CONSUMABLE_BY_ID[consumableId];
+    if (!def) return { ok: false, message: "Vật phẩm không tồn tại." };
+
+    if (mode === "pack") {
+      if (this.inventory.getSummary().walletGold < def.priceGold) {
+        return {
+          ok: false,
+          message: `Cần ${def.priceGold.toLocaleString("vi-VN")} Vàng để mua ${def.name}.`,
+        };
+      }
+      const addRes = this.inventory.addItemToBackpack(def.inventoryItemId, "city");
+      if (!addRes.ok) return addRes;
+      this.inventory.trySpendGold(def.priceGold);
+      this.callbacks.onRequestSave?.(true);
+      return { ok: true, message: `Đã mua & cất ${def.name} vào Balo!` };
+    }
+
+    if (this.pendingConsume) {
+      return {
+        ok: false,
+        message: `Đang dùng ${this.pendingConsume.consumable.name}, vui lòng chờ xong!`,
+      };
+    }
+
+    if (this.inventory.getSummary().walletGold < def.priceGold) {
+      return {
+        ok: false,
+        message: `Cần ${def.priceGold.toLocaleString("vi-VN")} Vàng để dùng ${def.name}.`,
+      };
+    }
+
+    this.pendingConsume = {
+      consumable: def,
+      backpackUid: null,
+      priceGold: def.priceGold,
+      elapsedMs: 0,
+      durationMs: def.useDurationMs,
+    };
+    return {
+      ok: true,
+      started: true,
+      message: `Đang sử dụng ${def.name} (${(def.useDurationMs / 1000).toFixed(1)}s)...`,
+    };
+  }
+
+  public useBackpackFood(uid: string): { ok: boolean; started?: boolean; message: string } {
+    if (this.pendingConsume) {
+      return {
+        ok: false,
+        message: `Đang dùng ${this.pendingConsume.consumable.name}, vui lòng chờ xong!`,
+      };
+    }
+    const inst = this.inventory.getBackpackItems().find((i) => i.uid === uid);
+    const itemDef = inst ? ITEM_BY_ID[inst.itemId] : null;
+    const def = itemDef?.consumableId ? CONSUMABLE_BY_ID[itemDef.consumableId] : null;
+    if (!inst || !def) {
+      return { ok: false, message: "Vật phẩm này không thể ăn/uống trực tiếp." };
+    }
+
+    this.pendingConsume = {
+      consumable: def,
+      backpackUid: uid,
+      priceGold: 0,
+      elapsedMs: 0,
+      durationMs: def.useDurationMs,
+    };
+    return {
+      ok: true,
+      started: true,
+      message: `Đang sử dụng ${def.name} (${(def.useDurationMs / 1000).toFixed(1)}s)...`,
+    };
+  }
+
+  private applyConsumableEffect(c: ConsumableDef): void {
+    if (c.staminaBoostPct && c.staminaBoostDurationMs) {
+      this.survival.staminaBuff = {
+        boostPct: c.staminaBoostPct,
+        expiresAt: Date.now() + c.staminaBoostDurationMs,
+      };
+    }
+    const maxStamina = getActiveStaminaMax(
+      this.survival,
+      Date.now(),
+      this.inventory.getPermanentStaminaBonusPct(),
+    );
+
+    if (c.isFullRestore) {
+      this.survival.hp = 100;
+      this.survival.hunger = 100;
+      this.survival.stamina = maxStamina;
+      this.survival.bodyTempC = SURVIVAL_IDEAL_TEMP_C;
+    } else {
+      this.survival.hunger = Math.min(100, this.survival.hunger + c.hungerRestore);
+      this.survival.stamina = Math.min(maxStamina, this.survival.stamina + c.staminaRestore);
+      this.survival.hp = Math.min(100, this.survival.hp + c.hpRestore);
+      if (c.id === "food_medkit") {
+        this.survival.bodyTempC += (SURVIVAL_IDEAL_TEMP_C - this.survival.bodyTempC) * 0.65;
+      } else if (c.tempDeltaC !== 0) {
+        this.survival.bodyTempC = Math.max(
+          34.0,
+          Math.min(41.0, this.survival.bodyTempC + c.tempDeltaC),
+        );
+      }
+    }
+    this.callbacks.onRequestSave?.(true);
+  }
+
+  private stepPendingConsume(dtSeconds: number): void {
+    if (!this.pendingConsume) return;
+    this.pendingConsume.elapsedMs += dtSeconds * 1000;
+    if (this.pendingConsume.elapsedMs < this.pendingConsume.durationMs) return;
+
+    const job = this.pendingConsume;
+    this.pendingConsume = null;
+
+    if (job.backpackUid) {
+      const consumed = this.inventory.consumeBackpackItem(job.backpackUid);
+      if (!consumed) return;
+      this.applyConsumableEffect(consumed);
+      const buffNote = consumed.staminaBoostPct
+        ? ` +${consumed.staminaBoostPct}% Thể lực (${Math.round((consumed.staminaBoostDurationMs ?? 0) / 60_000)} phút)`
+        : "";
+      this.callbacks.onConsumeCompleted?.(
+        `${consumed.emoji} Đã dùng ${consumed.name}`,
+        consumed.isFullRestore
+          ? "Hồi phục 100% Máu, Đói, Thể lực & Thân nhiệt!"
+          : `+${consumed.hungerRestore} Đói, +${consumed.staminaRestore} Thể lực, +${consumed.hpRestore} Máu.${buffNote}`,
+      );
+      return;
+    }
+
+    if (job.priceGold > 0 && !this.inventory.trySpendGold(job.priceGold)) {
+      this.callbacks.onConsumeCompleted?.("Không đủ Vàng", "Không thể hoàn tất giao dịch.");
+      return;
+    }
+
+    this.applyConsumableEffect(job.consumable);
+    const buffNote = job.consumable.staminaBoostPct
+      ? ` +${job.consumable.staminaBoostPct}% Thể lực (${Math.round((job.consumable.staminaBoostDurationMs ?? 0) / 60_000)} phút)`
+      : "";
+    this.callbacks.onConsumeCompleted?.(
+      `${job.consumable.emoji} Đã dùng ${job.consumable.name}`,
+      job.consumable.isFullRestore
+        ? "Hồi phục 100% Máu, Đói, Thể lực & Thân nhiệt!"
+        : `+${job.consumable.hungerRestore} Đói, +${job.consumable.staminaRestore} Thể lực, +${job.consumable.hpRestore} Máu.${buffNote}`,
+    );
   }
 
   public setCharacterSkin(skinId: CharacterSkinId): void {
     this.player.setSkin(skinId);
+    this.callbacks.onRequestSave?.(true);
   }
 
   public getCharacterSkin(): CharacterSkinId {
     return this.player.getSkin();
+  }
+
+  public cycleEnvironmentPreset(): EnvironmentPreset {
+    return this.weatherService.cyclePreset();
+  }
+
+  public getEnvironmentState(): EnvironmentState {
+    return this.weatherService.getEnvironmentState();
   }
 
   public setSoundEnabled(enabled: boolean): void {
@@ -130,6 +1335,7 @@ export class WorldScene {
     if (enabled) {
       sound.unmuteAll();
     }
+    this.callbacks.onRequestSave?.(true);
   }
 
   public isSoundEnabled(): boolean {
@@ -146,6 +1352,30 @@ export class WorldScene {
   }
 
   public moveToWorldPoint(worldX: number, worldY: number, playSfx = true): void {
+    if (this.isMovementLocked()) return;
+    if (this.isInJail) {
+      const clampedX = Math.max(0, Math.min(JAIL_WIDTH, worldX));
+      const clampedY = Math.max(0, Math.min(JAIL_HEIGHT, worldY));
+      const path = this.jailRoom.pathfinder.findPath(
+        { x: this.player.x, y: this.player.y },
+        { x: clampedX, y: clampedY },
+      );
+      if (path.length > 0) {
+        this.player.setPath(path);
+        const end = path[path.length - 1];
+        this.jailRoom.addRipple(end.x, end.y, 0x34d399);
+      } else {
+        this.jailRoom.addRipple(clampedX, clampedY, 0xf43f5e);
+      }
+      if (playSfx && this.soundEnabled) {
+        try {
+          sound.play("sfx-press", { volume: 0.22 });
+        } catch {
+          // AudioContext unlocks automatically on first user gesture
+        }
+      }
+      return;
+    }
     const clampedX = Math.max(TILE_SIZE * 2, Math.min(WORLD_WIDTH - TILE_SIZE * 2, worldX));
     const clampedY = Math.max(TILE_SIZE * 2, Math.min(WORLD_HEIGHT - TILE_SIZE * 2, worldY));
 
@@ -177,8 +1407,486 @@ export class WorldScene {
     return this.data.biomes[row * this.data.cols + col];
   }
 
+  public getSecurityZoneAt(x: number, y: number): SecurityZone {
+    const col = Math.max(0, Math.min(this.data.cols - 1, Math.floor(x / TILE_SIZE)));
+    const row = Math.max(0, Math.min(this.data.rows - 1, Math.floor(y / TILE_SIZE)));
+    return this.data.securityZones[row * this.data.cols + col];
+  }
+
+  public getCurrentSecurityZone(): SecurityZone {
+    if (this.isInJail) return "green";
+    return this.getSecurityZoneAt(this.player.x, this.player.y);
+  }
+
+  public setLootingOpen(isOpen: boolean): void {
+    this.isLootingContainerOpen = isOpen;
+    if (!isOpen) this.lootingCheckAccum = 0;
+  }
+
+  public getGlobalPoliceIgnoreRemainingMs(): number {
+    return Math.max(0, this.globalPoliceIgnoreUntil - Date.now());
+  }
+
+  public getPlayerSurfaceState(): SurfaceState {
+    return this.player.getSurfaceState();
+  }
+
+  public getSurfaceAt(x: number, y: number): SurfaceState {
+    if (this.isInJail) return "dry";
+    const col = Math.max(0, Math.min(this.data.cols - 1, Math.floor(x / TILE_SIZE)));
+    const row = Math.max(0, Math.min(this.data.rows - 1, Math.floor(y / TILE_SIZE)));
+    const tile = this.data.tiles[row * this.data.cols + col];
+    if (tile === "water") return "swim";
+    if (tile === "shallow" || tile === "puddle") return "wade";
+    return "dry";
+  }
+
   public getDestination(): Point | null {
     return this.player.getDestination();
+  }
+
+  public getPoliceMarkers(): PoliceOfficerMarker[] {
+    return this.police.getMarkers(
+      Date.now(),
+      this.ignoreUntilByOfficer,
+      this.globalPoliceIgnoreUntil,
+    );
+  }
+
+  public getDetainedRemainingMs(): number {
+    return Math.max(0, this.detainedUntil - Date.now());
+  }
+
+  public isDetained(): boolean {
+    return this.getDetainedRemainingMs() > 0;
+  }
+
+  public isMovementLocked(): boolean {
+    return (
+      !this.onboardingDone ||
+      this.faintRespawnCooldown > 0 ||
+      this.activePoliceChallengeOfficerId !== null ||
+      this.activeVaultPuzzle !== null ||
+      this.activeJailStationId !== null
+    );
+  }
+
+  public completeVaultPuzzle(): void {
+    const v = this.activeVaultPuzzle;
+    this.activeVaultPuzzle = null;
+    if (!v) return;
+
+    const zone = this.getSecurityZoneAt(this.player.x, this.player.y);
+    const container = this.inventory.openOrGenerateContainer(
+      v.containerId,
+      v.title,
+      v.sourceType,
+      v.biome,
+      zone === "green" ? "yellow" : zone,
+    );
+
+    if (v.chestId) {
+      const cv = this.chestVisuals.find((c) => c.chest.id === v.chestId);
+      if (cv) {
+        cv.chest.opened = true;
+        if (cv.chest.kind !== "trash") {
+          cv.sprite.texture = this.atlas.chestOpen;
+        }
+        cv.aura.visible = false;
+      }
+    }
+
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+    this.callbacks.onOpenContainer?.(container);
+  }
+
+  public cancelVaultPuzzle(): void {
+    this.activeVaultPuzzle = null;
+  }
+
+  public resolveJailMinigame(won: boolean, stationId: string): { reducedMs: number; released: boolean } {
+    this.activeJailStationId = null;
+    if (!won || !this.isInJail) {
+      return { reducedMs: 0, released: false };
+    }
+
+    this.jailRoom.relocateStation(stationId);
+    const prev = this.detainedUntil;
+    this.detainedUntil = Math.max(Date.now(), prev - 60_000);
+    if (this.detainedUntil <= Date.now()) {
+      this.detainedUntil = 0;
+      this.exitJailRoom();
+      this.callbacks.onDetentionEnded?.();
+      this.callbacks.onRequestSave?.(true);
+      return { reducedMs: 60_000, released: true };
+    }
+
+    this.callbacks.onRequestSave?.(true);
+    return { reducedMs: 60_000, released: false };
+  }
+
+  public cancelJailMinigame(): void {
+    this.activeJailStationId = null;
+  }
+
+  private enterJailRoom(): void {
+    this.isInJail = true;
+    this.isLootingContainerOpen = false;
+    this.lootingCheckAccum = 0;
+    this.pendingConsume = null;
+    this.jailRoom.randomizeStations();
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.jailRoom.entityLayer.addChild(this.player);
+    this.player.position.set(this.jailRoom.spawnPoint.x, this.jailRoom.spawnPoint.y);
+    this.player.setFacing("down");
+    this.player.setSurvivalVisuals({
+      speedMultiplier: 1,
+      isSweating: false,
+      isShivering: false,
+    });
+    this.worldContainer.visible = false;
+    this.worldLightsContainer.visible = false;
+    this.atmosphere.screenOverlayLayer.visible = false;
+    this.jailRoom.container.visible = true;
+    this.jailRoom.syncCameraTransform(
+      this.app.screen.width,
+      this.app.screen.height,
+      this.player.x,
+      this.player.y,
+    );
+  }
+
+  private exitJailRoom(): void {
+    this.isInJail = false;
+    this.activeJailStationId = null;
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.entityLayer.addChild(this.player);
+    this.player.position.set(this.data.policeDetainRespawn.x, this.data.policeDetainRespawn.y);
+    this.player.setFacing("down");
+    this.camX = this.data.policeDetainRespawn.x;
+    this.camY = this.data.policeDetainRespawn.y;
+    this.lastSavedPlayerX = this.data.policeDetainRespawn.x;
+    this.lastSavedPlayerY = this.data.policeDetainRespawn.y;
+    this.jailRoom.container.visible = false;
+    this.worldContainer.visible = true;
+    this.worldLightsContainer.visible = true;
+    this.atmosphere.screenOverlayLayer.visible = true;
+    this.syncCameraTransform();
+  }
+
+  public resolvePoliceChallenge(won: boolean): {
+    won: boolean;
+    lostItemCount: number;
+    lostBackpack: boolean;
+    officerId: string | null;
+  } {
+    const officerId = this.activePoliceChallengeOfficerId;
+    this.activePoliceChallengeOfficerId = null;
+
+    if (!officerId) {
+      return { won, lostItemCount: 0, lostBackpack: false, officerId: null };
+    }
+
+    if (won) {
+      // ALL police ignore the player for 96 seconds (reduced 20% from 2 minutes) on 1 win!
+      this.globalPoliceIgnoreUntil = Date.now() + 96_000;
+      this.ignoreUntilByOfficer = {};
+      this.callbacks.onRequestSave?.(true);
+      return { won: true, lostItemCount: 0, lostBackpack: false, officerId };
+    }
+
+    // Lost -> Confiscate backpack + all items + all worn gear, force 0-value Prisoner Uniform,
+    // Safebox & Home Storage stay untouched! Detain inside Jail Room for 5 minutes.
+    const { lostItemCount, lostBackpack } = this.inventory.confiscateOnArrest();
+    this.equipment = createPrisonerEquippedGear();
+    this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.player.setAppearance(this.equipment, this.hairId, this.gender);
+
+    this.detainedUntil = Date.now() + 300_000;
+    this.ignoreUntilByOfficer[officerId] = Date.now() + 315_000;
+    this.enterJailRoom();
+    this.callbacks.onRequestSave?.(true);
+    this.callbacks.onPoliceDetained?.(lostItemCount, 300_000, lostBackpack);
+    return { won: false, lostItemCount, lostBackpack, officerId };
+  }
+
+  public getNearbyInteraction(): NearbyInteraction | null {
+    if (this.isInJail) {
+      const st = this.jailRoom.getNearbyStation(this.player.x, this.player.y);
+      if (!st) return null;
+      const nameMap: Record<ArcadeMinigameKind, string> = {
+        memory_cards: "Lật Thẻ Cặp",
+        lockpick: "Bẻ Khóa Cơ Học",
+        timing_bar: "Chặn Thanh Trượt",
+      };
+      return {
+        type: "jail_minigame",
+        stationId: st.id,
+        kind: st.kind,
+        label: `❗ Chơi Minigame: ${nameMap[st.kind]} (Giảm 1 phút) [E]`,
+      };
+    }
+    const px = this.player.x;
+    const py = this.player.y;
+
+    let closestChest: ChestVisual | null = null;
+    let bestChestDist = 104;
+    for (const cv of this.chestVisuals) {
+      const d = Math.hypot(px - cv.chest.x, py - (cv.chest.y - 12));
+      if (d < bestChestDist) {
+        bestChestDist = d;
+        closestChest = cv;
+      }
+    }
+
+    let closestFoodCartDist = 78;
+    let nearbyFoodCart = false;
+    for (const prop of this.foodCartProps) {
+      const d = Math.hypot(px - prop.x, py - (prop.y - 12));
+      if (d < closestFoodCartDist) {
+        closestFoodCartDist = d;
+        nearbyFoodCart = true;
+      }
+    }
+
+    if (nearbyFoodCart && (!closestChest || closestFoodCartDist <= bestChestDist)) {
+      return {
+        type: "shop",
+        name: "Xe Đồ Ăn Nhanh",
+        shopKind: "food",
+      };
+    }
+
+    if (closestChest) {
+      const remainingMs = this.inventory.getContainerRemainingMs(closestChest.chest.id);
+      const searched = remainingMs !== null;
+      if (!searched && closestChest.chest.opened) {
+        closestChest.chest.opened = false;
+        if (closestChest.chest.kind !== "trash") {
+          closestChest.sprite.texture = this.atlas.chestClosed;
+        }
+        closestChest.aura.visible = true;
+      }
+      const icon =
+        closestChest.chest.kind === "trash"
+          ? "🗑️"
+          : closestChest.chest.kind === "royal"
+            ? searched
+              ? "👑"
+              : "🔐"
+            : "🧰";
+      const locked = closestChest.chest.kind === "royal" && !searched;
+      const verb =
+        closestChest.chest.kind === "trash"
+          ? searched
+            ? "Xem Thùng Rác"
+            : "Lục Thùng Rác"
+          : locked
+            ? "Giải Đố Mở Khóa"
+            : searched
+              ? "Mở lại"
+              : "Mở";
+      return {
+        type: "chest",
+        chest: closestChest.chest,
+        searched,
+        remainingMs,
+        locked,
+        label: `${icon} ${verb}: ${closestChest.chest.name}`,
+      };
+    }
+
+    let closestBuilding: OccludableProp | null = null;
+    let bestBldDist = Number.POSITIVE_INFINITY;
+    for (const op of this.buildingOccludables) {
+      if (
+        Math.abs(px - op.x) <= op.halfW + 38 &&
+        py <= op.bottomY + 42 &&
+        py >= op.topY - 24
+      ) {
+        const d = Math.hypot(px - op.x, py - op.depthY);
+        if (d < bestBldDist) {
+          bestBldDist = d;
+          closestBuilding = op;
+        }
+      }
+    }
+
+    if (closestBuilding && isBuildingProp(closestBuilding.prop.kind)) {
+      const kind = closestBuilding.prop.kind;
+      const meta = BUILDING_META[kind];
+      if (meta.tier === "shop") {
+        return {
+          type: "shop",
+          name: meta.name,
+          shopKind: meta.shopKind ?? "backpack",
+        };
+      }
+      if (meta.tier === "home") {
+        return {
+          type: "home",
+          name: meta.name,
+        };
+      }
+      if (meta.tier === "collection") {
+        return {
+          type: "collection",
+          name: meta.name,
+        };
+      }
+      if (meta.tier === "airport") {
+        return {
+          type: "airport",
+          name: meta.name,
+        };
+      }
+      if (meta.tier === "police") {
+        return null;
+      }
+
+      const containerId = `bld-${closestBuilding.prop.id}`;
+      const existing = this.inventory.getContainer(containerId);
+      const remainingMs = existing ? this.inventory.getContainerRemainingMs(containerId) : null;
+      const col = Math.max(0, Math.min(this.data.cols - 1, Math.floor(closestBuilding.x / TILE_SIZE)));
+      const row = Math.max(0, Math.min(this.data.rows - 1, Math.floor(closestBuilding.bottomY / TILE_SIZE)));
+      return {
+        type: "building",
+        propId: closestBuilding.prop.id,
+        kind,
+        name: meta.name,
+        tier: meta.tier,
+        isVault: Boolean(meta.isVault),
+        biome: this.data.biomes[row * this.data.cols + col],
+        searched: Boolean(existing),
+        remainingCount: existing ? existing.items.length : 0,
+        remainingMs,
+        x: closestBuilding.x,
+        y: closestBuilding.depthY,
+      };
+    }
+
+    return null;
+  }
+
+  public triggerInteraction(): boolean {
+    if (this.isMovementLocked()) return false;
+    const target = this.getNearbyInteraction();
+    if (!target) return false;
+
+    if (target.type === "jail_minigame") {
+      this.activeJailStationId = target.stationId;
+      this.player.clearPath();
+      this.player.setManualDirection(0, 0);
+      this.playPressSfx();
+      this.callbacks.onOpenJailMinigame?.({ stationId: target.stationId, kind: target.kind });
+      return true;
+    }
+
+    if (this.isInJail) return false;
+
+    if (target.type === "shop") {
+      this.playPressSfx();
+      this.callbacks.onOpenShop?.(target.shopKind);
+      return true;
+    }
+
+    if (target.type === "home") {
+      this.playPressSfx();
+      this.callbacks.onOpenHomeStorage?.();
+      return true;
+    }
+
+    if (target.type === "collection") {
+      this.playPressSfx();
+      this.callbacks.onOpenCollectionHall?.();
+      return true;
+    }
+
+    if (target.type === "airport") {
+      this.playPressSfx();
+      this.callbacks.onOpenAirport?.();
+      return true;
+    }
+
+    if (target.type === "chest") {
+      const cv = this.chestVisuals.find((c) => c.chest.id === target.chest.id);
+      if (!cv) return false;
+
+      const sourceType: LootSourceType =
+        cv.chest.kind === "trash"
+          ? "trash_bin"
+          : cv.chest.kind === "royal"
+            ? "chest_royal"
+            : "chest_wooden";
+
+      if (sourceType === "chest_royal" && !this.inventory.isContainerSearched(cv.chest.id)) {
+        this.activeVaultPuzzle = {
+          containerId: cv.chest.id,
+          title: cv.chest.name,
+          sourceType: "chest_royal",
+          biome: cv.chest.biome,
+          chestId: cv.chest.id,
+        };
+        this.player.clearPath();
+        this.player.setManualDirection(0, 0);
+        this.playPressSfx();
+        this.callbacks.onOpenVaultPuzzle?.(this.activeVaultPuzzle);
+        return true;
+      }
+
+      const container = this.inventory.openOrGenerateContainer(
+        cv.chest.id,
+        cv.chest.name,
+        sourceType,
+        cv.chest.biome,
+        this.getSecurityZoneAt(cv.chest.x, cv.chest.y),
+      );
+
+      cv.chest.opened = true;
+      if (cv.chest.kind !== "trash") {
+        cv.sprite.texture = this.atlas.chestOpen;
+      }
+      cv.aura.visible = false;
+
+      this.playPressSfx();
+      this.callbacks.onOpenContainer?.(container);
+      return true;
+    }
+
+    const containerId = `bld-${target.propId}`;
+    const sourceType: LootSourceType = target.isVault
+      ? "house_vault"
+      : target.tier === "landmark"
+        ? "house_landmark"
+        : "house_standard";
+
+    if (target.isVault && !this.inventory.isContainerSearched(containerId)) {
+      this.activeVaultPuzzle = {
+        containerId,
+        title: target.name,
+        sourceType: "house_vault",
+        biome: target.biome,
+      };
+      this.player.clearPath();
+      this.player.setManualDirection(0, 0);
+      this.playPressSfx();
+      this.callbacks.onOpenVaultPuzzle?.(this.activeVaultPuzzle);
+      return true;
+    }
+
+    const container = this.inventory.openOrGenerateContainer(
+      containerId,
+      target.name,
+      sourceType,
+      target.biome,
+      this.getSecurityZoneAt(target.x, target.y),
+    );
+    this.playPressSfx();
+    this.callbacks.onOpenContainer?.(container);
+    return true;
   }
 
   public update(dtSeconds: number): void {
@@ -192,10 +1900,47 @@ export class WorldScene {
     if (this.keysDown.has("KeyA") || this.keysDown.has("ArrowLeft")) kx -= 1;
     if (this.keysDown.has("KeyD") || this.keysDown.has("ArrowRight")) kx += 1;
 
-    if (kx !== 0 || ky !== 0) {
+    if (this.faintRespawnCooldown > 0) {
+      this.faintRespawnCooldown = Math.max(0, this.faintRespawnCooldown - dt);
+      this.player.setManualDirection(0, 0);
+      this.player.clearPath();
+    } else if (
+      this.activePoliceChallengeOfficerId !== null ||
+      this.activeVaultPuzzle !== null ||
+      this.activeJailStationId !== null
+    ) {
+      this.player.setManualDirection(0, 0);
+      this.player.clearPath();
+    } else if (kx !== 0 || ky !== 0) {
       this.player.setManualDirection(kx, ky);
     } else {
       this.player.setManualDirection(0, 0);
+    }
+
+    if (this.detainedUntil > 0 && Date.now() >= this.detainedUntil) {
+      this.detainedUntil = 0;
+      if (this.isInJail) {
+        this.exitJailRoom();
+      }
+      this.callbacks.onDetentionEnded?.();
+      this.callbacks.onRequestSave?.(true);
+    }
+
+    if (this.isInJail) {
+      this.player.update(dt, this.jailRoom.pathfinder);
+      this.player.setSurvivalVisuals({
+        speedMultiplier: 1,
+        isSweating: false,
+        isShivering: false,
+      });
+      this.jailRoom.renderOverlay(dt, this.player.getRemainingPath());
+      this.jailRoom.syncCameraTransform(
+        this.app.screen.width,
+        this.app.screen.height,
+        this.player.x,
+        this.player.y,
+      );
+      return;
     }
 
     this.player.update(dt, this.pathfinder);
@@ -207,18 +1952,190 @@ export class WorldScene {
 
     this.syncCameraTransform();
     this.checkLandmarks();
+    this.renderWaterWakesAndDroplets(dt);
     this.renderPathAndRipples(dt);
-    this.updateAmbientEffects(dt);
+    this.animateLilypads();
+
+    const env = this.weatherService.getEnvironmentState();
+    const playerZone = this.getCurrentSecurityZone();
+    let caughtOfficer = this.police.step(dt, {
+      playerX: this.player.x,
+      playerY: this.player.y,
+      playerZone,
+      nightFactor: env.nightFactor,
+      canArrest: !this.isMovementLocked(),
+      isLooting: this.isLootingContainerOpen,
+      ignoreUntilById: this.ignoreUntilByOfficer,
+      globalIgnoreUntil: this.globalPoliceIgnoreUntil,
+    });
+
+    // While actively looting in Yellow or Red zone, police stay moving & have a lower chance to interrupt if nearby
+    if (
+      !caughtOfficer &&
+      this.isLootingContainerOpen &&
+      !this.isMovementLocked() &&
+      playerZone !== "green" &&
+      this.globalPoliceIgnoreUntil <= Date.now()
+    ) {
+      this.lootingCheckAccum += dt;
+      if (this.lootingCheckAccum >= 2.5) {
+        this.lootingCheckAccum = 0;
+        const askChance = playerZone === "red" ? 0.07 : 0.03;
+        if (Math.random() < askChance) {
+          const nearest = this.police.findNearestOfficer(
+            this.player.x,
+            this.player.y,
+            this.ignoreUntilByOfficer,
+            this.globalPoliceIgnoreUntil,
+          );
+          if (nearest && nearest.distance <= 460) {
+            caughtOfficer = {
+              id: nearest.id,
+              name: nearest.name,
+              biome: nearest.biome,
+              zone: playerZone,
+            };
+          }
+        }
+      }
+    } else if (!this.isLootingContainerOpen) {
+      this.lootingCheckAccum = 0;
+    }
+
+    if (caughtOfficer) {
+      const blendChance = Math.min(
+        MAX_BLEND_CHANCE,
+        Math.max(0, this.cachedEquipStats.blendChance),
+      );
+      if (blendChance > 0 && Math.random() < blendChance) {
+        this.ignoreUntilByOfficer[caughtOfficer.id] = Date.now() + 18_000;
+        this.callbacks.onRequestSave?.(true);
+        this.callbacks.onPoliceBlendIgnored?.(
+          caughtOfficer.name,
+          Math.round(blendChance * 100),
+        );
+      } else {
+        this.activePoliceChallengeOfficerId = caughtOfficer.id;
+        this.isLootingContainerOpen = false;
+        this.player.setManualDirection(0, 0);
+        this.player.clearPath();
+        this.callbacks.onRequestSave?.(true);
+        this.callbacks.onPoliceChallenge?.(caughtOfficer);
+      }
+    }
+    this.updatePropOcclusionFade(dt);
+    this.animateChestsAndPopups();
+
+    if (!this.isMovementLocked()) {
+      this.stepPendingConsume(dt);
+      const survivalTick = stepSurvivalState(this.survival, dt, {
+        isMoving: this.player.isMoving(),
+        surface: this.player.getSurfaceState(),
+        env,
+        equip: this.cachedEquipStats,
+        totalWeightKg: this.inventory.getCarriedWeightKg(this.cachedEquipStats.weightKg),
+        permanentStaminaBonusPct: this.inventory.getPermanentStaminaBonusPct(),
+        heavySpeedBonusPct: this.inventory.getHeavySpeedBonusPct(),
+      });
+      this.lastSurvivalTick = survivalTick;
+      this.player.setSurvivalVisuals({
+        speedMultiplier: survivalTick.speedMultiplier,
+        isSweating: survivalTick.thermal.isSweating,
+        isShivering: survivalTick.thermal.isShivering,
+      });
+
+      if (survivalTick.fainted) {
+        this.pendingConsume = null;
+        this.faintRespawnCooldown = 2.6;
+        const walletGold = this.inventory.getGold();
+        const fee = Math.min(walletGold, 30);
+        if (fee > 0) {
+          this.inventory.trySpendGold(fee);
+        }
+        this.survival = {
+          hp: 75,
+          hunger: 45,
+          stamina: 65,
+          bodyTempC: SURVIVAL_IDEAL_TEMP_C,
+          staminaBuff: null,
+        };
+        this.player.clearPath();
+        this.player.setManualDirection(0, 0);
+        this.player.position.set(this.data.hospitalRespawn.x, this.data.hospitalRespawn.y);
+        this.player.setFacing("down");
+        this.camX = this.data.hospitalRespawn.x;
+        this.camY = this.data.hospitalRespawn.y;
+        this.lastSavedPlayerX = this.data.hospitalRespawn.x;
+        this.lastSavedPlayerY = this.data.hospitalRespawn.y;
+        this.lastSurvivalTick = {
+          thermal: evaluateThermalState(
+            env,
+            "dry",
+            this.cachedEquipStats,
+            SURVIVAL_IDEAL_TEMP_C,
+          ),
+          blurIntensity: 0,
+          speedMultiplier: 1,
+          fainted: false,
+          faintReason: null,
+        };
+        this.player.setSurvivalVisuals({
+          speedMultiplier: 1,
+          isSweating: false,
+          isShivering: false,
+        });
+        this.callbacks.onRequestSave?.(true);
+        this.callbacks.onFaintedToHospital?.(survivalTick.faintReason ?? "kiệt sức", fee);
+      }
+    }
+
+    this.refreshCheckAccumulator += dt;
+    if (this.refreshCheckAccumulator >= 1) {
+      this.refreshCheckAccumulator = 0;
+      const expiredIds = this.inventory.purgeExpiredContainers();
+      if (expiredIds.length > 0) {
+        this.syncChestVisualsAfterRefresh(expiredIds);
+        this.callbacks.onContainersRefreshed?.(expiredIds);
+      }
+    }
+
+    this.positionSaveAccumulator += dt;
+    this.survivalSaveAccumulator += dt;
+    if (this.positionSaveAccumulator >= 1.2) {
+      this.positionSaveAccumulator = 0;
+      if (Math.hypot(this.player.x - this.lastSavedPlayerX, this.player.y - this.lastSavedPlayerY) >= 24) {
+        this.lastSavedPlayerX = this.player.x;
+        this.lastSavedPlayerY = this.player.y;
+        this.callbacks.onRequestSave?.(false);
+      }
+    }
+    if (this.survivalSaveAccumulator >= 4.0) {
+      this.survivalSaveAccumulator = 0;
+      this.callbacks.onRequestSave?.(false);
+    }
+
+    const halfW = this.app.screen.width / (2 * this.zoom);
+    const halfH = this.app.screen.height / (2 * this.zoom);
+    const viewBounds = {
+      minX: this.camX - halfW,
+      maxX: this.camX + halfW,
+      minY: this.camY - halfH,
+      maxY: this.camY + halfH,
+    };
+
+    this.atmosphere.update(dt, env, this.player.x, this.player.y, this.camX, this.worldContainer, viewBounds);
+    this.weatherParticles.update(dt, env, viewBounds);
   }
 
   public destroy(): void {
+    this.weatherService.stop();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     this.app.canvas.removeEventListener("wheel", this.onWheel);
   }
 
   private buildTerrainChunks(): void {
-    const { cols, rows, tiles } = this.data;
+    const { cols, rows, tiles, puddleUnderlay } = this.data;
 
     for (let cy = 0; cy < rows; cy += CHUNK_TILES) {
       for (let cx = 0; cx < cols; cx += CHUNK_TILES) {
@@ -229,12 +2146,12 @@ export class WorldScene {
 
         for (let row = cy; row < maxRow; row++) {
           for (let col = cx; col < maxCol; col++) {
-            const tile = tiles[row * cols + col];
+            const idx = row * cols + col;
+            const tile = tiles[idx];
             const px = col * TILE_SIZE;
             const py = row * TILE_SIZE;
 
             if (tile === "bridge") {
-              // Draw water underneath, then rustic wooden planks on top
               const waterTex = this.pickTileVariant(this.atlas.tiles.water, col, row);
               const wSprite = new Sprite(waterTex);
               wSprite.position.set(px, py);
@@ -258,20 +2175,37 @@ export class WorldScene {
               continue;
             }
 
+            if (tile === "puddle") {
+              const baseTile = puddleUnderlay[idx];
+              const baseTex = this.resolveTileTexture(baseTile, col, row);
+              const baseSprite = new Sprite(baseTex);
+              baseSprite.position.set(px, py);
+              baseSprite.scale.set(PIXEL_SCALE);
+              chunk.addChild(baseSprite);
+              this.drawPuddleOverlay(decorGfx, tiles, cols, rows, col, row, px, py);
+              continue;
+            }
+
             const tex = this.resolveTileTexture(tile, col, row);
             const sprite = new Sprite(tex);
             sprite.position.set(px, py);
             sprite.scale.set(PIXEL_SCALE);
 
             if (tile === "water") {
-              // Rich cerulean lake tint over ice/water tile
-              sprite.tint = 0x38bdf8;
+              // Deeper azure pond/lake center (swim zone)
+              sprite.tint = 0x0284c7;
+            } else if (tile === "shallow") {
+              // Bright turquoise shallow rim (wade zone)
+              sprite.tint = 0x7dd3fc;
               this.drawWaterEdgeFoam(decorGfx, tiles, cols, rows, col, row, px, py);
             } else if (tile === "forest") {
-              // Slightly deeper woodland tone
               sprite.tint = 0xdbeafe;
             } else if (tile === "stone") {
               this.drawStoneEdgeTrim(decorGfx, tiles, cols, rows, col, row, px, py);
+            } else if (tile === "sidewalk") {
+              this.drawSidewalkCurb(decorGfx, tiles, cols, rows, col, row, px, py);
+            } else if (tile === "road") {
+              this.drawRoadMarkings(decorGfx, tiles, cols, rows, col, row, px, py);
             }
 
             chunk.addChild(sprite);
@@ -307,7 +2241,13 @@ export class WorldScene {
         return this.resolveDirtAutoTile(col, row, hash);
       case "stone":
         return this.atlas.tiles.stone[hash % this.atlas.tiles.stone.length];
+      case "road":
+        return this.atlas.tiles.road[hash % this.atlas.tiles.road.length];
+      case "sidewalk":
+        return this.atlas.tiles.sidewalk[hash % this.atlas.tiles.sidewalk.length];
       case "water":
+      case "shallow":
+      case "puddle":
       case "bridge":
         return this.atlas.tiles.water[hash % this.atlas.tiles.water.length];
     }
@@ -360,6 +2300,94 @@ export class WorldScene {
     if (!isStone(col + 1, row)) g.rect(px + TILE_SIZE - 3, py, 3, TILE_SIZE).fill({ color: 0x1e293b, alpha: 0.65 });
   }
 
+  private drawSidewalkCurb(
+    g: Graphics,
+    tiles: TileType[],
+    cols: number,
+    rows: number,
+    col: number,
+    row: number,
+    px: number,
+    py: number,
+  ): void {
+    const isRoad = (c: number, r: number): boolean => {
+      if (c < 0 || r < 0 || c >= cols || r >= rows) return false;
+      return tiles[r * cols + c] === "road";
+    };
+
+    if (isRoad(col, row + 1)) {
+      g.rect(px, py + TILE_SIZE - 4, TILE_SIZE, 4).fill({ color: 0x94a3b8, alpha: 0.9 });
+    }
+    if (isRoad(col, row - 1)) {
+      g.rect(px, py, TILE_SIZE, 3).fill({ color: 0x64748b, alpha: 0.75 });
+    }
+    if (isRoad(col - 1, row)) {
+      g.rect(px, py, 3, TILE_SIZE).fill({ color: 0x64748b, alpha: 0.75 });
+    }
+    if (isRoad(col + 1, row)) {
+      g.rect(px + TILE_SIZE - 3, py, 3, TILE_SIZE).fill({ color: 0x94a3b8, alpha: 0.85 });
+    }
+  }
+
+  private drawRoadMarkings(
+    g: Graphics,
+    tiles: TileType[],
+    cols: number,
+    rows: number,
+    col: number,
+    row: number,
+    px: number,
+    py: number,
+  ): void {
+    const isRoad = (c: number, r: number): boolean => {
+      if (c < 0 || r < 0 || c >= cols || r >= rows) return false;
+      return tiles[r * cols + c] === "road";
+    };
+
+    const up = isRoad(col, row - 1);
+    const down = isRoad(col, row + 1);
+    const left = isRoad(col - 1, row);
+    const right = isRoad(col + 1, row);
+
+    const isHorizLane = left && right && !(up && down);
+    const isVertLane = up && down && !(left && right);
+
+    // Crosswalk stripes right before entering an intersection
+    const nextToIntersectionX =
+      isHorizLane &&
+      ((isRoad(col + 1, row - 1) && isRoad(col + 1, row + 1)) ||
+        (isRoad(col - 1, row - 1) && isRoad(col - 1, row + 1)));
+    const nextToIntersectionY =
+      isVertLane &&
+      ((isRoad(col - 1, row + 1) && isRoad(col + 1, row + 1)) ||
+        (isRoad(col - 1, row - 1) && isRoad(col + 1, row - 1)));
+
+    if (nextToIntersectionX) {
+      const startX = isRoad(col + 1, row - 1) ? px + 14 : px + 8;
+      for (let sy = 5; sy <= TILE_SIZE - 9; sy += 11) {
+        g.rect(startX, py + sy, 26, 6).fill({ color: 0xf1f5f9, alpha: 0.82 });
+      }
+      return;
+    }
+
+    if (nextToIntersectionY) {
+      const startY = isRoad(col - 1, row + 1) ? py + 14 : py + 8;
+      for (let sx = 5; sx <= TILE_SIZE - 9; sx += 11) {
+        g.rect(px + sx, startY, 6, 26).fill({ color: 0xf1f5f9, alpha: 0.82 });
+      }
+      return;
+    }
+
+    // Center dashed yellow lane divider between the 2 lanes
+    if (isHorizLane && down && !up) {
+      g.rect(px + 6, py + TILE_SIZE - 2, 14, 3).fill({ color: 0xfacc15, alpha: 0.86 });
+      g.rect(px + 28, py + TILE_SIZE - 2, 14, 3).fill({ color: 0xfacc15, alpha: 0.86 });
+    } else if (isVertLane && right && !left) {
+      g.rect(px + TILE_SIZE - 2, py + 6, 3, 14).fill({ color: 0xfacc15, alpha: 0.86 });
+      g.rect(px + TILE_SIZE - 2, py + 28, 3, 14).fill({ color: 0xfacc15, alpha: 0.86 });
+    }
+  }
+
   private pickTileVariant(list: Texture[], col: number, row: number): Texture {
     const idx = Math.abs(col * 31 + row * 17) % list.length;
     return list[idx];
@@ -377,13 +2405,83 @@ export class WorldScene {
   ): void {
     const isWater = (c: number, r: number): boolean => {
       if (c < 0 || r < 0 || c >= cols || r >= rows) return true;
-      return tiles[r * cols + c] === "water";
+      const t = tiles[r * cols + c];
+      return t === "water" || t === "shallow";
     };
 
-    if (!isWater(col, row - 1)) g.rect(px, py, TILE_SIZE, 4).fill({ color: 0xbae6fd, alpha: 0.45 });
-    if (!isWater(col, row + 1)) g.rect(px, py + TILE_SIZE - 4, TILE_SIZE, 4).fill({ color: 0xbae6fd, alpha: 0.35 });
-    if (!isWater(col - 1, row)) g.rect(px, py, 4, TILE_SIZE).fill({ color: 0xbae6fd, alpha: 0.45 });
-    if (!isWater(col + 1, row)) g.rect(px + TILE_SIZE - 4, py, 4, TILE_SIZE).fill({ color: 0xbae6fd, alpha: 0.35 });
+    if (!isWater(col, row - 1)) g.rect(px, py, TILE_SIZE, 4).fill({ color: 0xe0f2fe, alpha: 0.55 });
+    if (!isWater(col, row + 1)) g.rect(px, py + TILE_SIZE - 4, TILE_SIZE, 4).fill({ color: 0xe0f2fe, alpha: 0.45 });
+    if (!isWater(col - 1, row)) g.rect(px, py, 4, TILE_SIZE).fill({ color: 0xe0f2fe, alpha: 0.55 });
+    if (!isWater(col + 1, row)) g.rect(px + TILE_SIZE - 4, py, 4, TILE_SIZE).fill({ color: 0xe0f2fe, alpha: 0.45 });
+  }
+
+  private drawPuddleOverlay(
+    g: Graphics,
+    tiles: TileType[],
+    cols: number,
+    rows: number,
+    col: number,
+    row: number,
+    px: number,
+    py: number,
+  ): void {
+    const isPuddle = (c: number, r: number): boolean => {
+      if (c < 0 || r < 0 || c >= cols || r >= rows) return false;
+      return tiles[r * cols + c] === "puddle";
+    };
+
+    const hasUp = isPuddle(col, row - 1);
+    const hasDown = isPuddle(col, row + 1);
+    const hasLeft = isPuddle(col - 1, row);
+    const hasRight = isPuddle(col + 1, row);
+
+    const inset = 7;
+    const left = hasLeft ? px : px + inset;
+    const right = hasRight ? px + TILE_SIZE : px + TILE_SIZE - inset;
+    const top = hasUp ? py : py + inset;
+    const bottom = hasDown ? py + TILE_SIZE : py + TILE_SIZE - inset;
+    const w = right - left;
+    const h = bottom - top;
+
+    // Seamless interior pool fill (zero grid lines between adjacent puddle tiles)
+    g.rect(left, top, w, h).fill({ color: 0x38bdf8, alpha: 0.36 });
+
+    // Soft shoreline foam outline strictly along exterior edges
+    if (!hasUp) {
+      g.rect(left, top, w, 2.5).fill({ color: 0xbae6fd, alpha: 0.52 });
+    }
+    if (!hasDown) {
+      g.rect(left, bottom - 2.5, w, 2.5).fill({ color: 0x7dd3fc, alpha: 0.45 });
+    }
+    if (!hasLeft) {
+      g.rect(left, top, 2.5, h).fill({ color: 0xbae6fd, alpha: 0.52 });
+    }
+    if (!hasRight) {
+      g.rect(right - 2.5, top, 2.5, h).fill({ color: 0x7dd3fc, alpha: 0.45 });
+    }
+
+    // Subtle organic glint ripple on sparse puddle tiles
+    if ((col + row) % 3 === 0) {
+      g.roundRect(left + w * 0.22, top + h * 0.28, w * 0.36, 2.5, 1.2).fill({
+        color: 0xe0f2fe,
+        alpha: 0.45,
+      });
+    }
+  }
+
+  private buildZoneBoundaryMarkers(): void {
+    const g = new Graphics();
+    const boundaries: Array<{ col: number; color: number }> = [
+      { col: GREEN_END_COL + 1, color: 0x10b981 },
+      { col: YELLOW_END_COL + 1, color: 0xef4444 },
+    ];
+    for (const b of boundaries) {
+      const x = b.col * TILE_SIZE;
+      for (let y = TILE_SIZE * 2; y < WORLD_HEIGHT - TILE_SIZE * 2; y += 28) {
+        g.rect(x - 2, y, 4, 16).fill({ color: b.color, alpha: 0.45 });
+      }
+    }
+    this.groundLayer.addChild(g);
   }
 
   private buildLilypads(): void {
@@ -394,19 +2492,18 @@ export class WorldScene {
       sprite.scale.set(PIXEL_SCALE * 0.85);
       sprite.position.set(pos.x, pos.y);
       this.waterAnimLayer.addChild(sprite);
-      this.lilypadSprites.push({ sprite, phase: i * 0.8 });
+      this.lilypadSprites.push({ sprite, x: pos.x, y: pos.y, phase: i * 0.8 });
     }
   }
 
   private buildPropsAndBuildings(): void {
     for (const prop of this.data.props) {
-      const node = this.createPropSprite(prop);
-      if (prop.kind === "bush_a" || prop.kind === "bush_b" || prop.kind === "stone_small") {
-        // Low ground foliage still depth-sorted or ground-layered nicely
-        this.entityLayer.addChild(node);
-      } else {
-        this.entityLayer.addChild(node);
+      if (prop.kind === "food_cart") {
+        this.foodCartProps.push(prop);
       }
+      const node = this.createPropSprite(prop);
+      this.entityLayer.addChild(node);
+      this.propNodes.push({ node, x: prop.x, y: prop.y });
     }
   }
 
@@ -414,40 +2511,254 @@ export class WorldScene {
     const container = new Container();
     container.x = prop.x;
     container.y = prop.y;
-    container.zIndex = prop.y;
 
     const tex = this.atlas.props[prop.kind];
     const sprite = new Sprite(tex);
     sprite.anchor.set(0.5, 0.94);
-    sprite.scale.set(PIXEL_SCALE);
+    const isBld = isBuildingProp(prop.kind);
+    sprite.scale.set(
+      prop.kind === "city_collection_hall"
+        ? BUILDING_PIXEL_SCALE * 0.82
+        : isBld
+          ? BUILDING_PIXEL_SCALE
+          : PIXEL_SCALE,
+    );
 
-    // Subtle soft elliptical shadow under trees, statues & structures
+    // Buildings include a flat oval courtyard at the bottom ~22% of the sprite;
+    // lift zIndex to the actual wall line so player stands cleanly on top of the front lawn!
+    const depthY = isBld ? prop.y - sprite.height * 0.22 : prop.y;
+    container.zIndex = depthY;
+
     const shadowWidth = Math.max(18, sprite.width * 0.42);
-    const shadow = new Graphics()
-      .ellipse(0, -2, shadowWidth, Math.max(7, shadowWidth * 0.25))
-      .fill({ color: 0x000000, alpha: 0.28 });
+    const shadow = new Sprite(this.atlas.shadow);
+    shadow.anchor.set(0.5, 0.5);
+    shadow.position.set(0, -2);
+    shadow.width = shadowWidth * 2;
+    shadow.height = Math.max(7, shadowWidth * 0.25) * 2;
+    shadow.alpha = 0.28;
 
     container.addChild(shadow, sprite);
+
+    const SERVICE_SIGNS: Partial<Record<PropKind, { text: string; color: number }>> = {
+      city_backpack_shop: { text: "🏪 SHOP BALO", color: 0xfef08a },
+      city_clothing_shop: { text: "👔 SHOP QUẦN ÁO", color: 0xe9d5ff },
+      city_hair_salon: { text: "💇 TIỆM TÓC", color: 0xfbcfe8 },
+      city_pharmacy: { text: "💊 HIỆU THUỐC", color: 0x99f6e4 },
+      city_butcher_shop: { text: "🍜 QUÁN ĂN", color: 0xfed7aa },
+      plains_garden_inn: { text: "🍽️ NHÀ HÀNG", color: 0xfed7aa },
+      city_home_house: { text: "🏠 NHÀ RIÊNG", color: 0xa7f3d0 },
+      city_collection_hall: { text: "🏛️ PHÒNG SƯU TẦM", color: 0xfde047 },
+      city_airport: { text: "✈️ SÂN BAY (THÁI LAN)", color: 0x7dd3fc },
+      city_hospital: { text: "🏥 BỆNH VIỆN", color: 0xfecdd3 },
+      city_police_station: { text: "🚓 CÔNG AN PHƯỜNG", color: 0x93c5fd },
+    };
+
+    const signMeta = SERVICE_SIGNS[prop.kind];
+    if (signMeta) {
+      const tag = new Text({
+        text: signMeta.text,
+        style: {
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          fontSize: 13,
+          fontWeight: "800",
+          fill: signMeta.color,
+          stroke: { color: 0x0f172a, width: 4 },
+        },
+      });
+      tag.anchor.set(0.5, 1);
+      tag.position.set(0, -sprite.height * 0.94 - 4);
+      container.addChild(tag);
+    }
+
+    if (
+      isBld ||
+      prop.kind === "oak_warm" ||
+      prop.kind === "oak_moss" ||
+      prop.kind === "tree_small_warm" ||
+      prop.kind === "tree_small_moss" ||
+      prop.kind === "city_tree" ||
+      prop.kind === "city_tree_warm" ||
+      prop.kind === "lodge" ||
+      prop.kind === "hut" ||
+      prop.kind === "watchtower" ||
+      prop.kind === "shrine_ruin"
+    ) {
+      const entry: OccludableProp = {
+        container,
+        prop,
+        x: prop.x,
+        bottomY: prop.y,
+        topY: prop.y - sprite.height * 0.94,
+        depthY,
+        halfW: sprite.width * 0.44,
+      };
+      this.occludableProps.push(entry);
+      if (isBld) {
+        this.buildingOccludables.push(entry);
+      }
+    }
+
     return container;
   }
 
-  private buildDriftingLeaves(): void {
-    for (let i = 0; i < 28; i++) {
-      const sprite = new Sprite(this.atlas.leafFrames[i % this.atlas.leafFrames.length]);
-      sprite.anchor.set(0.5);
-      sprite.scale.set(PIXEL_SCALE * 0.85);
-      sprite.alpha = 0.85;
-      sprite.x = (i * 499) % WORLD_WIDTH;
-      sprite.y = (i * 313) % WORLD_HEIGHT;
+  private buildChests(): void {
+    for (const chest of this.data.chests) {
+      const searched = this.inventory.isContainerSearched(chest.id);
+      chest.opened = searched;
 
-      this.atmosphereLayer.addChild(sprite);
-      this.leafParticles.push({
-        sprite,
-        vx: 18 + (i % 4) * 6,
-        vy: 14 + (i % 3) * 5,
-        swayPhase: i * 0.9,
-        spin: (i % 2 === 0 ? 1 : -1) * 1.4,
+      const container = new Container();
+      container.position.set(chest.x, chest.y);
+      container.zIndex = chest.y;
+
+      const shadow = new Sprite(this.atlas.shadow);
+      shadow.anchor.set(0.5, 0.5);
+      shadow.position.set(0, -1);
+      shadow.width = 32;
+      shadow.height = 12;
+      shadow.alpha = 0.34;
+
+      const auraColor =
+        chest.kind === "trash"
+          ? 0x94a3b8
+          : chest.kind === "royal"
+            ? 0xef4444
+            : 0xeab308;
+      const aura = new Graphics()
+        .ellipse(0, -6, 20, 9)
+        .stroke({ width: 2, color: auraColor, alpha: 0.72 });
+      aura.visible = !searched;
+
+      const tex =
+        chest.kind === "trash"
+          ? this.atlas.props.trash_bin
+          : searched
+            ? this.atlas.chestOpen
+            : this.atlas.chestClosed;
+      const sprite = new Sprite(tex);
+      sprite.anchor.set(0.5, 0.92);
+      sprite.scale.set(chest.kind === "trash" ? 2.75 : 2.5);
+      if (chest.kind === "royal" && !searched) {
+        sprite.tint = 0xfef08a;
+      }
+
+      container.addChild(shadow, aura, sprite);
+      this.entityLayer.addChild(container);
+      this.chestVisuals.push({ chest, container, sprite, aura });
+    }
+  }
+
+  private syncChestVisualsAfterRefresh(expiredIds: string[]): void {
+    const expiredSet = new Set(expiredIds);
+    for (const cv of this.chestVisuals) {
+      if (!expiredSet.has(cv.chest.id)) continue;
+      cv.chest.opened = false;
+      if (cv.chest.kind !== "trash") {
+        cv.sprite.texture = this.atlas.chestClosed;
+      }
+      cv.aura.visible = true;
+    }
+  }
+
+  private animateChestsAndPopups(): void {
+    for (let i = 0; i < this.chestVisuals.length; i++) {
+      const cv = this.chestVisuals[i];
+      if (!cv.container.visible || cv.chest.opened) continue;
+      const pulse = 0.92 + Math.sin(this.elapsed * 3.8 + i) * 0.12;
+      cv.aura.scale.set(pulse);
+      cv.aura.alpha = 0.52 + Math.sin(this.elapsed * 3.8 + i) * 0.25;
+    }
+  }
+
+  private playPressSfx(): void {
+    if (!this.soundEnabled) return;
+    try {
+      sound.play("sfx-press", { volume: 0.25 });
+    } catch {
+      // Ignore audio lock before gesture
+    }
+  }
+
+  /**
+   * Smoothly fades any building or tall tree behind which the player walks
+   * so the character remains 100% visible at all times.
+   */
+  private updatePropOcclusionFade(dt: number): void {
+    const px = this.player.x;
+    const py = this.player.y;
+    const lerpRate = Math.min(1, 10 * dt);
+
+    for (const op of this.occludableProps) {
+      if (!op.container.visible) continue;
+      const behindStructure =
+        py < op.depthY - 2 &&
+        py > op.topY - 12 &&
+        Math.abs(px - op.x) < op.halfW;
+      const targetAlpha = behindStructure ? 0.36 : 1.0;
+      if (Math.abs(op.container.alpha - targetAlpha) > 0.005) {
+        op.container.alpha += (targetAlpha - op.container.alpha) * lerpRate;
+      } else {
+        op.container.alpha = targetAlpha;
+      }
+    }
+  }
+
+  private spawnWaterStepEffect(x: number, y: number, mode: "wade" | "swim"): void {
+    if (this.waterWakes.length < 40) {
+      this.waterWakes.push({
+        x,
+        y: mode === "swim" ? y - 8 : y - 1,
+        age: 0,
+        duration: mode === "swim" ? 0.8 : 0.55,
+        maxRadiusX: mode === "swim" ? 34 : 22,
+        maxRadiusY: mode === "swim" ? 13 : 8,
       });
+    }
+
+    const splashCount = mode === "wade" ? 4 : 3;
+    for (let i = 0; i < splashCount && this.waterDroplets.length < 60; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 28 + Math.random() * 44;
+      this.waterDroplets.push({
+        x: x + (Math.random() - 0.5) * 10,
+        y: mode === "swim" ? y - 10 : y - 2,
+        vx: Math.cos(angle) * speed,
+        vy: -55 - Math.random() * 45,
+        age: 0,
+        duration: 0.32 + Math.random() * 0.14,
+      });
+    }
+  }
+
+  private renderWaterWakesAndDroplets(dt: number): void {
+    const g = this.waterWakeLayer;
+    g.clear();
+
+    for (let i = this.waterWakes.length - 1; i >= 0; i--) {
+      const w = this.waterWakes[i];
+      w.age += dt;
+      if (w.age >= w.duration) {
+        this.waterWakes.splice(i, 1);
+        continue;
+      }
+      const p = w.age / w.duration;
+      const rx = 8 + p * w.maxRadiusX;
+      const ry = 3 + p * w.maxRadiusY;
+      const alpha = (1 - p) * 0.72;
+      g.ellipse(w.x, w.y, rx, ry).stroke({ width: 1.8, color: 0xe0f2fe, alpha });
+    }
+
+    for (let i = this.waterDroplets.length - 1; i >= 0; i--) {
+      const d = this.waterDroplets[i];
+      d.age += dt;
+      if (d.age >= d.duration) {
+        this.waterDroplets.splice(i, 1);
+        continue;
+      }
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.vy += 320 * dt;
+      const alpha = 1 - d.age / d.duration;
+      g.circle(d.x, d.y, 2.2).fill({ color: 0xbae6fd, alpha });
     }
   }
 
@@ -503,35 +2814,30 @@ export class WorldScene {
     }
   }
 
-  private updateAmbientEffects(dt: number): void {
-    // Animate water lilypads gently through the 4 frames
+  private animateLilypads(): void {
     const frameBase = Math.floor(this.elapsed * 3);
     for (const lp of this.lilypadSprites) {
+      if (!lp.sprite.visible) continue;
       const frame = (frameBase + Math.floor(lp.phase)) % 4;
-      lp.sprite.texture = this.atlas.lilypads[frame];
-    }
-
-    // Drift blossom leaves across the breeze with flutter animation
-    const leafFrameBase = Math.floor(this.elapsed * 6);
-    for (let i = 0; i < this.leafParticles.length; i++) {
-      const leaf = this.leafParticles[i];
-      leaf.sprite.texture = this.atlas.leafFrames[(leafFrameBase + i) % this.atlas.leafFrames.length];
-      leaf.sprite.x += (leaf.vx + Math.sin(this.elapsed * 1.5 + leaf.swayPhase) * 10) * dt;
-      leaf.sprite.y += leaf.vy * dt;
-      leaf.sprite.rotation += leaf.spin * dt;
-
-      if (leaf.sprite.x > WORLD_WIDTH) leaf.sprite.x -= WORLD_WIDTH;
-      if (leaf.sprite.y > WORLD_HEIGHT) leaf.sprite.y -= WORLD_HEIGHT;
+      const tex = this.atlas.lilypads[frame];
+      if (lp.sprite.texture !== tex) {
+        lp.sprite.texture = tex;
+      }
     }
   }
 
   private checkLandmarks(): void {
+    let newlyDiscovered = false;
     for (const lm of this.data.landmarks) {
       if (lm.discovered) continue;
       if (Math.hypot(this.player.x - lm.x, this.player.y - lm.y) <= lm.radius) {
         lm.discovered = true;
+        newlyDiscovered = true;
         this.callbacks.onLandmarkDiscovered?.(lm);
       }
+    }
+    if (newlyDiscovered) {
+      this.callbacks.onRequestSave?.(true);
     }
   }
 
@@ -560,13 +2866,15 @@ export class WorldScene {
     this.camX = clampedCamX;
     this.camY = clampedCamY;
 
-    this.worldContainer.scale.set(this.zoom);
-    this.worldContainer.position.set(
-      viewW / 2 - this.camX * this.zoom,
-      viewH / 2 - this.camY * this.zoom,
-    );
+    const posX = viewW / 2 - this.camX * this.zoom;
+    const posY = viewH / 2 - this.camY * this.zoom;
 
-    // Viewport culling per chunk keeps draw calls ultra minimal with 0 texture seam
+    this.worldContainer.scale.set(this.zoom);
+    this.worldContainer.position.set(posX, posY);
+
+    this.worldLightsContainer.scale.set(this.zoom);
+    this.worldLightsContainer.position.set(posX, posY);
+
     const minVisibleX = this.camX - halfViewWorldW - TILE_SIZE;
     const maxVisibleX = this.camX + halfViewWorldW + TILE_SIZE;
     const minVisibleY = this.camY - halfViewWorldH - TILE_SIZE;
@@ -578,6 +2886,31 @@ export class WorldScene {
         ch.minX <= maxVisibleX &&
         ch.maxY >= minVisibleY &&
         ch.minY <= maxVisibleY;
+    }
+
+    // Frustum-cull world entities cleanly outside the camera viewport (+sprite height/width padding)
+    const propMinX = minVisibleX - 240;
+    const propMaxX = maxVisibleX + 240;
+    const propMinY = minVisibleY - 80;
+    const propMaxY = maxVisibleY + 380;
+
+    for (const pn of this.propNodes) {
+      pn.node.visible =
+        pn.x >= propMinX && pn.x <= propMaxX && pn.y >= propMinY && pn.y <= propMaxY;
+    }
+    for (const cv of this.chestVisuals) {
+      cv.container.visible =
+        cv.chest.x >= propMinX &&
+        cv.chest.x <= propMaxX &&
+        cv.chest.y >= propMinY &&
+        cv.chest.y <= propMaxY;
+    }
+    for (const lp of this.lilypadSprites) {
+      lp.sprite.visible =
+        lp.x >= minVisibleX - 48 &&
+        lp.x <= maxVisibleX + 48 &&
+        lp.y >= minVisibleY - 48 &&
+        lp.y <= maxVisibleY + 48;
     }
   }
 
@@ -602,7 +2935,11 @@ export class WorldScene {
 
     this.app.renderer.on("resize", (width: number, height: number) => {
       this.app.stage.hitArea = this.app.screen;
+      this.atmosphere.resize(width, height);
       this.updateResponsiveBaseZoom(width, height, false);
+      if (this.isInJail) {
+        this.jailRoom.syncCameraTransform(width, height, this.player.x, this.player.y);
+      }
     });
 
     this.app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
@@ -612,7 +2949,22 @@ export class WorldScene {
 
   private readonly onPointerDown = (e: FederatedPointerEvent): void => {
     this.isPointerDown = true;
-    const worldPos = this.worldContainer.toLocal(e.global);
+    const targetContainer = this.isInJail ? this.jailRoom.container : this.worldContainer;
+    const worldPos = targetContainer.toLocal(e.global);
+    if (this.isInJail && !this.isMovementLocked()) {
+      const st = this.jailRoom.getStationAtPoint(worldPos.x, worldPos.y, 40);
+      if (st) {
+        const dist = Math.hypot(this.player.x - st.x, this.player.y - st.y);
+        if (dist <= 76) {
+          this.isPointerDown = false;
+          this.triggerInteraction();
+          return;
+        }
+        this.lastDragPathAt = performance.now();
+        this.moveToWorldPoint(st.x, st.y, true);
+        return;
+      }
+    }
     this.lastDragPathAt = performance.now();
     this.moveToWorldPoint(worldPos.x, worldPos.y, true);
   };
@@ -623,7 +2975,8 @@ export class WorldScene {
     if (now - this.lastDragPathAt < 85) return;
     this.lastDragPathAt = now;
 
-    const worldPos = this.worldContainer.toLocal(e.global);
+    const targetContainer = this.isInJail ? this.jailRoom.container : this.worldContainer;
+    const worldPos = targetContainer.toLocal(e.global);
     this.moveToWorldPoint(worldPos.x, worldPos.y, false);
   };
 
@@ -639,6 +2992,9 @@ export class WorldScene {
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     this.keysDown.add(e.code);
+    if (e.code === "KeyE" && !e.repeat) {
+      this.triggerInteraction();
+    }
   };
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
