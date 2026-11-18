@@ -194,6 +194,7 @@ export class PoliceSystem {
 
   private prevPlayerX: number;
   private prevPlayerY: number;
+  private serverClockOffsetMs = 0;
 
   constructor(world: WorldData, atlas: WorldAtlas, entityLayer: Container) {
     this.world = world;
@@ -205,6 +206,20 @@ export class PoliceSystem {
     this.spawnOfficers(entityLayer);
   }
 
+  public setServerClockOffsetMs(offsetMs: number): void {
+    this.serverClockOffsetMs = offsetMs;
+  }
+
+  public applyRemoteChase(officerId: string, x: number, y: number, untilMs: number): void {
+    const agent = this.officers.find((o) => o.id === officerId);
+    if (!agent) return;
+    if (agent.state === "patrol") {
+      agent.state = "investigate";
+      agent.investigateTimer = Math.max(1.5, Math.min(4.5, (untilMs - Date.now()) / 1000));
+      agent.target = { x, y };
+    }
+  }
+
   private precomputeWaypoints(): void {
     const waypoints = collectPoliceZoneWaypoints(this.world);
     this.zoneWaypoints.yellow = waypoints.yellow;
@@ -212,7 +227,14 @@ export class PoliceSystem {
   }
 
   private nextRand(agent: PoliceOfficerAgent): number {
-    agent.rngState = (agent.rngState * 1664525 + 1013904223) >>> 0;
+    if (agent.state === "patrol" && this.serverClockOffsetMs !== 0) {
+      // Deterministic patrol seed synced across clients via 6-second server time buckets
+      const bucket = Math.floor((Date.now() + this.serverClockOffsetMs) / 6000);
+      const specIdx = OFFICER_SPECS.findIndex((s) => s.id === agent.id) + 1;
+      agent.rngState = ((bucket * 1103515245 + specIdx * 2654435761) ^ agent.rngState) >>> 0;
+    } else {
+      agent.rngState = (agent.rngState * 1664525 + 1013904223) >>> 0;
+    }
     return agent.rngState / 0x100000000;
   }
 

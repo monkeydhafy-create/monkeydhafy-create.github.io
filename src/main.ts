@@ -3,6 +3,7 @@ import "@pixi/sound";
 import { Application, Assets } from "pixi.js";
 
 import { assets } from "./assets.ts";
+import { SupabaseSync } from "./cloud/SupabaseSync.ts";
 import { gameReady, initPlatform, setLoadingProgress } from "./platform.ts";
 import { SaveVault } from "./security/SaveVault.ts";
 import { Hud } from "./ui/Hud.ts";
@@ -80,12 +81,14 @@ async function bootstrap(): Promise<void> {
   await app.init({
     background: "#0b191d",
     resizeTo: window,
-    // Capped at 2: preserves Retina sharpness while keeping mobile GPU usage smooth
-    resolution: Math.min(window.devicePixelRatio, 2),
+    // Capped at 1.5 with low-power GPU hint: keeps pixel art crisp while slashing fill-rate & heat
+    resolution: Math.min(window.devicePixelRatio || 1, 1.5),
     autoDensity: true,
     antialias: false,
     roundPixels: true,
+    powerPreference: "low-power",
   });
+  app.ticker.maxFPS = 60;
 
   document.getElementById("pixi-container")!.appendChild(app.canvas);
 
@@ -103,8 +106,39 @@ async function bootstrap(): Promise<void> {
   setLoadingProgress(0.98, "Đang hoàn tất giao diện & ánh sáng...");
 
   let hud: Hud | null = null;
+  let worldScene: WorldScene | null = null;
 
-  const worldScene = new WorldScene(
+  const cloudSync = new SupabaseSync({
+    onStatusChanged: (status) => {
+      hud?.updateCloudSyncStatus(status);
+    },
+    onRemoteSaveReceived: (remoteSave) => {
+      if (!worldScene) return;
+      worldScene.applyRemoteSaveState(remoteSave);
+      saveVault.scheduleSave(worldScene.getSaveSnapshot(), true);
+      hud?.refreshFromRemoteState();
+    },
+    onRemoteSelfLiveReceived: (live) => {
+      worldScene?.applyRemoteLiveState(live);
+    },
+    onRemotePlayersChanged: (appearances, moves) => {
+      worldScene?.syncRemotePlayers(appearances, moves);
+    },
+    onRemotePoliceChase: (officerId, x, y, untilMs) => {
+      worldScene?.applyRemotePoliceChase(officerId, x, y, untilMs);
+    },
+    onSharedContainerUpdated: (mapId, containerId, items, version, openedAt, refreshAt) => {
+      hud?.handleSharedContainerUpdated(mapId, containerId, items, version, openedAt, refreshAt);
+    },
+    onSharedVaultUnlocked: (payload) => {
+      hud?.handleSharedVaultUnlocked(payload);
+    },
+    onServerClockOffset: (offsetMs) => {
+      worldScene?.setServerClockOffsetMs(offsetMs);
+    },
+  });
+
+  worldScene = new WorldScene(
     app,
     worldData,
     {
@@ -128,6 +162,9 @@ async function bootstrap(): Promise<void> {
       },
       onOpenCollectionHall: () => {
         hud?.openCollectionModal();
+      },
+      onOpenAuctionHouse: () => {
+        hud?.openAuctionModal();
       },
       onOpenAirport: () => {
         hud?.openAirportModal();
@@ -169,7 +206,19 @@ async function bootstrap(): Promise<void> {
         hud?.showFaintedHospitalScreen(reason, feeGold);
       },
       onRequestSave: (immediate) => {
-        saveVault.scheduleSave(worldScene.getSaveSnapshot(), immediate);
+        if (!worldScene) return;
+        const snap = worldScene.getSaveSnapshot();
+        saveVault.scheduleSave(snap, immediate);
+        cloudSync.queueSaveSync(snap, immediate);
+      },
+      onPlayerMoveSample: (sample) => {
+        cloudSync.updateLocalMovementAndPresence(sample);
+      },
+      onPoliceChaseStarted: (officerId, x, y) => {
+        cloudSync.broadcastPoliceChase(officerId, x, y);
+      },
+      onVaultUnlocked: ({ mapId, containerId, chestId, container }) => {
+        cloudSync.broadcastVaultUnlocked(mapId, containerId, chestId, container);
       },
     },
     saveLoadResult.save,
@@ -177,13 +226,11 @@ async function bootstrap(): Promise<void> {
 
   app.stage.addChild(worldScene.stageLayer);
 
-  hud = new Hud(worldScene);
+  hud = new Hud(worldScene, cloudSync);
   if (worldScene.needsOnboarding()) {
     hud.openOnboardingModal();
   } else if (worldScene.isDetained()) {
     hud.showDetentionScreen(0, worldScene.getDetainedRemainingMs(), true);
-  } else {
-    hud.openGuideModal(0);
   }
   if (saveLoadResult.tamperDetected) {
     hud.showDiscoveryToast(
@@ -192,19 +239,36 @@ async function bootstrap(): Promise<void> {
     );
   }
 
+  void cloudSync.restoreSession().then((res) => {
+    if (!res.authenticated || !worldScene) return;
+    if (res.remoteSave) {
+      worldScene.applyRemoteSaveState(res.remoteSave);
+      if (res.remoteLive) {
+        worldScene.applyRemoteLiveState(res.remoteLive);
+      }
+      saveVault.scheduleSave(worldScene.getSaveSnapshot(), true);
+      hud?.refreshFromRemoteState();
+    }
+  });
+
   const flushVault = (): void => {
+    if (!worldScene) return;
     void saveVault.flushPending(worldScene.getSaveSnapshot());
+    cloudSync.flushPendingSave();
   };
   window.addEventListener("pagehide", flushVault);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       flushVault();
+      app.ticker.stop();
+    } else {
+      app.ticker.start();
     }
   });
 
   app.ticker.add((ticker) => {
     const dtSeconds = ticker.deltaMS / 1000;
-    worldScene.update(dtSeconds);
+    worldScene?.update(dtSeconds);
     hud?.update(dtSeconds);
   });
 

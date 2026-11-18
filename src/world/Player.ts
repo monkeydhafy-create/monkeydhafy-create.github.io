@@ -223,6 +223,39 @@ export class Player extends Container {
     );
   }
 
+  public syncRemotePose(
+    targetX: number,
+    targetY: number,
+    facing: FacingDir,
+    isMoving: boolean,
+    dtSeconds: number,
+  ): void {
+    const dt = Math.min(Math.max(dtSeconds, 0), 0.05);
+    this.swimElapsed += dt;
+    const dist = Math.hypot(targetX - this.x, targetY - this.y);
+    if (dist > 220) {
+      this.x = targetX;
+      this.y = targetY;
+    } else {
+      const alpha = Math.min(1, dt * 12);
+      this.x += (targetX - this.x) * alpha;
+      this.y += (targetY - this.y) * alpha;
+    }
+    this.zIndex = this.y;
+    this.facing = facing;
+    this.surfaceState = this.callbacks.getSurfaceAt(this.x, this.y);
+    if (isMoving || dist > 2.5) {
+      this.animElapsed += dt;
+      const cycleDur = this.surfaceState === "swim" ? 0.85 : 0.64;
+      const step = Math.floor((this.animElapsed % cycleDur) / (cycleDur / 8));
+      this.animFrame = 1 + step;
+    } else {
+      this.animElapsed = 0;
+      this.animFrame = 0;
+    }
+    this.refreshTexture();
+  }
+
   public getRemainingPath(): Point[] {
     if (this.pathIndex >= this.path.length) return [];
     return this.path.slice(this.pathIndex);

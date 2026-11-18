@@ -97,6 +97,7 @@ export const BUILDING_KEYS = [
   "city_police_station",
   "city_home_house",
   "city_collection_hall",
+  "city_auction_house",
   "city_airport",
   "city_quest_guild",
   "city_reputation_hall",
@@ -204,7 +205,7 @@ export const BUILDING_META: Record<
   BuildingKind,
   {
     name: string;
-    tier: "standard" | "landmark" | "shop" | "home" | "collection" | "airport" | "police" | "quest" | "reputation" | "gacha";
+    tier: "standard" | "landmark" | "shop" | "home" | "collection" | "auction" | "airport" | "police" | "quest" | "reputation" | "gacha";
     isVault?: boolean;
     shopKind?: "backpack" | "clothing" | "food" | "hair" | "pharmacy";
   }
@@ -228,6 +229,7 @@ export const BUILDING_META: Record<
   city_police_station: { name: "Công An Phường", tier: "police" },
   city_home_house: { name: "Nhà Riêng (Kho Vĩnh Viễn)", tier: "home" },
   city_collection_hall: { name: "Phòng Sưu Tầm Đồ Đỏ", tier: "collection" },
+  city_auction_house: { name: "Nhà Đấu Giá (Treo Bán 24h)", tier: "auction" },
   city_airport: { name: "Sân Bay Quốc Tế", tier: "airport" },
   city_quest_guild: { name: "Hội Sở Nhiệm Vụ (4 Giờ)", tier: "quest" },
   city_reputation_hall: { name: "Sảnh Danh Vọng (Đổi Đồ Đỏ)", tier: "reputation" },

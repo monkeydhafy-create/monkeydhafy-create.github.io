@@ -4788,3 +4788,341 @@ button {
   padding-right: 14px;
   text-align: left;
 }
+
+/* Cloud Account & Realtime Sync Modal */
+.account-card {
+  width: min(440px, 100%);
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+.account-body {
+  padding: 14px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.account-hint {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 9px 11px;
+}
+
+.account-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.account-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(100, 116, 139, 0.65);
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 14px;
+  outline: none;
+}
+
+.account-field input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+}
+
+.account-feedback {
+  min-height: 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fde047;
+}
+
+.account-feedback.is-ok {
+  color: #4ade80;
+}
+
+.account-feedback.is-err {
+  color: #fca5a5;
+}
+
+.account-submit-btn {
+  width: 100%;
+  min-height: 42px;
+}
+
+.account-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.account-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.account-status-label {
+  color: #94a3b8;
+}
+
+.account-auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* ─── AUCTION HOUSE MODAL ───────────────────────────────────────────────────── */
+.auction-card-shell {
+  width: min(860px, 95vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auction-auth-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  color: #fde68a;
+  font-size: 13px;
+}
+
+.auction-auth-banner.hidden {
+  display: none;
+}
+
+.auction-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auction-tab-btn {
+  flex: 1 1 130px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.auction-tab-btn.is-active {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(217, 119, 6, 0.22));
+  border-color: #fbbf24;
+  color: #fef3c7;
+}
+
+.auction-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.auction-toolbar.hidden {
+  display: none;
+}
+
+.auction-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.auction-body {
+  flex: 1;
+  min-height: 240px;
+  max-height: 55vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.auction-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.auction-item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.auction-item-card.is-sold {
+  border-color: rgba(52, 211, 153, 0.55);
+  background: rgba(6, 78, 59, 0.35);
+}
+
+.auction-item-card.is-expired {
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.auction-item-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auction-item-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.auction-item-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.auction-item-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auction-item-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.auction-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.auction-sell-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.auction-price-input {
+  width: 96px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(15, 23, 42, 0.95);
+  color: #fde68a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.auction-section-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fde68a;
+  letter-spacing: 0.02em;
+  margin-top: 4px;
+}
+
+.auction-empty {
+  padding: 22px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+}
+
+.auction-status-msg {
+  min-height: 18px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.auction-status-msg.is-error {
+  color: #f87171;
+}
+
+.auction-upgrade-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.auction-req-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auction-req-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  font-size: 13px;
+}
+

@@ -76,6 +76,7 @@ const BUILDING_ASSET_ALIAS: Partial<Record<BuildingKind, string>> = {
   city_police_station: "bld-city_fire_station",
   city_home_house: "bld-city_terrace_houses",
   city_collection_hall: "bld-city_museum",
+  city_auction_house: "bld-city_post_office",
   city_quest_guild: "bld-city_mansion_block",
   city_reputation_hall: "bld-city_twin_towers",
   city_pet_gacha: "bld-city_flower_shop",

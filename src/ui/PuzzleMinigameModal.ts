@@ -994,6 +994,10 @@ export class PuzzleMinigameModal {
     return this.activeTarget !== null;
   }
 
+  public getActiveContainerId(): string | null {
+    return this.activeTarget?.containerId ?? null;
+  }
+
   public clearSession(containerId: string): void {
     this.sessionCache.delete(containerId);
   }

@@ -445,6 +445,7 @@ export class WeatherParticles {
 
     const sg = this.splashGraphics;
     sg.visible = this.splashes.length > 0;
+    if (this.splashes.length === 0) return;
     sg.clear();
     for (let i = this.splashes.length - 1; i >= 0; i--) {
       const s = this.splashes[i];

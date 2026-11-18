@@ -109,6 +109,9 @@
                 <button id="btn-sound-toggle" class="hud-menu-item" type="button" role="menuitem">
                   🔊 Âm thanh: Bật
                 </button>
+                <button id="btn-account" class="hud-menu-item" type="button" role="menuitem">
+                  👤 Tài khoản
+                </button>
               </div>
             </div>
           </div>
@@ -165,6 +168,7 @@
             <div id="fullmap-quick-nav" class="fullmap-quick-nav" aria-label="Đi nhanh tới địa điểm">
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_home_house">🏠 Nhà</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_collection_hall">🏛️ Sưu Tầm</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_auction_house">⚖️ Đấu Giá</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_backpack_shop">🏪 Shop Balo</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_clothing_shop">👔 Shop Áo</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_butcher_shop">🍜 Quán Ăn</button>
@@ -174,7 +178,7 @@
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_pet_gacha">🐾 Nhận Nuôi</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_airport">✈️ Sân Bay</button>
             </div>
-            <span class="fullmap-legend">🏠 Nhà • 🏛️ Sưu Tầm • 📜 Nhiệm Vụ • 🏆 Danh Vọng • 🐾 Nhận Nuôi • 🏪 Balo • 👔 Áo • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện</span>
+            <span class="fullmap-legend">🏠 Nhà • ⚖️ Đấu Giá • 🏛️ Sưu Tầm • 📜 Nhiệm Vụ • 🏆 Danh Vọng • 🐾 Nhận Nuôi • 🏪 Balo • 👔 Áo • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện</span>
           </div>
         </div>
       </div>
@@ -673,6 +677,34 @@
         </div>
       </div>
 
+      <!-- 24h Player Auction House Modal -->
+      <div id="auction-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="auction-title">
+        <div class="bag-card auction-card-shell">
+          <div class="bag-header">
+            <div>
+              <h2 id="auction-title" class="bag-title">⚖️ Nhà Đấu Giá Liên Server (24h)</h2>
+              <div id="auction-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-auction-close" class="bag-close" type="button" aria-label="Đóng nhà đấu giá">✕</button>
+          </div>
+          <div id="auction-auth-banner" class="auction-auth-banner hidden">
+            <span>⚠️ Bạn đang dùng tài khoản khách. Hãy đăng nhập Cloud để mua bán &amp; treo đồ lên Nhà Đấu Giá!</span>
+            <button id="btn-auction-open-account" class="btn-card-primary" type="button">☁️ Đăng Nhập Ngay</button>
+          </div>
+          <div class="auction-tabs" role="tablist">
+            <button id="btn-auction-tab-market" class="auction-tab-btn is-active" type="button" data-auction-tab="market">🛒 Chợ Đấu Giá</button>
+            <button id="btn-auction-tab-sell" class="auction-tab-btn" type="button" data-auction-tab="sell">📦 Treo Bán (<span id="auction-slot-badge">0/7</span>)</button>
+            <button id="btn-auction-tab-upgrade" class="auction-tab-btn" type="button" data-auction-tab="upgrade">⬆️ Mở Rộng Slot</button>
+          </div>
+          <div id="auction-toolbar" class="auction-toolbar">
+            <input id="auction-search-input" class="auction-search-input" type="search" placeholder="🔍 Tìm tên vật phẩm trên sàn..." autocomplete="off" />
+            <button id="btn-auction-refresh" class="btn-card-secondary" type="button">🔄 Làm mới</button>
+          </div>
+          <div id="auction-body" class="auction-body"></div>
+          <div id="auction-status-msg" class="auction-status-msg" aria-live="polite"></div>
+        </div>
+      </div>
+
       <!-- First-Time Character Gender Onboarding Modal -->
       <div id="onboarding-modal" class="bag-modal is-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="onboard-title">
         <div class="bag-card onboard-card">
@@ -702,6 +734,68 @@
             <button id="btn-onboard-start" class="btn-card-primary onboard-start-btn" type="button">
               ▶️ Bắt đầu
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cloud Account & Realtime Sync Modal -->
+      <div id="account-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="account-title">
+        <div class="bag-card account-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="account-title" class="bag-title">☁️ Tài Khoản &amp; Đồng Bộ Cloud</h2>
+              <div id="account-subtitle" class="vp-subtitle">Đồng bộ vị trí, đồ, thú cưng &amp; thế giới chung gần realtime</div>
+            </div>
+            <button id="btn-account-close" class="bag-close" type="button" aria-label="Đóng tài khoản">✕</button>
+          </div>
+          <div class="account-body">
+            <div id="account-guest-view" class="account-pane">
+              <div class="account-mode-tabs">
+                <button id="btn-account-tab-load" class="btn-sell-zone is-active" type="button">📥 Load tài khoản</button>
+                <button id="btn-account-tab-create" class="btn-sell-zone" type="button">✨ Tạo tài khoản</button>
+              </div>
+              <div id="account-mode-hint" class="account-hint">
+                Đăng nhập để tải nhân vật, đồ đạc từ máy khác về và chạy đồng bộ Realtime.
+              </div>
+              <label class="account-field">
+                <span>Tên tài khoản hoặc Email</span>
+                <input id="account-input-id" type="text" autocomplete="username" placeholder="vd: zera01 hoặc email@gmail.com" />
+              </label>
+              <label class="account-field">
+                <span>Mật khẩu (tối thiểu 6 ký tự)</span>
+                <input id="account-input-pass" type="password" autocomplete="current-password" placeholder="••••••" />
+              </label>
+              <div id="account-feedback" class="account-feedback" role="status"></div>
+              <button id="btn-account-submit" class="btn-card-primary account-submit-btn" type="button">
+                📥 Load tài khoản &amp; Bật Realtime
+              </button>
+            </div>
+
+            <div id="account-auth-view" class="account-pane" style="display: none;">
+              <div class="account-status-card">
+                <div class="account-status-row">
+                  <span class="account-status-label">Tài khoản:</span>
+                  <strong id="account-current-name">—</strong>
+                </div>
+                <div class="account-status-row">
+                  <span class="account-status-label">Realtime:</span>
+                  <span id="account-realtime-badge" class="bag-stat-pill">🟢 Đã kết nối</span>
+                </div>
+                <div class="account-status-row">
+                  <span class="account-status-label">Người chơi cùng khu:</span>
+                  <span id="account-sector-players" class="bag-stat-pill">0 người</span>
+                </div>
+                <div class="account-status-row">
+                  <span class="account-status-label">Lần đồng bộ cuối:</span>
+                  <span id="account-last-sync">—</span>
+                </div>
+              </div>
+              <div id="account-auth-feedback" class="account-feedback" role="status"></div>
+              <div class="account-auth-actions">
+                <button id="btn-account-sync-now" class="btn-card-primary" type="button">🔄 Đồng bộ ngay</button>
+                <button id="btn-account-logout" class="btn-card-danger" type="button">🚪 Đăng xuất</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

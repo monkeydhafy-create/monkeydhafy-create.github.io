@@ -27,6 +27,7 @@ import {
   getItemMaxUses,
   getItemRemainingUses,
   getItemSearchDurationMs,
+  getNextAuctionTier,
   getNextGymTier,
   getNextHomeTier,
   getNextSafeboxTier,
@@ -79,6 +80,7 @@ import {
   type GachaRollOutcome,
 } from "../world/PetSystem.ts";
 import type { PendingVaultTarget, ShopKind, WorldScene } from "../world/WorldScene.ts";
+import type { AuctionListingRow, CloudSyncStatus, SupabaseSync } from "../cloud/SupabaseSync.ts";
 import {
   ArcadeMinigameController,
   type ArcadeDifficulty,
@@ -231,6 +233,8 @@ interface ActiveDragState {
  */
 export class Hud {
   private readonly scene: WorldScene;
+  private readonly cloudSync: SupabaseSync | null;
+  private readonly sharedContainerVersions = new Map<string, number>();
 
   private readonly minimapBtn: HTMLButtonElement;
   private readonly minimapCanvas: HTMLCanvasElement;
@@ -246,7 +250,31 @@ export class Hud {
   private readonly missionsBtn: HTMLButtonElement;
   private readonly guideBtn: HTMLButtonElement;
   private readonly soundToggleBtn: HTMLButtonElement;
+  private readonly accountBtn: HTMLButtonElement;
   private readonly interactBarEl: HTMLElement;
+
+  // Cloud Account Modal
+  private readonly accountModalEl: HTMLElement;
+  private readonly accountCloseBtn: HTMLButtonElement;
+  private readonly accountGuestViewEl: HTMLElement;
+  private readonly accountAuthViewEl: HTMLElement;
+  private readonly accountTabLoadBtn: HTMLButtonElement;
+  private readonly accountTabCreateBtn: HTMLButtonElement;
+  private readonly accountModeHintEl: HTMLElement;
+  private readonly accountInputIdEl: HTMLInputElement;
+  private readonly accountInputPassEl: HTMLInputElement;
+  private readonly accountFeedbackEl: HTMLElement;
+  private readonly accountSubmitBtn: HTMLButtonElement;
+  private readonly accountCurrentNameEl: HTMLElement;
+  private readonly accountRealtimeBadgeEl: HTMLElement;
+  private readonly accountSectorPlayersEl: HTMLElement;
+  private readonly accountLastSyncEl: HTMLElement;
+  private readonly accountAuthFeedbackEl: HTMLElement;
+  private readonly accountSyncNowBtn: HTMLButtonElement;
+  private readonly accountLogoutBtn: HTMLButtonElement;
+  private isAccountModalOpen = false;
+  private accountMode: "load" | "create" = "load";
+  private accountBusy = false;
   private readonly interactBtn: HTMLButtonElement;
 
   // Full World Map Modal
@@ -354,7 +382,6 @@ export class Hud {
   private readonly guideNextBtn: HTMLButtonElement;
 
   // Survival Telemetry + Blur Vignette + Hospital Overlay
-  private readonly pixiContainerEl: HTMLElement;
   private readonly vignetteEl: HTMLElement;
   private readonly hospitalOverlayEl: HTMLElement;
   private readonly hospitalTitleEl: HTMLElement;
@@ -449,6 +476,19 @@ export class Hud {
   private readonly collectionStatsEl: HTMLElement;
   private readonly collectionGridEl: HTMLElement;
 
+  private readonly auctionModalEl: HTMLElement;
+  private readonly auctionCloseBtn: HTMLButtonElement;
+  private readonly auctionStatsEl: HTMLElement;
+  private readonly auctionAuthBannerEl: HTMLElement;
+  private readonly auctionOpenAccountBtn: HTMLButtonElement;
+  private readonly auctionSlotBadgeEl: HTMLElement;
+  private readonly auctionToolbarEl: HTMLElement;
+  private readonly auctionSearchInputEl: HTMLInputElement;
+  private readonly auctionRefreshBtn: HTMLButtonElement;
+  private readonly auctionBodyEl: HTMLElement;
+  private readonly auctionStatusMsgEl: HTMLElement;
+  private readonly auctionTabBtns: NodeListOf<HTMLButtonElement>;
+
   private readonly onboardModalEl: HTMLElement;
   private readonly onboardMaleBtn: HTMLButtonElement;
   private readonly onboardFemaleBtn: HTMLButtonElement;
@@ -487,6 +527,11 @@ export class Hud {
   private isHairShopOpen = false;
   private isAirportOpen = false;
   private isCollectionOpen = false;
+  private isAuctionOpen = false;
+  private auctionTab: "market" | "sell" | "upgrade" = "market";
+  private auctionListings: AuctionListingRow[] = [];
+  private auctionLoading = false;
+  private auctionSearchQuery = "";
   private isPoliceModalOpen = false;
   private policeSuspicionTimerId: number | null = null;
   private isFullmapOpen = false;
@@ -536,8 +581,9 @@ export class Hud {
   private lastSurvivalSignature = "";
   private lastPromptSignature = "";
 
-  constructor(scene: WorldScene) {
+  constructor(scene: WorldScene, cloudSync: SupabaseSync | null = null) {
     this.scene = scene;
+    this.cloudSync = cloudSync;
 
     this.minimapBtn = document.getElementById("btn-minimap") as HTMLButtonElement;
     this.minimapCanvas = document.getElementById("hud-minimap") as HTMLCanvasElement;
@@ -551,11 +597,29 @@ export class Hud {
     this.missionsBtn = document.getElementById("btn-missions") as HTMLButtonElement;
     this.guideBtn = document.getElementById("btn-guide") as HTMLButtonElement;
     this.soundToggleBtn = document.getElementById("btn-sound-toggle") as HTMLButtonElement;
+    this.accountBtn = document.getElementById("btn-account") as HTMLButtonElement;
+    this.accountModalEl = document.getElementById("account-modal")!;
+    this.accountCloseBtn = document.getElementById("btn-account-close") as HTMLButtonElement;
+    this.accountGuestViewEl = document.getElementById("account-guest-view")!;
+    this.accountAuthViewEl = document.getElementById("account-auth-view")!;
+    this.accountTabLoadBtn = document.getElementById("btn-account-tab-load") as HTMLButtonElement;
+    this.accountTabCreateBtn = document.getElementById("btn-account-tab-create") as HTMLButtonElement;
+    this.accountModeHintEl = document.getElementById("account-mode-hint")!;
+    this.accountInputIdEl = document.getElementById("account-input-id") as HTMLInputElement;
+    this.accountInputPassEl = document.getElementById("account-input-pass") as HTMLInputElement;
+    this.accountFeedbackEl = document.getElementById("account-feedback")!;
+    this.accountSubmitBtn = document.getElementById("btn-account-submit") as HTMLButtonElement;
+    this.accountCurrentNameEl = document.getElementById("account-current-name")!;
+    this.accountRealtimeBadgeEl = document.getElementById("account-realtime-badge")!;
+    this.accountSectorPlayersEl = document.getElementById("account-sector-players")!;
+    this.accountLastSyncEl = document.getElementById("account-last-sync")!;
+    this.accountAuthFeedbackEl = document.getElementById("account-auth-feedback")!;
+    this.accountSyncNowBtn = document.getElementById("btn-account-sync-now") as HTMLButtonElement;
+    this.accountLogoutBtn = document.getElementById("btn-account-logout") as HTMLButtonElement;
     this.wardrobeBtn = document.getElementById("btn-wardrobe") as HTMLButtonElement;
     this.interactBarEl = document.getElementById("interact-bar")!;
     this.interactBtn = document.getElementById("btn-interact") as HTMLButtonElement;
 
-    this.pixiContainerEl = document.getElementById("pixi-container")!;
     this.vignetteEl = document.getElementById("survival-vignette")!;
     this.hospitalOverlayEl = document.getElementById("hospital-overlay")!;
     this.hospitalTitleEl = document.getElementById("hospital-title")!;
@@ -736,6 +800,19 @@ export class Hud {
     this.collectionStatsEl = document.getElementById("coll-stats")!;
     this.collectionGridEl = document.getElementById("collection-grid")!;
 
+    this.auctionModalEl = document.getElementById("auction-modal")!;
+    this.auctionCloseBtn = document.getElementById("btn-auction-close") as HTMLButtonElement;
+    this.auctionStatsEl = document.getElementById("auction-stats")!;
+    this.auctionAuthBannerEl = document.getElementById("auction-auth-banner")!;
+    this.auctionOpenAccountBtn = document.getElementById("btn-auction-open-account") as HTMLButtonElement;
+    this.auctionSlotBadgeEl = document.getElementById("auction-slot-badge")!;
+    this.auctionToolbarEl = document.getElementById("auction-toolbar")!;
+    this.auctionSearchInputEl = document.getElementById("auction-search-input") as HTMLInputElement;
+    this.auctionRefreshBtn = document.getElementById("btn-auction-refresh") as HTMLButtonElement;
+    this.auctionBodyEl = document.getElementById("auction-body")!;
+    this.auctionStatusMsgEl = document.getElementById("auction-status-msg")!;
+    this.auctionTabBtns = document.querySelectorAll<HTMLButtonElement>(".auction-tab-btn");
+
     this.onboardModalEl = document.getElementById("onboarding-modal")!;
     this.onboardMaleBtn = document.getElementById("btn-onboard-male") as HTMLButtonElement;
     this.onboardFemaleBtn = document.getElementById("btn-onboard-female") as HTMLButtonElement;
@@ -792,13 +869,15 @@ export class Hud {
       | "hairshop"
       | "airport"
       | "collection"
+      | "auction"
       | "fullmap"
       | "vaultpuzzle"
       | "safebox"
       | "questboard"
       | "reputation"
       | "pet"
-      | "guide",
+      | "guide"
+      | "account",
   ): void {
     if (except !== "bag" && this.isBagOpen) {
       this.setBagOpen(false);
@@ -825,6 +904,10 @@ export class Hud {
     if (except !== "guide" && this.isGuideModalOpen) {
       this.isGuideModalOpen = false;
       this.guideModalEl.classList.remove("is-open");
+    }
+    if (except !== "account" && this.isAccountModalOpen) {
+      this.isAccountModalOpen = false;
+      this.accountModalEl.classList.remove("is-open");
     }
     if (except !== "wardrobe" && this.isWardrobeOpen) {
       this.isWardrobeOpen = false;
@@ -855,6 +938,11 @@ export class Hud {
     if (except !== "collection" && this.isCollectionOpen) {
       this.isCollectionOpen = false;
       this.collectionModalEl.classList.remove("is-open");
+    }
+    if (except !== "auction" && this.isAuctionOpen) {
+      this.isAuctionOpen = false;
+      this.auctionModalEl.classList.remove("is-open");
+      void this.cloudSync?.unsubscribeAuctionChannel();
     }
     if (except !== "fullmap" && this.isFullmapOpen) {
       this.isFullmapOpen = false;
@@ -1020,6 +1108,42 @@ export class Hud {
     this.isBagOpen = true;
     this.bagModalEl.classList.add("is-open");
     this.renderLootAndBagModal();
+
+    if (this.cloudSync?.isAuthenticated()) {
+      const mapId = this.scene.getActiveMapId();
+      const zone = this.scene.getCurrentSecurityZone();
+      const refreshMs = Math.max(60_000, container.refreshAt - container.generatedAt);
+      void this.cloudSync
+        .claimOrOpenWorldContainer({
+          mapId,
+          containerId: container.containerId,
+          title: container.title,
+          sourceType: container.sourceType,
+          biome: container.biome,
+          zone,
+          initialItems: container.items,
+          refreshMs,
+        })
+        .then((shared) => {
+          if (!shared) return;
+          this.sharedContainerVersions.set(`${mapId}:${container.containerId}`, shared.version);
+          const updated = this.scene.inventory.applySharedContainerSnapshot(
+            container.containerId,
+            container.title,
+            container.sourceType,
+            container.biome,
+            container.cols,
+            container.rows,
+            shared.items,
+            shared.openedAt,
+            shared.refreshAt,
+          );
+          if (this.isBagOpen && this.activeContainer?.containerId === container.containerId) {
+            this.activeContainer = updated;
+            this.renderLootAndBagModal();
+          }
+        });
+    }
   }
 
   public openHomeStorageModal(): void {
@@ -1339,6 +1463,511 @@ export class Hud {
     this.isCollectionOpen = true;
     this.collectionModalEl.classList.add("is-open");
     this.renderCollectionModal();
+  }
+
+  public openAuctionModal(): void {
+    this.closeAllModals("auction");
+    this.isAuctionOpen = true;
+    this.setAuctionStatus("", false);
+    this.auctionModalEl.classList.add("is-open");
+    this.renderAuctionModal();
+    this.cloudSync?.subscribeAuctionChannel(() => {
+      if (this.isAuctionOpen) {
+        void this.refreshAuctionListings(true);
+      }
+    });
+    void this.refreshAuctionListings();
+  }
+
+  private setAuctionStatus(msg: string, isError = false): void {
+    this.auctionStatusMsgEl.textContent = msg;
+    this.auctionStatusMsgEl.classList.toggle("is-error", isError);
+  }
+
+  private async refreshAuctionListings(silent = false): Promise<void> {
+    if (!this.cloudSync) return;
+    if (!silent) {
+      this.auctionLoading = true;
+      this.renderAuctionModal();
+    }
+    const res = await this.cloudSync.fetchAuctionListings();
+    this.auctionLoading = false;
+    if (res.ok) {
+      this.auctionListings = res.listings;
+      if (!silent) this.setAuctionStatus("", false);
+    } else if (!silent) {
+      this.setAuctionStatus(`Không tải được dữ liệu Nhà Đấu Giá: ${res.error ?? "Lỗi kết nối"}`, true);
+    }
+    if (this.isAuctionOpen) {
+      this.renderAuctionModal();
+    }
+  }
+
+  private suggestAuctionPrice(inst: GridItemInstance): { price: number; reason: string } {
+    const def = ITEM_BY_ID[inst.itemId];
+    const nowIso = new Date().toISOString();
+    const similarPrices = this.auctionListings
+      .filter((l) => l.status === "active" && l.expires_at > nowIso && l.item_id === inst.itemId)
+      .map((l) => Number(l.price_gold))
+      .filter((p) => Number.isFinite(p) && p > 0);
+    if (similarPrices.length > 0) {
+      const minMarket = Math.min(...similarPrices);
+      return { price: minMarket, reason: `Theo giá sàn đang bán (${similarPrices.length} tin)` };
+    }
+    const shopVal = def ? getItemEffectiveValueGold(inst, def) : 10;
+    const plusTenPct = Math.max(1, Math.ceil(shopVal * 1.1));
+    return { price: plusTenPct, reason: `+10% so với bán Shop (${shopVal}g)` };
+  }
+
+  private formatAuctionRemaining(expiresAtIso: string): { text: string; expired: boolean } {
+    const diffMs = new Date(expiresAtIso).getTime() - Date.now();
+    if (!Number.isFinite(diffMs) || diffMs <= 0) {
+      return { text: "Đã hết hạn 24h", expired: true };
+    }
+    const totalMins = Math.floor(diffMs / 60_000);
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return { text: `Còn ${hrs}g ${mins}p`, expired: false };
+  }
+
+  private createAuctionItemCardHeader(
+    def: CollectibleItemDef | undefined,
+    inst: GridItemInstance,
+    subText: string,
+  ): HTMLElement {
+    const head = document.createElement("div");
+    head.className = "auction-item-head";
+
+    const icon = document.createElement("img");
+    icon.className = "auction-item-icon";
+    icon.src = withAssetHash(def?.iconSrc ?? "./assets/world/loot/gold_bar.png");
+    icon.alt = def?.name ?? inst.itemId;
+
+    const meta = document.createElement("div");
+    meta.className = "auction-item-meta";
+
+    const nameRow = document.createElement("div");
+    nameRow.className = "auction-item-name";
+    const uses = def ? getItemRemainingUses(inst, def) : null;
+    const usesSuffix = uses !== null ? ` (${uses}/${getItemMaxUses(def!)})` : "";
+    nameRow.textContent = `${def?.name ?? inst.itemId}${usesSuffix}`;
+
+    const subRow = document.createElement("div");
+    subRow.className = "auction-item-sub";
+    subRow.textContent = subText;
+
+    meta.append(nameRow, subRow);
+    head.append(icon, meta);
+    return head;
+  }
+
+  private renderAuctionModal(): void {
+    const inv = this.scene.inventory;
+    const status = this.cloudSync?.getStatus();
+    const isAuth = Boolean(status?.authenticated && status.userId);
+    const myUid = status?.userId ?? null;
+    const maxSlots = inv.getAuctionMaxSlots();
+    const nowIso = new Date().toISOString();
+
+    const myActiveListings = myUid
+      ? this.auctionListings.filter((l) => l.seller_id === myUid && l.status === "active" && l.expires_at > nowIso)
+      : [];
+    const myExpiredListings = myUid
+      ? this.auctionListings.filter((l) => l.seller_id === myUid && l.status === "active" && l.expires_at <= nowIso)
+      : [];
+    const mySoldListings = myUid
+      ? this.auctionListings.filter((l) => l.seller_id === myUid && l.status === "sold")
+      : [];
+
+    this.auctionStatsEl.textContent = `💰 ${inv.getGold().toLocaleString("vi-VN")} Vàng • 📦 Slot bán: ${myActiveListings.length}/${maxSlots} • 🔔 Chờ nhận tiền: ${mySoldListings.length}`;
+    this.auctionSlotBadgeEl.textContent = `${myActiveListings.length}/${maxSlots}`;
+    this.auctionAuthBannerEl.classList.toggle("hidden", isAuth);
+
+    this.auctionTabBtns.forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.auctionTab === this.auctionTab);
+    });
+    this.auctionToolbarEl.classList.toggle("hidden", this.auctionTab !== "market");
+
+    this.auctionBodyEl.innerHTML = "";
+
+    if (this.auctionTab === "market") {
+      this.renderAuctionMarketTab(myUid, isAuth, nowIso);
+    } else if (this.auctionTab === "sell") {
+      this.renderAuctionSellTab(
+        isAuth,
+        maxSlots,
+        myActiveListings,
+        myExpiredListings,
+        mySoldListings,
+      );
+    } else {
+      this.renderAuctionUpgradeTab();
+    }
+  }
+
+  private renderAuctionMarketTab(myUid: string | null, isAuth: boolean, nowIso: string): void {
+    if (this.auctionLoading) {
+      const empty = document.createElement("div");
+      empty.className = "auction-empty";
+      empty.textContent = "⏳ Đang tải danh sách vật phẩm trên Nhà Đấu Giá...";
+      this.auctionBodyEl.appendChild(empty);
+      return;
+    }
+
+    const activeRows = this.auctionListings.filter((l) => {
+      if (l.status !== "active" || l.expires_at <= nowIso) return false;
+      if (!this.auctionSearchQuery) return true;
+      const def = ITEM_BY_ID[l.item_id];
+      const name = (def?.name ?? l.item_id).toLowerCase();
+      return name.includes(this.auctionSearchQuery) || l.seller_name.toLowerCase().includes(this.auctionSearchQuery);
+    });
+
+    if (activeRows.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "auction-empty";
+      empty.textContent = this.auctionSearchQuery
+        ? "Không tìm thấy vật phẩm phù hợp trên sàn."
+        : "Hiện chưa có vật phẩm nào đang treo bán. Hãy sang tab 'Treo Bán' để mở hàng nhé!";
+      this.auctionBodyEl.appendChild(empty);
+      return;
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "auction-grid";
+    const gold = this.scene.inventory.getGold();
+
+    for (const row of activeRows) {
+      const def = ITEM_BY_ID[row.item_id];
+      const rem = this.formatAuctionRemaining(row.expires_at);
+      const isMine = Boolean(myUid && row.seller_id === myUid);
+
+      const card = document.createElement("div");
+      card.className = "auction-item-card";
+      card.appendChild(
+        this.createAuctionItemCardHeader(
+          def,
+          row.item_data,
+          `👤 ${row.seller_name} • ⏳ ${rem.text}`,
+        ),
+      );
+
+      const footer = document.createElement("div");
+      footer.className = "auction-price-row";
+
+      const priceEl = document.createElement("span");
+      priceEl.textContent = `💰 ${Number(row.price_gold).toLocaleString("vi-VN")}g`;
+
+      const actionBtn = document.createElement("button");
+      actionBtn.type = "button";
+      if (isMine) {
+        actionBtn.className = "btn-card-secondary";
+        actionBtn.textContent = "↩️ Thu hồi";
+        actionBtn.addEventListener("click", () => void this.handleCancelAuction(row));
+      } else {
+        actionBtn.className = "btn-card-primary";
+        actionBtn.textContent = "🛒 Mua";
+        actionBtn.disabled = !isAuth || gold < Number(row.price_gold);
+        actionBtn.addEventListener("click", () => void this.handleBuyAuction(row));
+      }
+
+      footer.append(priceEl, actionBtn);
+      card.appendChild(footer);
+      grid.appendChild(card);
+    }
+
+    this.auctionBodyEl.appendChild(grid);
+  }
+
+  private renderAuctionSellTab(
+    isAuth: boolean,
+    maxSlots: number,
+    myActive: AuctionListingRow[],
+    myExpired: AuctionListingRow[],
+    mySold: AuctionListingRow[],
+  ): void {
+    const inv = this.scene.inventory;
+
+    if (mySold.length > 0) {
+      const t = document.createElement("div");
+      t.className = "auction-section-title";
+      t.textContent = `💸 Đã bán thành công (${mySold.length}) — Bấm để nhận Vàng`;
+      this.auctionBodyEl.appendChild(t);
+
+      const grid = document.createElement("div");
+      grid.className = "auction-grid";
+      for (const row of mySold) {
+        const def = ITEM_BY_ID[row.item_id];
+        const card = document.createElement("div");
+        card.className = "auction-item-card is-sold";
+        card.appendChild(
+          this.createAuctionItemCardHeader(
+            def,
+            row.item_data,
+            `🎉 Người mua: ${row.buyer_name ?? "Người chơi"}`,
+          ),
+        );
+        const footer = document.createElement("div");
+        footer.className = "auction-price-row";
+        const priceEl = document.createElement("span");
+        priceEl.textContent = `+${Number(row.price_gold).toLocaleString("vi-VN")}g`;
+        const claimBtn = document.createElement("button");
+        claimBtn.type = "button";
+        claimBtn.className = "btn-card-primary";
+        claimBtn.textContent = "💰 Nhận Tiền";
+        claimBtn.addEventListener("click", () => void this.handleClaimAuction(row));
+        footer.append(priceEl, claimBtn);
+        card.appendChild(footer);
+        grid.appendChild(card);
+      }
+      this.auctionBodyEl.appendChild(grid);
+    }
+
+    if (myActive.length > 0 || myExpired.length > 0) {
+      const t = document.createElement("div");
+      t.className = "auction-section-title";
+      t.textContent = `📌 Đang treo của bạn (${myActive.length}/${maxSlots} slot)`;
+      this.auctionBodyEl.appendChild(t);
+
+      const grid = document.createElement("div");
+      grid.className = "auction-grid";
+      for (const row of [...myActive, ...myExpired]) {
+        const def = ITEM_BY_ID[row.item_id];
+        const rem = this.formatAuctionRemaining(row.expires_at);
+        const card = document.createElement("div");
+        card.className = `auction-item-card${rem.expired ? " is-expired" : ""}`;
+        card.appendChild(
+          this.createAuctionItemCardHeader(def, row.item_data, `⏳ ${rem.text}`),
+        );
+        const footer = document.createElement("div");
+        footer.className = "auction-price-row";
+        const priceEl = document.createElement("span");
+        priceEl.textContent = `💰 ${Number(row.price_gold).toLocaleString("vi-VN")}g`;
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn-card-secondary";
+        cancelBtn.textContent = "↩️ Thu hồi";
+        cancelBtn.addEventListener("click", () => void this.handleCancelAuction(row));
+        footer.append(priceEl, cancelBtn);
+        card.appendChild(footer);
+        grid.appendChild(card);
+      }
+      this.auctionBodyEl.appendChild(grid);
+    }
+
+    const bpTitle = document.createElement("div");
+    bpTitle.className = "auction-section-title";
+    bpTitle.textContent = "🎒 Chọn vật phẩm trong Balo để treo bán (24h)";
+    this.auctionBodyEl.appendChild(bpTitle);
+
+    const bpItems = inv.getBackpackItems();
+    if (bpItems.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "auction-empty";
+      empty.textContent = "Balo đang trống. Hãy đi loot đồ rồi quay lại treo bán nhé!";
+      this.auctionBodyEl.appendChild(empty);
+      return;
+    }
+
+    const slotsFull = myActive.length >= maxSlots;
+    const grid = document.createElement("div");
+    grid.className = "auction-grid";
+    for (const inst of bpItems) {
+      const def = ITEM_BY_ID[inst.itemId];
+      const suggestion = this.suggestAuctionPrice(inst);
+
+      const card = document.createElement("div");
+      card.className = "auction-item-card";
+      card.appendChild(
+        this.createAuctionItemCardHeader(def, inst, `💡 ${suggestion.reason}`),
+      );
+
+      const controls = document.createElement("div");
+      controls.className = "auction-sell-controls";
+
+      const priceInput = document.createElement("input");
+      priceInput.type = "number";
+      priceInput.min = "1";
+      priceInput.step = "1";
+      priceInput.className = "auction-price-input";
+      priceInput.value = String(suggestion.price);
+
+      const sellBtn = document.createElement("button");
+      sellBtn.type = "button";
+      sellBtn.className = "btn-card-primary";
+      sellBtn.style.flex = "1";
+      sellBtn.textContent = slotsFull ? "Hết Slot" : "📤 Treo Bán";
+      sellBtn.disabled = !isAuth || slotsFull;
+      sellBtn.addEventListener("click", () => {
+        const price = Math.max(1, Math.round(Number(priceInput.value) || suggestion.price));
+        void this.handleCreateAuction(inst, price, maxSlots);
+      });
+
+      controls.append(priceInput, sellBtn);
+      card.appendChild(controls);
+      grid.appendChild(card);
+    }
+    this.auctionBodyEl.appendChild(grid);
+  }
+
+  private renderAuctionUpgradeTab(): void {
+    const inv = this.scene.inventory;
+    const curTier = inv.getAuctionTier();
+    const nextTier = getNextAuctionTier(curTier.id);
+    const contract = inv.getAuctionContract();
+
+    const box = document.createElement("div");
+    box.className = "auction-upgrade-box";
+
+    const title = document.createElement("div");
+    title.className = "auction-section-title";
+    title.textContent = `🏪 Hạng hiện tại: ${curTier.name} (${inv.getAuctionMaxSlots()} slot bán)`;
+
+    const sub = document.createElement("div");
+    sub.className = "auction-item-sub";
+    sub.textContent = nextTier && contract
+      ? `Nhiệm vụ nâng cấp lên ${nextTier.name} (${nextTier.cols} slot bán) — Giao nộp vật phẩm dưới đây:`
+      : "🎉 Bạn đã mở khóa tối đa toàn bộ 20 slot treo bán của Nhà Đấu Giá!";
+
+    box.append(title, sub);
+
+    if (nextTier && contract) {
+      const reqList = document.createElement("div");
+      reqList.className = "auction-req-list";
+      let canDeliverAny = false;
+
+      for (const req of contract.requirements) {
+        const def = ITEM_BY_ID[req.itemId];
+        if (!def) continue;
+        const counts = inv.countItemAcrossZones(req.itemId);
+        const isDone = req.deliveredCount >= req.requiredCount;
+        if (!isDone && counts.total > 0) canDeliverAny = true;
+
+        const row = document.createElement("div");
+        row.className = "auction-req-row";
+
+        const left = document.createElement("div");
+        left.textContent = `${def.name}: ${req.deliveredCount}/${req.requiredCount} (Đang giữ: ${counts.total})`;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = isDone ? "btn-card-secondary" : "btn-card-primary";
+        btn.textContent = isDone ? "✅ Xong" : "📤 Nộp 1";
+        btn.disabled = isDone || counts.total <= 0;
+        btn.addEventListener("click", () => {
+          const res = this.scene.deliverUpgradeItem("auction", req.itemId, true);
+          this.setAuctionStatus(res.message, !res.ok);
+          this.refreshBagBadge();
+          this.renderAuctionModal();
+        });
+
+        row.append(left, btn);
+        reqList.appendChild(row);
+      }
+
+      box.appendChild(reqList);
+
+      const deliverAllBtn = document.createElement("button");
+      deliverAllBtn.type = "button";
+      deliverAllBtn.className = "btn-card-primary";
+      deliverAllBtn.textContent = "📦 Giao nộp tất cả vật phẩm đang có";
+      deliverAllBtn.disabled = !canDeliverAny;
+      deliverAllBtn.addEventListener("click", () => {
+        const res = this.scene.deliverAllUpgradeItems("auction", true);
+        this.setAuctionStatus(res.message, res.deliveredTotal <= 0);
+        this.refreshBagBadge();
+        this.renderAuctionModal();
+      });
+      box.appendChild(deliverAllBtn);
+    }
+
+    this.auctionBodyEl.appendChild(box);
+  }
+
+  private async handleCreateAuction(
+    inst: GridItemInstance,
+    priceGold: number,
+    maxSlots: number,
+  ): Promise<void> {
+    if (!this.cloudSync) return;
+    this.setAuctionStatus("⏳ Đang treo vật phẩm lên Nhà Đấu Giá...", false);
+    const res = await this.cloudSync.createAuctionListing(inst, priceGold, maxSlots);
+    if (!res.ok) {
+      this.setAuctionStatus(res.message, true);
+      return;
+    }
+    this.scene.inventory.removeItemFromBackpackByUid(inst.uid);
+    this.scene.requestSaveNow(true);
+    this.refreshBagBadge();
+    this.setAuctionStatus(`✅ ${res.message}`, false);
+    await this.refreshAuctionListings(true);
+  }
+
+  private async handleBuyAuction(row: AuctionListingRow): Promise<void> {
+    if (!this.cloudSync) return;
+    const price = Number(row.price_gold);
+    if (this.scene.inventory.getGold() < price) {
+      this.setAuctionStatus("Không đủ Vàng để mua vật phẩm này!", true);
+      return;
+    }
+    this.setAuctionStatus("⏳ Đang thực hiện giao dịch mua...", false);
+    const res = await this.cloudSync.buyAuctionListing(row.id);
+    if (!res.ok || !res.itemData) {
+      this.setAuctionStatus(res.message || "Mua thất bại.", true);
+      await this.refreshAuctionListings(true);
+      return;
+    }
+    this.scene.inventory.trySpendGold(price);
+    const placed = this.scene.inventory.receiveAuctionItemToStorage(res.itemData);
+    this.scene.requestSaveNow(true);
+    this.refreshBagBadge();
+    this.updateSurvivalHud();
+    const zoneLabel = placed.ok
+      ? placed.zone === "backpack"
+        ? "Balo"
+        : "Hòm Bảo Hiểm"
+      : "Kho Nhà (đã gửi tạm)";
+    this.setAuctionStatus(`✅ Mua thành công! Vật phẩm đã vào ${zoneLabel}.`, false);
+    await this.refreshAuctionListings(true);
+  }
+
+  private async handleCancelAuction(row: AuctionListingRow): Promise<void> {
+    if (!this.cloudSync) return;
+    this.setAuctionStatus("⏳ Đang thu hồi vật phẩm...", false);
+    const res = await this.cloudSync.cancelAuctionListing(row.id);
+    if (!res.ok || !res.itemData) {
+      this.setAuctionStatus(res.message || "Thu hồi thất bại.", true);
+      await this.refreshAuctionListings(true);
+      return;
+    }
+    const placed = this.scene.inventory.receiveAuctionItemToStorage(res.itemData);
+    this.scene.requestSaveNow(true);
+    this.refreshBagBadge();
+    const zoneLabel = placed.ok
+      ? placed.zone === "backpack"
+        ? "Balo"
+        : "Hòm Bảo Hiểm"
+      : "Kho Nhà";
+    this.setAuctionStatus(`✅ ${res.message} (Đã chuyển vào ${zoneLabel})`, false);
+    await this.refreshAuctionListings(true);
+  }
+
+  private async handleClaimAuction(row: AuctionListingRow): Promise<void> {
+    if (!this.cloudSync) return;
+    this.setAuctionStatus("⏳ Đang nhận tiền bán hàng...", false);
+    const res = await this.cloudSync.claimAuctionProceeds(row.id);
+    if (!res.ok) {
+      this.setAuctionStatus(res.message || "Nhận tiền thất bại.", true);
+      await this.refreshAuctionListings(true);
+      return;
+    }
+    const earned = Number(res.priceGold ?? row.price_gold ?? 0);
+    if (earned > 0) {
+      this.scene.inventory.addGoldDirect(earned);
+    }
+    this.scene.requestSaveNow(true);
+    this.updateSurvivalHud();
+    this.setAuctionStatus(`✅ +${earned.toLocaleString("vi-VN")} Vàng đã vào ví!`, false);
+    await this.refreshAuctionListings(true);
   }
 
   public openPetGachaModal(tab: "gacha" | "roster" = "gacha"): void {
@@ -2069,7 +2698,7 @@ export class Hud {
 
     this.updateSurvivalHud();
     this.updateInteractPrompt();
-    if (now - this.lastMinimapDrawAt >= 120) {
+    if (!this.isFullmapOpen && now - this.lastMinimapDrawAt >= 240) {
       this.lastMinimapDrawAt = now;
       this.drawMinimap();
     }
@@ -2227,6 +2856,9 @@ export class Hud {
     } else if (target.type === "gacha") {
       nextClass = "btn-interact is-shop";
       nextText = `🐾 Vào ${target.name} [E]`;
+    } else if (target.type === "auction") {
+      nextClass = "btn-interact is-shop";
+      nextText = `⚖️ Vào ${target.name} [E]`;
     } else if (target.type === "jail_minigame") {
       nextClass = "btn-interact is-jail";
       nextText = target.label;
@@ -2631,6 +3263,7 @@ export class Hud {
         home: "Kho Nhà",
         gym: "Phòng Gym",
         treadmill: "Máy Chạy Bộ",
+        auction: "Nhà Đấu Giá",
       };
       const label = labelMap[this.upgradeModalMode];
       const res = this.scene.deliverAllUpgradeItems(this.upgradeModalMode, atHome);
@@ -2679,10 +3312,52 @@ export class Hud {
       e.stopPropagation();
       if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
       this.syncSoundButtonLabel();
+      this.syncAccountMenuLabel();
       const repSummary = this.scene.getReputationSummary();
       this.reputationBtn.textContent =
         repSummary.claimableCount > 0 ? `🏆 Danh vọng (${repSummary.claimableCount})` : "🏆 Danh vọng";
       setMenuOpen(!this.hudMenuPopoverEl.classList.contains("is-open"));
+    });
+
+    this.accountBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.accountBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setMenuOpen(false);
+      if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
+      this.openAccountModal();
+    });
+    this.accountCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+    });
+    this.accountModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.accountModalEl) this.closeAllModals();
+    });
+    this.accountTabLoadBtn.addEventListener("click", () => {
+      this.accountMode = "load";
+      this.accountFeedbackEl.textContent = "";
+      this.renderAccountModal();
+    });
+    this.accountTabCreateBtn.addEventListener("click", () => {
+      this.accountMode = "create";
+      this.accountFeedbackEl.textContent = "";
+      this.renderAccountModal();
+    });
+    this.accountSubmitBtn.addEventListener("click", () => {
+      void this.handleAccountSubmit();
+    });
+    this.accountInputPassEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void this.handleAccountSubmit();
+      }
+    });
+    this.accountSyncNowBtn.addEventListener("click", () => {
+      void this.handleAccountForceSync();
+    });
+    this.accountLogoutBtn.addEventListener("click", () => {
+      void this.handleAccountLogout();
     });
 
     window.addEventListener("pointerdown", (e) => {
@@ -3007,6 +3682,37 @@ export class Hud {
     this.collectionModalEl.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
       if (e.target === this.collectionModalEl) this.closeAllModals();
+    });
+
+    this.auctionCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+    });
+    this.auctionModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.auctionModalEl) this.closeAllModals();
+    });
+    this.auctionOpenAccountBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.openAccountModal();
+    });
+    this.auctionTabBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const tab = btn.dataset.auctionTab as "market" | "sell" | "upgrade" | undefined;
+        if (tab) {
+          this.auctionTab = tab;
+          this.renderAuctionModal();
+        }
+      });
+    });
+    this.auctionSearchInputEl.addEventListener("input", () => {
+      this.auctionSearchQuery = this.auctionSearchInputEl.value.trim().toLowerCase();
+      this.renderAuctionModal();
+    });
+    this.auctionRefreshBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void this.refreshAuctionListings();
     });
 
     this.purchaseModalEl.addEventListener("pointerdown", (e) => {
@@ -3721,7 +4427,7 @@ export class Hud {
     if (d.isDragging) {
       if (d.hoverZone && d.hoverValid) {
         const containerId = this.activeContainer ? this.activeContainer.containerId : null;
-        this.scene.inventory.placeMovedItem(
+        const moved = this.scene.inventory.placeMovedItem(
           d.fromZone,
           d.hoverZone,
           containerId,
@@ -3730,6 +4436,51 @@ export class Hud {
           d.hoverRow,
           d.rotated,
         );
+        if (moved && containerId && this.cloudSync?.isAuthenticated()) {
+          const mapId = this.scene.getActiveMapId();
+          const key = `${mapId}:${containerId}`;
+          const expectedVer = this.sharedContainerVersions.get(key) ?? 0;
+          if (d.fromZone === "container" && d.hoverZone === "backpack") {
+            const movedUid = d.item.uid;
+            void this.cloudSync
+              .takeWorldContainerItem(mapId, containerId, movedUid, expectedVer)
+              .then((res) => {
+                if (!res) return;
+                this.sharedContainerVersions.set(key, res.newVersion);
+                if (!res.ok) {
+                  this.scene.inventory.removeItemFromBackpackByUid(movedUid);
+                  if (this.activeContainer?.containerId === containerId) {
+                    const updated = this.scene.inventory.applySharedContainerSnapshot(
+                      containerId,
+                      this.activeContainer.title,
+                      this.activeContainer.sourceType,
+                      this.activeContainer.biome,
+                      this.activeContainer.cols,
+                      this.activeContainer.rows,
+                      res.items,
+                      this.activeContainer.generatedAt,
+                      this.activeContainer.refreshAt,
+                    );
+                    this.activeContainer = updated;
+                    this.renderLootAndBagModal();
+                  }
+                  this.refreshBagBadge();
+                  this.showDiscoveryToast(
+                    "⚠️ Vật phẩm vừa bị nhặt mất!",
+                    "Người chơi khác đã lấy món đồ này trước bạn.",
+                  );
+                }
+              });
+          } else if (d.fromZone === "backpack" && d.hoverZone === "container") {
+            void this.cloudSync
+              .depositWorldContainerItem(mapId, containerId, d.item, expectedVer)
+              .then((res) => {
+                if (res?.ok) {
+                  this.sharedContainerVersions.set(key, res.newVersion);
+                }
+              });
+          }
+        }
         this.selectedItem = { uid: d.item.uid, zone: d.hoverZone };
       } else {
         // Dropped outside valid slots or outside both grids -> keep original position (no discard!)
@@ -4989,10 +5740,8 @@ export class Hud {
 
     const thermalText = `${mapBadge} ${zoneMeta.emoji} ${zoneMeta.label} • 🌡️ ${state.bodyTempC.toFixed(1)}°C • ⚖️ ${totalWeightKg.toFixed(1)}kg • ${result.thermal.statusLabel}${buffSuffix}${ignoreSuffix}`;
     const staminaPct = Math.min(100, (state.stamina / maxStamina) * 100).toFixed(1);
-    const blurPx = (result.blurIntensity * 4.2).toFixed(2);
-    const blurFilter = result.blurIntensity > 0.01 ? `blur(${blurPx}px)` : "none";
     const vignetteOpacity = (result.blurIntensity * 0.92).toFixed(2);
-    const sig = `${hp}|${hunger}|${stamina}|${staminaPct}|${result.thermal.isSweating}|${result.thermal.isShivering}|${blurFilter}|${vignetteOpacity}|${thermalText}`;
+    const sig = `${hp}|${hunger}|${stamina}|${staminaPct}|${result.thermal.isSweating}|${result.thermal.isShivering}|${vignetteOpacity}|${thermalText}`;
     if (sig === this.lastSurvivalSignature) return;
     this.lastSurvivalSignature = sig;
 
@@ -5007,8 +5756,7 @@ export class Hud {
     this.thermalTextEl.classList.toggle("is-hot", result.thermal.isSweating);
     this.thermalTextEl.classList.toggle("is-cold", result.thermal.isShivering);
 
-    // Apply subtle world vision blur + dark crimson vignette when starving / exhausted / wounded
-    this.pixiContainerEl.style.filter = blurFilter;
+    // Use lightweight crimson vignette instead of expensive full-canvas CSS blur filter
     this.vignetteEl.style.opacity = vignetteOpacity;
   }
 
@@ -6206,5 +6954,239 @@ export class Hud {
     }
 
     this.syncPoliceCellStates();
+  }
+
+  // -------------------- CLOUD ACCOUNT & REALTIME SYNC --------------------
+
+  private syncAccountMenuLabel(): void {
+    if (!this.cloudSync || !this.cloudSync.isAuthenticated()) {
+      this.accountBtn.textContent = "👤 Tài khoản";
+      return;
+    }
+    const st = this.cloudSync.getStatus();
+    const dot = st.realtimeState === "connected" ? "🟢" : st.realtimeState === "error" ? "🔴" : "🟡";
+    this.accountBtn.textContent = `${dot} ${st.displayName}`;
+  }
+
+  public updateCloudSyncStatus(status: CloudSyncStatus): void {
+    this.syncAccountMenuLabel();
+    if (this.isAccountModalOpen) {
+      this.renderAccountModal(status);
+    }
+  }
+
+  public refreshFromRemoteState(): void {
+    if (!this.scene.needsOnboarding() && this.isOnboardingOpen) {
+      this.isOnboardingOpen = false;
+      this.onboardModalEl.classList.remove("is-open");
+    }
+    this.terrainSnapshot = this.bakeTerrainSnapshot();
+    this.syncSoundButtonLabel();
+    this.refreshBagBadge();
+    if (this.isFullmapOpen) this.drawFullMap();
+    if (this.isBagOpen) this.renderLootAndBagModal();
+    if (this.isWardrobeOpen) this.renderWardrobeModal();
+    if (this.isSafeboxModalOpen) this.renderSafeboxModal();
+    if (this.isQuestBoardOpen) this.renderQuestBoardModal();
+    if (this.isReputationOpen) this.renderReputationModal();
+    if (this.isPetModalOpen) this.renderPetGachaModal();
+    this.lastSurvivalSignature = "";
+    this.update(0.016);
+  }
+
+  public handleSharedContainerUpdated(
+    mapId: MapId,
+    containerId: string,
+    items: GridItemInstance[],
+    version: number,
+    openedAt: number,
+    refreshAt: number,
+  ): void {
+    this.sharedContainerVersions.set(`${mapId}:${containerId}`, version);
+    if (this.scene.getActiveMapId() !== mapId) return;
+    const existing = this.scene.inventory.getContainer(containerId);
+    if (!existing) return;
+    const updated = this.scene.inventory.applySharedContainerSnapshot(
+      containerId,
+      existing.title,
+      existing.sourceType,
+      existing.biome,
+      existing.cols,
+      existing.rows,
+      items,
+      openedAt,
+      refreshAt,
+    );
+    if (this.isBagOpen && this.activeContainer?.containerId === containerId) {
+      this.activeContainer = updated;
+      this.renderLootAndBagModal();
+    }
+  }
+
+  public handleSharedVaultUnlocked(payload: {
+    mapId: MapId;
+    containerId: string;
+    unlockedByName: string;
+    chestId?: string;
+    container?: ContainerLootState;
+  }): void {
+    if (this.scene.getActiveMapId() !== payload.mapId) return;
+    if (payload.chestId) {
+      this.scene.markSharedChestOpened(payload.chestId);
+    }
+
+    let syncedContainer: ContainerLootState | null = null;
+    if (payload.container) {
+      syncedContainer = this.scene.inventory.applySharedContainerSnapshot(
+        payload.container.containerId,
+        payload.container.title,
+        payload.container.sourceType,
+        payload.container.biome,
+        payload.container.cols,
+        payload.container.rows,
+        payload.container.items,
+        payload.container.generatedAt,
+        payload.container.refreshAt,
+      );
+    }
+
+    if (this.vaultPuzzle.isOpen() && this.vaultPuzzle.getActiveContainerId() === payload.containerId) {
+      this.vaultPuzzle.close();
+      this.vaultPuzzle.clearSession(payload.containerId);
+      this.scene.cancelVaultPuzzle();
+      const targetContainer = syncedContainer ?? this.scene.inventory.getContainer(payload.containerId);
+      this.showDiscoveryToast(
+        "🔓 Rương đã được mở khóa!",
+        `${payload.unlockedByName} đã giải xong minigame — vào rương ngay!`,
+      );
+      if (targetContainer) {
+        this.openLootModal(targetContainer);
+      }
+    }
+  }
+
+  public openAccountModal(): void {
+    this.closeAllModals("account");
+    this.isAccountModalOpen = true;
+    this.accountFeedbackEl.textContent = "";
+    this.accountAuthFeedbackEl.textContent = "";
+    this.renderAccountModal();
+    this.accountModalEl.classList.add("is-open");
+  }
+
+  private renderAccountModal(statusOverride?: CloudSyncStatus): void {
+    const status = statusOverride ?? this.cloudSync?.getStatus() ?? {
+      authenticated: false,
+      displayName: "Khách",
+      email: "",
+      userId: null,
+      realtimeState: "offline",
+      lastSyncAt: null,
+      lastError: null,
+      onlineSectorPlayers: 0,
+    };
+
+    if (status.authenticated) {
+      this.accountGuestViewEl.style.display = "none";
+      this.accountAuthViewEl.style.display = "flex";
+      this.accountCurrentNameEl.textContent = status.displayName;
+      this.accountRealtimeBadgeEl.textContent =
+        status.realtimeState === "connected"
+          ? "🟢 Đã kết nối Realtime"
+          : status.realtimeState === "error"
+            ? "🔴 Lỗi kết nối"
+            : "🟡 Đang kết nối...";
+      this.accountSectorPlayersEl.textContent = `${status.onlineSectorPlayers} người chơi khác`;
+      this.accountLastSyncEl.textContent = status.lastSyncAt
+        ? new Date(status.lastSyncAt).toLocaleTimeString("vi-VN")
+        : "Chưa đồng bộ";
+      if (status.lastError) {
+        this.accountAuthFeedbackEl.className = "account-feedback is-err";
+        this.accountAuthFeedbackEl.textContent = status.lastError;
+      }
+      return;
+    }
+
+    this.accountGuestViewEl.style.display = "flex";
+    this.accountAuthViewEl.style.display = "none";
+    const isLoad = this.accountMode === "load";
+    this.accountTabLoadBtn.classList.toggle("is-active", isLoad);
+    this.accountTabCreateBtn.classList.toggle("is-active", !isLoad);
+    this.accountModeHintEl.textContent = isLoad
+      ? "Đăng nhập để tải nhân vật, vị trí, đồ đạc từ Cloud về và chạy đồng bộ Realtime."
+      : "Tạo tài khoản mới và đẩy toàn bộ nhân vật, đồ đạc đang chơi hiện tại lên Cloud.";
+    this.accountSubmitBtn.textContent = this.accountBusy
+      ? "⏳ Đang xử lý..."
+      : isLoad
+        ? "📥 Load tài khoản & Bật Realtime"
+        : "✨ Tạo tài khoản & Lưu dữ liệu";
+    this.accountSubmitBtn.disabled = this.accountBusy;
+  }
+
+  private async handleAccountSubmit(): Promise<void> {
+    if (!this.cloudSync || this.accountBusy) return;
+    const rawId = this.accountInputIdEl.value.trim();
+    const pass = this.accountInputPassEl.value;
+    this.accountBusy = true;
+    this.accountFeedbackEl.className = "account-feedback";
+    this.accountFeedbackEl.textContent = "⏳ Đang kết nối Supabase...";
+    this.renderAccountModal();
+
+    try {
+      if (this.accountMode === "create") {
+        const snap = this.scene.getSaveSnapshot();
+        const res = await this.cloudSync.signUpAndUpload(rawId, pass, snap, {
+          name: rawId,
+          skinId: snap.profile.skinId,
+          gender: snap.profile.gender ?? "male",
+          hairId: snap.hairId,
+          equipped: snap.equipment,
+          equippedPetId: snap.equippedPetId ?? null,
+        });
+        this.accountFeedbackEl.className = `account-feedback ${res.ok ? "is-ok" : "is-err"}`;
+        this.accountFeedbackEl.textContent = res.message;
+        if (res.ok) {
+          this.accountInputPassEl.value = "";
+          this.showDiscoveryToast("☁️ Đã tạo tài khoản Cloud!", res.message);
+        }
+      } else {
+        const res = await this.cloudSync.signInAndLoad(rawId, pass);
+        this.accountFeedbackEl.className = `account-feedback ${res.ok ? "is-ok" : "is-err"}`;
+        this.accountFeedbackEl.textContent = res.message;
+        if (res.ok) {
+          this.accountInputPassEl.value = "";
+          if (res.remoteSave) {
+            this.scene.applyRemoteSaveState(res.remoteSave);
+            if (res.remoteLive) {
+              this.scene.applyRemoteLiveState(res.remoteLive);
+            }
+            this.refreshFromRemoteState();
+          }
+          this.showDiscoveryToast("📥 Đã tải tài khoản!", res.message);
+        }
+      }
+    } finally {
+      this.accountBusy = false;
+      this.renderAccountModal();
+    }
+  }
+
+  private async handleAccountForceSync(): Promise<void> {
+    if (!this.cloudSync) return;
+    this.accountAuthFeedbackEl.className = "account-feedback";
+    this.accountAuthFeedbackEl.textContent = "⏳ Đang đẩy dữ liệu lên Cloud...";
+    const res = await this.cloudSync.forceSyncNow(this.scene.getSaveSnapshot());
+    this.accountAuthFeedbackEl.className = `account-feedback ${res.ok ? "is-ok" : "is-err"}`;
+    this.accountAuthFeedbackEl.textContent = res.message;
+    this.renderAccountModal();
+  }
+
+  private async handleAccountLogout(): Promise<void> {
+    if (!this.cloudSync) return;
+    await this.cloudSync.signOut();
+    this.accountFeedbackEl.textContent = "";
+    this.accountAuthFeedbackEl.textContent = "";
+    this.renderAccountModal();
+    this.showDiscoveryToast("🚪 Đã đăng xuất", "Dữ liệu cục bộ trên máy vẫn được giữ an toàn.");
   }
 }

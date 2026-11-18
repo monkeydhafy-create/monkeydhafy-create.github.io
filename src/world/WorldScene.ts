@@ -2,6 +2,11 @@ import { sound } from "@pixi/sound";
 import { Assets, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
 import type { Application, FederatedPointerEvent } from "pixi.js";
 import { withAssetHash } from "../assetUrl.ts";
+import type {
+  LiveStatePayload,
+  RemotePlayerAppearance,
+  RemotePlayerMovePacket,
+} from "../cloud/SupabaseSync.ts";
 import type { PlayerGameSaveV3 } from "../security/SaveVault.ts";
 import type { ArcadeMinigameKind } from "../ui/ArcadeMinigames.ts";
 import { AtmosphereSystem } from "./AtmosphereSystem.ts";
@@ -73,6 +78,7 @@ import {
   type BuildingKind,
   type CharacterGender,
   type CharacterSkinId,
+  type FacingDir,
   type MapId,
   type Point,
   type PropKind,
@@ -192,6 +198,10 @@ export type NearbyInteraction =
       name: string;
     }
   | {
+      type: "auction";
+      name: string;
+    }
+  | {
       type: "airport";
       name: string;
     }
@@ -236,6 +246,7 @@ export interface WorldCallbacks {
   onOpenShop?: (shopKind: ShopKind) => void;
   onOpenHomeStorage?: () => void;
   onOpenCollectionHall?: () => void;
+  onOpenAuctionHouse?: () => void;
   onOpenAirport?: () => void;
   onOpenQuestBoard?: () => void;
   onOpenReputationShop?: () => void;
@@ -249,6 +260,31 @@ export interface WorldCallbacks {
   onContainersRefreshed?: (containerIds: string[]) => void;
   onFaintedToHospital?: (reason: string, hospitalFeeGold: number) => void;
   onRequestSave?: (immediate: boolean) => void;
+  onPlayerMoveSample?: (sample: {
+    mapId: MapId;
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    facing: FacingDir;
+    isMoving: boolean;
+    hp: number;
+    hunger: number;
+    stamina: number;
+    bodyTempC: number;
+    skinId: CharacterSkinId;
+    gender: CharacterGender;
+    hairId: string;
+    equipped: EquippedGear;
+    equippedPetId: string | null;
+  }) => void;
+  onPoliceChaseStarted?: (officerId: string, x: number, y: number) => void;
+  onVaultUnlocked?: (info: {
+    mapId: MapId;
+    containerId: string;
+    chestId?: string;
+    container: ContainerLootState;
+  }) => void;
 }
 
 /**
@@ -275,6 +311,8 @@ export class WorldScene {
   private readonly groundLayer: Container;
   private readonly waterAnimLayer: Container;
   private readonly waterWakeLayer: Graphics;
+  private waterLayerDirty = false;
+  private pathLayerDirty = false;
   private readonly pathOverlayLayer: Graphics;
   private readonly entityLayer: Container;
   private readonly atmosphere: AtmosphereSystem;
@@ -296,6 +334,23 @@ export class WorldScene {
   private readonly waterWakes: WaterWake[] = [];
   private readonly waterDroplets: WaterDroplet[] = [];
   private collectionOrbitHost: { x: number; y: number; height: number; depthY: number } | null = null;
+  private readonly remotePlayers = new Map<
+    string,
+    {
+      actor: Player;
+      label: Text;
+      targetX: number;
+      targetY: number;
+      vx: number;
+      vy: number;
+      facing: FacingDir;
+      isMoving: boolean;
+      lastPacketAt: number;
+    }
+  >();
+  private prevStepX = 0;
+  private prevStepY = 0;
+  private lastChaseOfficerId: string | null = null;
   private readonly collectionOrbitItems: Array<{
     node: Container;
     glow: Graphics;
@@ -876,6 +931,7 @@ export class WorldScene {
     this.lastSavedPlayerY = landY;
     this.syncCameraTransform();
     this.ensureVisibleTerrainChunksBuilt();
+    this.reattachRemotePlayersToEntityLayer();
 
     this.weatherService.setActiveMap(targetMapId);
     this.playPressSfx();
@@ -887,6 +943,256 @@ export class WorldScene {
       activeMapId: targetMapId,
       message: `✈️ Đã hạ cánh xuống ${MAP_LABELS[targetMapId]} thành công!`,
     };
+  }
+
+  private reattachRemotePlayersToEntityLayer(): void {
+    for (const rp of this.remotePlayers.values()) {
+      this.entityLayer.addChild(rp.actor);
+      this.entityLayer.addChild(rp.label);
+    }
+  }
+
+  public setServerClockOffsetMs(offsetMs: number): void {
+    this.police.setServerClockOffsetMs(offsetMs);
+  }
+
+  public applyRemotePoliceChase(officerId: string, x: number, y: number, untilMs: number): void {
+    this.police.applyRemoteChase(officerId, x, y, untilMs);
+  }
+
+  public syncRemotePlayers(
+    appearances: Map<string, RemotePlayerAppearance>,
+    moves: Map<string, RemotePlayerMovePacket>,
+  ): void {
+    for (const [uid, rp] of this.remotePlayers.entries()) {
+      if (!appearances.has(uid)) {
+        rp.actor.removeFromParent();
+        rp.actor.destroy({ children: true });
+        rp.label.removeFromParent();
+        rp.label.destroy();
+        this.remotePlayers.delete(uid);
+      }
+    }
+
+    for (const [uid, appData] of appearances.entries()) {
+      const move = moves.get(uid);
+      let entry = this.remotePlayers.get(uid);
+      if (!entry) {
+        const initX = move?.x ?? appData.x ?? this.player.x;
+        const initY = move?.y ?? appData.y ?? this.player.y;
+        const actor = new Player(initX, initY, this.atlas, {
+          getSurfaceAt: (wx, wy) => this.getSurfaceAt(wx, wy),
+          onWaterStep: () => {},
+        });
+        actor.alpha = 0.92;
+        const label = new Text({
+          text: appData.name,
+          style: {
+            fontSize: 11,
+            fontWeight: "800",
+            fill: "#fde047",
+            stroke: { color: "#020617", width: 3 },
+          },
+        });
+        label.anchor.set(0.5, 1);
+        label.position.set(initX, initY - 72);
+        label.zIndex = initY + 1;
+        this.entityLayer.addChild(actor);
+        this.entityLayer.addChild(label);
+        entry = {
+          actor,
+          label,
+          targetX: initX,
+          targetY: initY,
+          vx: move?.vx ?? 0,
+          vy: move?.vy ?? 0,
+          facing: move?.f ?? appData.facing ?? "down",
+          isMoving: move?.m ?? false,
+          lastPacketAt: performance.now(),
+        };
+        this.remotePlayers.set(uid, entry);
+      }
+      entry.actor.setSkin(appData.skinId);
+      entry.actor.setAppearance(appData.equipped, appData.hairId, appData.gender);
+      if (entry.label.text !== appData.name) {
+        entry.label.text = appData.name;
+      }
+      if (move) {
+        entry.targetX = move.x;
+        entry.targetY = move.y;
+        entry.vx = move.vx;
+        entry.vy = move.vy;
+        entry.facing = move.f;
+        entry.isMoving = move.m;
+        entry.lastPacketAt = performance.now();
+      }
+    }
+  }
+
+  private stepRemotePlayers(dt: number): void {
+    const now = performance.now();
+    for (const rp of this.remotePlayers.values()) {
+      if (rp.isMoving && now - rp.lastPacketAt <= 450) {
+        rp.targetX += rp.vx * dt;
+        rp.targetY += rp.vy * dt;
+      }
+      rp.actor.syncRemotePose(rp.targetX, rp.targetY, rp.facing, rp.isMoving, dt);
+      rp.label.position.set(rp.actor.x, rp.actor.y - 72);
+      rp.label.zIndex = rp.actor.y + 1;
+    }
+  }
+
+  public applyRemoteLiveState(live: LiveStatePayload): void {
+    if (live.map_id !== this.activeMapId) {
+      this.switchMapWithoutFee(live.map_id, live.x, live.y);
+    } else {
+      const dist = Math.hypot(live.x - this.player.x, live.y - this.player.y);
+      if (dist > 6) {
+        this.player.clearPath();
+        this.player.setManualDirection(0, 0);
+        this.player.position.set(live.x, live.y);
+        this.player.zIndex = live.y;
+        this.camX = live.x;
+        this.camY = live.y;
+        this.syncCameraTransform();
+      }
+    }
+    this.player.setFacing(live.facing);
+    this.survival.hp = live.hp;
+    this.survival.hunger = live.hunger;
+    this.survival.stamina = live.stamina;
+    this.survival.bodyTempC = live.body_temp_c;
+  }
+
+  public applyRemoteSaveState(save: PlayerGameSaveV3): void {
+    const wasReady = this.isSceneReady;
+    this.isSceneReady = false;
+    try {
+      this.inventory.replacePersistedState(save.inventory);
+      this.gender = save.profile.gender ?? "male";
+      this.hairId = HAIR_BY_ID[save.hairId] ? save.hairId : HAIR_OPTIONS[0].id;
+      this.ownedHairIds.clear();
+      for (const hid of save.ownedHairIds ?? DEFAULT_OWNED_HAIR_IDS) {
+        this.ownedHairIds.add(hid);
+      }
+      this.equipment = { ...save.equipment };
+      this.cachedEquipStats = computeEquipmentStats(this.equipment);
+      this.savedOutfits = (save.savedOutfits ?? []).map((p) => ({ ...p, gear: { ...p.gear } }));
+      this.survival = {
+        ...save.survival,
+        staminaBuff: save.survival.staminaBuff ? { ...save.survival.staminaBuff } : null,
+      };
+      this.onboardingDone = save.profile.onboardingDone ?? true;
+      this.soundEnabled = save.profile.soundEnabled;
+      this.discoveredLandmarkIds.clear();
+      for (const id of save.profile.discoveredLandmarkIds ?? []) {
+        this.discoveredLandmarkIds.add(id);
+      }
+      if (save.policeState) {
+        this.detainedUntil = save.policeState.detainedUntil;
+        this.ignoreUntilByOfficer = { ...save.policeState.ignoreUntilByOfficer };
+        this.globalPoliceIgnoreUntil = save.policeState.globalIgnoreUntil ?? 0;
+      }
+      if (save.questBoard) {
+        this.questBoard = save.questBoard;
+      }
+      if (save.reputation) {
+        this.reputation = { ...save.reputation, claimedIds: [...save.reputation.claimedIds] };
+      }
+      this.ownedPetIds.clear();
+      for (const pid of save.ownedPetIds ?? []) {
+        this.ownedPetIds.add(pid);
+      }
+      this.equippedPetId = save.equippedPetId ?? null;
+
+      const targetMap: MapId = save.profile.activeMapId === "japan" ? "japan" : "vietnam";
+      if (targetMap !== this.activeMapId) {
+        this.switchMapWithoutFee(targetMap, save.profile.x, save.profile.y);
+      } else {
+        this.player.clearPath();
+        this.player.setManualDirection(0, 0);
+        this.player.position.set(save.profile.x, save.profile.y);
+        this.player.zIndex = save.profile.y;
+        this.camX = save.profile.x;
+        this.camY = save.profile.y;
+        this.syncCameraTransform();
+      }
+      this.player.setSkin(save.profile.skinId);
+      this.player.setAppearance(this.equipment, this.hairId, this.gender);
+      this.player.setFacing(save.profile.facing);
+      this.refreshPetFollower();
+      this.syncChestVisualsAfterRefresh(this.chestVisuals.map((c) => c.chest.id));
+      for (const cv of this.chestVisuals) {
+        const opened = this.inventory.isContainerSearched(cv.chest.id);
+        cv.chest.opened = opened;
+        if (cv.chest.kind !== "trash") {
+          cv.sprite.texture = opened ? this.atlas.chestOpen : this.atlas.chestClosed;
+        }
+        cv.aura.visible = !opened;
+      }
+    } finally {
+      this.isSceneReady = wasReady;
+    }
+  }
+
+  private switchMapWithoutFee(targetMapId: MapId, landX: number, landY: number): void {
+    const { data: nextWorld, pathfinder: nextPathfinder } = this.getOrCreateWorld(targetMapId);
+    for (const lm of nextWorld.landmarks) {
+      if (this.discoveredLandmarkIds.has(lm.id)) lm.discovered = true;
+    }
+    this.activeMapId = targetMapId;
+    this.data = nextWorld;
+    this.pathfinder = nextPathfinder;
+    this.forceCullUpdate = true;
+
+    for (const child of this.groundLayer.removeChildren()) child.destroy({ children: true });
+    this.terrainChunks.length = 0;
+    for (const child of this.waterAnimLayer.removeChildren()) child.destroy({ children: true });
+    this.lilypadSprites.length = 0;
+
+    this.police.destroy();
+    this.entityLayer.removeChild(this.player);
+    for (const rp of this.remotePlayers.values()) {
+      this.entityLayer.removeChild(rp.actor);
+      this.entityLayer.removeChild(rp.label);
+    }
+    for (const child of this.entityLayer.removeChildren()) child.destroy({ children: true });
+
+    this.propNodes.length = 0;
+    this.pendingProps.length = 0;
+    this.foodCartProps.length = 0;
+    this.occludableProps.length = 0;
+    this.buildingOccludables.length = 0;
+    this.chestVisuals.length = 0;
+    this.ripples.length = 0;
+    this.waterWakes.length = 0;
+    this.waterDroplets.length = 0;
+    this.collectionOrbitHost = null;
+    this.collectionOrbitItems.length = 0;
+
+    this.buildTerrainChunks();
+    this.buildZoneBoundaryMarkers();
+    this.buildLilypads();
+    this.buildPropsAndBuildings();
+    this.buildChests();
+    this.entityLayer.addChild(this.player);
+    this.reattachRemotePlayersToEntityLayer();
+    this.refreshPetFollower();
+    this.police = new PoliceSystem(nextWorld, this.atlas, this.entityLayer);
+    this.atmosphere.rebuildForWorld(nextWorld);
+
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.player.position.set(landX, landY);
+    this.player.zIndex = landY;
+    this.camX = landX;
+    this.camY = landY;
+    this.lastSavedPlayerX = landX;
+    this.lastSavedPlayerY = landY;
+    this.syncCameraTransform();
+    this.ensureVisibleTerrainChunksBuilt();
+    this.weatherService.setActiveMap(targetMapId);
+    this.callbacks.onMapChanged?.(targetMapId);
   }
 
   public buyOrEquipGarment(
@@ -1065,6 +1371,11 @@ export class WorldScene {
     return this.getNearbyInteraction()?.type === "collection";
   }
 
+  public isAtAuctionHouse(): boolean {
+    if (this.isInJail) return false;
+    return this.getNearbyInteraction()?.type === "auction";
+  }
+
   public isAtQuestBoard(): boolean {
     if (this.isInJail) return false;
     return this.getNearbyInteraction()?.type === "quest";
@@ -1238,6 +1549,10 @@ export class WorldScene {
 
   public deliverAllSafeboxItems(openedFromHome = false) {
     return this.deliverAllUpgradeItems("safebox", openedFromHome);
+  }
+
+  public requestSaveNow(immediate = true): void {
+    this.callbacks.onRequestSave?.(immediate);
   }
 
   public getSavedOutfits(): readonly SavedOutfitPreset[] {
@@ -1891,6 +2206,7 @@ export class WorldScene {
     const jpNames: Partial<Record<BuildingKind, string>> = {
       city_home_house: "🏯 Dinh Thự Riêng Tokyo",
       city_collection_hall: "🗼 Tháp Bảo Tàng Tokyo",
+      city_auction_house: "⚖️ Sàn Đấu Giá Tokyo",
       city_backpack_shop: "🎒 Tiệm Balo Akihabara",
       city_clothing_shop: "👘 Tiệm Kimono & Giáp Samurai",
       city_butcher_shop: "🍜 Quán Ramen Ichiraku",
@@ -2225,7 +2541,23 @@ export class WorldScene {
       this.advanceExploreQuests("loot_containers", 1);
     }
     this.callbacks.onRequestSave?.(true);
+    this.callbacks.onVaultUnlocked?.({
+      mapId: this.activeMapId,
+      containerId: v.containerId,
+      chestId: v.chestId,
+      container,
+    });
     this.callbacks.onOpenContainer?.(container);
+  }
+
+  public markSharedChestOpened(chestId: string): void {
+    const cv = this.chestVisuals.find((c) => c.chest.id === chestId);
+    if (!cv) return;
+    cv.chest.opened = true;
+    if (cv.chest.kind !== "trash") {
+      cv.sprite.texture = this.atlas.chestOpen;
+    }
+    cv.aura.visible = false;
   }
 
   public cancelVaultPuzzle(): void {
@@ -2475,6 +2807,12 @@ export class WorldScene {
           name: meta.name,
         };
       }
+      if (meta.tier === "auction") {
+        return {
+          type: "auction",
+          name: meta.name,
+        };
+      }
       if (meta.tier === "airport") {
         return {
           type: "airport",
@@ -2559,6 +2897,12 @@ export class WorldScene {
     if (target.type === "collection") {
       this.playPressSfx();
       this.callbacks.onOpenCollectionHall?.();
+      return true;
+    }
+
+    if (target.type === "auction") {
+      this.playPressSfx();
+      this.callbacks.onOpenAuctionHouse?.();
       return true;
     }
 
@@ -2742,6 +3086,29 @@ export class WorldScene {
     }
 
     this.player.update(dt, this.pathfinder);
+    this.stepRemotePlayers(dt);
+    const stepVx = dt > 0.001 ? (this.player.x - this.prevStepX) / dt : 0;
+    const stepVy = dt > 0.001 ? (this.player.y - this.prevStepY) / dt : 0;
+    this.prevStepX = this.player.x;
+    this.prevStepY = this.player.y;
+    this.callbacks.onPlayerMoveSample?.({
+      mapId: this.activeMapId,
+      x: this.player.x,
+      y: this.player.y,
+      vx: stepVx,
+      vy: stepVy,
+      facing: this.player.getFacing(),
+      isMoving: this.player.isMoving(),
+      hp: this.survival.hp,
+      hunger: this.survival.hunger,
+      stamina: this.survival.stamina,
+      bodyTempC: this.survival.bodyTempC,
+      skinId: this.player.getSkin(),
+      gender: this.gender,
+      hairId: this.hairId,
+      equipped: this.equipment,
+      equippedPetId: this.equippedPetId,
+    });
 
     const camLerp = 1 - Math.exp(-8.5 * dt);
     this.camX += (this.player.x - this.camX) * camLerp;
@@ -2823,6 +3190,10 @@ export class WorldScene {
         this.player.setManualDirection(0, 0);
         this.player.clearPath();
         this.callbacks.onRequestSave?.(true);
+        if (this.lastChaseOfficerId !== caughtOfficer.id) {
+          this.lastChaseOfficerId = caughtOfficer.id;
+          this.callbacks.onPoliceChaseStarted?.(caughtOfficer.id, this.player.x, this.player.y);
+        }
         this.callbacks.onPoliceChallenge?.(caughtOfficer);
       }
     }
@@ -2922,7 +3293,7 @@ export class WorldScene {
 
     this.positionSaveAccumulator += dt;
     this.survivalSaveAccumulator += dt;
-    if (this.positionSaveAccumulator >= 1.2) {
+    if (this.positionSaveAccumulator >= 3.0) {
       this.positionSaveAccumulator = 0;
       if (Math.hypot(this.player.x - this.lastSavedPlayerX, this.player.y - this.lastSavedPlayerY) >= 24) {
         this.lastSavedPlayerX = this.player.x;
@@ -2930,7 +3301,7 @@ export class WorldScene {
         this.callbacks.onRequestSave?.(false);
       }
     }
-    if (this.survivalSaveAccumulator >= 4.0) {
+    if (this.survivalSaveAccumulator >= 8.0) {
       this.survivalSaveAccumulator = 0;
       this.callbacks.onRequestSave?.(false);
     }
@@ -3504,6 +3875,7 @@ export class WorldScene {
     const JP_GREEN_BLD_TEXTURE_OVERRIDE: Partial<Record<PropKind, BuildingKind>> = {
       city_home_house: "jp_ryokan_inn",
       city_collection_hall: "jp_tokyo_tower",
+      city_auction_house: "jp_shinkansen_station",
       city_backpack_shop: "jp_akihabara_arcade",
       city_clothing_shop: "jp_samurai_manor",
       city_butcher_shop: "jp_village_machiya",
@@ -3560,6 +3932,7 @@ export class WorldScene {
       plains_garden_inn: { text: "🍽️ NHÀ HÀNG", color: 0xfed7aa },
       city_home_house: { text: "🏠 NHÀ RIÊNG", color: 0xa7f3d0 },
       city_collection_hall: { text: "🏛️ PHÒNG SƯU TẦM", color: 0xfde047 },
+      city_auction_house: { text: "⚖️ NHÀ ĐẤU GIÁ", color: 0xfbbf24 },
       city_airport: { text: "✈️ SÂN BAY QUỐC TẾ", color: 0x7dd3fc },
       city_quest_guild: { text: "📜 HỘI SỞ NHIỆM VỤ", color: 0xfde047 },
       city_reputation_hall: { text: "🏛️ SẢNH DANH VỌNG", color: 0xf43f5e },
@@ -3577,6 +3950,7 @@ export class WorldScene {
       plains_garden_inn: { text: "🍣 NHÀ HÀNG OMAKASE & ONSEN", color: 0xfed7aa },
       city_home_house: { text: "🏯 DINH THỰ RIÊNG TOKYO", color: 0xa7f3d0 },
       city_collection_hall: { text: "🗼 THÁP BẢO TÀNG TOKYO", color: 0xfde047 },
+      city_auction_house: { text: "⚖️ SÀN ĐẤU GIÁ TOKYO", color: 0xfbbf24 },
       city_airport: { text: "✈️ SÂN BAY NARITA (5.000🪙)", color: 0x7dd3fc },
       city_quest_guild: { text: "📜 BẢNG ỦY THÁC TOKYO", color: 0xfde047 },
       city_reputation_hall: { text: "🏛️ SẢNH DANH VỌNG TOKYO", color: 0xf43f5e },
@@ -4200,8 +4574,15 @@ export class WorldScene {
   }
 
   private renderWaterWakesAndDroplets(dt: number): void {
+    const hasParticles = this.waterWakes.length > 0 || this.waterDroplets.length > 0;
+    if (!hasParticles && !this.waterLayerDirty) return;
     const g = this.waterWakeLayer;
     g.clear();
+    if (!hasParticles) {
+      this.waterLayerDirty = false;
+      return;
+    }
+    this.waterLayerDirty = true;
 
     for (let i = this.waterWakes.length - 1; i >= 0; i--) {
       const w = this.waterWakes[i];
@@ -4243,10 +4624,17 @@ export class WorldScene {
   }
 
   private renderPathAndRipples(dt: number): void {
+    const remaining = this.player.getRemainingPath();
+    const hasShapes = remaining.length > 0 || this.ripples.length > 0;
+    if (!hasShapes && !this.pathLayerDirty) return;
     const g = this.pathOverlayLayer;
     g.clear();
+    if (!hasShapes) {
+      this.pathLayerDirty = false;
+      return;
+    }
+    this.pathLayerDirty = true;
 
-    const remaining = this.player.getRemainingPath();
     if (remaining.length > 0) {
       const end = remaining[remaining.length - 1];
 

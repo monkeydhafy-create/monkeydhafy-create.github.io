@@ -12,6 +12,7 @@ import {
 import type { BiomeId, CharacterGender, CharacterSkinId, FacingDir, MapId } from "../world/types.ts";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../world/types.ts";
 import {
+  AUCTION_BY_ID,
   BACKPACK_BY_ID,
   CONTAINER_COLS,
   CONTAINER_REFRESH_RULES,
@@ -26,12 +27,14 @@ import {
   canPlaceOnGrid,
   COLLECTION_RED_BY_ID,
   createDefaultInventoryState,
+  generateAuctionContract,
   generateGymContract,
   generateHomeContract,
   generateSafeboxContract,
   generateTreadmillContract,
   getEffectiveSize,
   getItemMaxUses,
+  getNextAuctionTier,
   getNextGymTier,
   getNextHomeTier,
   getNextSafeboxTier,
@@ -894,6 +897,16 @@ export function validateSavePayload(
     strict,
     label: "Home treadmill",
   });
+  const validatedAuction = validateFacilityTierAndContract({
+    rawId: rawInv.auctionSlotsId,
+    rawContract: rawInv.auctionContract,
+    defaultId: "auc_7",
+    byId: AUCTION_BY_ID,
+    getNextTier: getNextAuctionTier,
+    generateContract: generateAuctionContract,
+    strict,
+    label: "Auction slots",
+  });
 
   const mythicPity = rawInv.mythicPity ?? 0;
   if (
@@ -1512,6 +1525,8 @@ export function validateSavePayload(
       homeGymContract: validatedGym.contract,
       homeTreadmillId: validatedTreadmill.id,
       homeTreadmillContract: validatedTreadmill.contract,
+      auctionSlotsId: validatedAuction.id,
+      auctionContract: validatedAuction.contract,
       safeboxId,
       safeboxItems,
       safeboxContract,

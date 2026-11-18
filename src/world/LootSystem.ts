@@ -360,7 +360,46 @@ export const TREADMILL_BY_ID: Record<string, SafeboxTierDef> = Object.fromEntrie
   TREADMILL_CATALOG.map((t) => [t.id, t]),
 );
 
-export type UpgradeKind = "safebox" | "home" | "gym" | "treadmill";
+export const AUCTION_SLOT_CATALOG: readonly SafeboxTierDef[] = [
+  {
+    id: "auc_7",
+    name: "Gian Hàng Cơ Bản (7 Slot)",
+    cols: 0,
+    rows: 0,
+    bonusPct: 7,
+    description: "Mặc định mỗi tài khoản được treo bán tối đa 7 vật phẩm cùng lúc trong 24h.",
+  },
+  {
+    id: "auc_10",
+    name: "Quầy Đấu Giá Bạc (10 Slot)",
+    cols: 0,
+    rows: 0,
+    bonusPct: 10,
+    description: "Mở rộng lên 10 slot treo bán đồng thời tại Nhà Đấu Giá.",
+  },
+  {
+    id: "auc_14",
+    name: "Sảnh Đấu Giá Vàng (14 Slot)",
+    cols: 0,
+    rows: 0,
+    bonusPct: 14,
+    description: "Mở rộng lên 14 slot treo bán đồng thời tại Nhà Đấu Giá.",
+  },
+  {
+    id: "auc_20",
+    name: "Thương Hội Hoàng Gia (20 Slot)",
+    cols: 0,
+    rows: 0,
+    bonusPct: 20,
+    description: "Mức tối đa: treo bán cùng lúc 20 vật phẩm tại Nhà Đấu Giá.",
+  },
+];
+
+export const AUCTION_BY_ID: Record<string, SafeboxTierDef> = Object.fromEntries(
+  AUCTION_SLOT_CATALOG.map((a) => [a.id, a]),
+);
+
+export type UpgradeKind = "safebox" | "home" | "gym" | "treadmill" | "auction";
 
 export interface SafeboxQuestRequirement {
   itemId: string;
@@ -1123,6 +1162,18 @@ const UPGRADE_CONTRACT_RECIPES: Record<string, readonly UpgradeRecipeStep[]> = {
     { rarity: "A", count: 2, qty: 2 },
     { rarity: "S", count: 1, qty: 1 },
   ],
+  auc_10: [
+    { rarity: "C", count: 2, qty: 3 },
+    { rarity: "B", count: 2, qty: 2 },
+  ],
+  auc_14: [
+    { rarity: "B", count: 2, qty: 2 },
+    { rarity: "A", count: 2, qty: 2 },
+  ],
+  auc_20: [
+    { rarity: "A", count: 2, qty: 2 },
+    { rarity: "S", count: 2, qty: 1 },
+  ],
 };
 
 function buildUpgradeRequirements(targetId: string): SafeboxQuestRequirement[] | null {
@@ -1179,6 +1230,12 @@ export function generateTreadmillContract(targetTierId: string): FacilityUpgrade
   return requirements ? { targetTierId, requirements } : null;
 }
 
+export function generateAuctionContract(targetTierId: string): FacilityUpgradeContract | null {
+  if (!AUCTION_BY_ID[targetTierId]) return null;
+  const requirements = buildUpgradeRequirements(targetTierId);
+  return requirements ? { targetTierId, requirements } : null;
+}
+
 export function getNextSafeboxTier(curSafeboxId: string): SafeboxTierDef | null {
   return getNextCatalogTier(SAFEBOX_CATALOG, curSafeboxId);
 }
@@ -1193,6 +1250,10 @@ export function getNextGymTier(curGymId: string): SafeboxTierDef | null {
 
 export function getNextTreadmillTier(curTreadmillId: string): SafeboxTierDef | null {
   return getNextCatalogTier(TREADMILL_CATALOG, curTreadmillId);
+}
+
+export function getNextAuctionTier(curAuctionId: string): SafeboxTierDef | null {
+  return getNextCatalogTier(AUCTION_SLOT_CATALOG, curAuctionId);
 }
 
 const BASE_RARITY_TABLE: Record<LootSourceType, Record<ItemRarity, number>> = {
@@ -1358,6 +1419,8 @@ export interface PersistedInventoryState {
   homeGymContract?: FacilityUpgradeContract | null;
   homeTreadmillId?: string;
   homeTreadmillContract?: FacilityUpgradeContract | null;
+  auctionSlotsId?: string;
+  auctionContract?: FacilityUpgradeContract | null;
   safeboxId: string;
   safeboxItems: GridItemInstance[];
   safeboxContract: SafeboxUpgradeContract | null;
@@ -1416,6 +1479,8 @@ export function createDefaultInventoryState(): PersistedInventoryState {
     homeGymContract: generateGymContract("gym_5"),
     homeTreadmillId: "treadmill_0",
     homeTreadmillContract: generateTreadmillContract("treadmill_5"),
+    auctionSlotsId: "auc_7",
+    auctionContract: generateAuctionContract("auc_10"),
     safeboxId: "safe_2x2",
     safeboxItems: [],
     safeboxContract: generateSafeboxContract("safe_3x3"),
@@ -1513,6 +1578,15 @@ function cloneInventoryState(state: PersistedInventoryState): PersistedInventory
     generateTreadmillContract,
   );
 
+  const auctionSlotsId =
+    state.auctionSlotsId && AUCTION_BY_ID[state.auctionSlotsId] ? state.auctionSlotsId : "auc_7";
+  const nextAuction = getNextAuctionTier(auctionSlotsId);
+  const auctionContract = cloneFacilityContract(
+    state.auctionContract,
+    nextAuction?.id,
+    generateAuctionContract,
+  );
+
   return {
     gold: state.gold,
     backpackId: state.backpackId !== undefined ? state.backpackId : "starter_4x4",
@@ -1525,6 +1599,8 @@ function cloneInventoryState(state: PersistedInventoryState): PersistedInventory
     homeGymContract,
     homeTreadmillId,
     homeTreadmillContract,
+    auctionSlotsId,
+    auctionContract,
     safeboxId,
     safeboxItems: (state.safeboxItems ?? []).map((it) => ({ ...it })),
     safeboxContract: contract,
@@ -1704,6 +1780,59 @@ export class InventoryManager {
 
   public getTreadmillContract(): FacilityUpgradeContract | null {
     return this.state.homeTreadmillContract ?? null;
+  }
+
+  public getAuctionTier(): SafeboxTierDef {
+    const id = this.state.auctionSlotsId ?? "auc_7";
+    return AUCTION_BY_ID[id] ?? AUCTION_SLOT_CATALOG[0];
+  }
+
+  public getAuctionMaxSlots(): number {
+    return this.getAuctionTier().bonusPct ?? 7;
+  }
+
+  public getAuctionContract(): FacilityUpgradeContract | null {
+    return this.state.auctionContract ?? null;
+  }
+
+  public addGoldDirect(amount: number): void {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    this.state.gold += Math.round(amount);
+    this.saveState();
+  }
+
+  public receiveAuctionItemToStorage(inst: GridItemInstance): { ok: boolean; zone: "backpack" | "safebox" | null } {
+    const def = ITEM_BY_ID[inst.itemId];
+    if (!def) return { ok: false, zone: null };
+    const bp = this.getBackpackTier();
+    if (bp) {
+      const slot = findFirstFitOnGrid(bp.cols, bp.rows, this.state.backpackItems, def, Boolean(inst.rotated));
+      if (slot) {
+        this.state.backpackItems.push({
+          ...inst,
+          uid: `auc_${this.state.nextUid++}`,
+          x: slot.x,
+          y: slot.y,
+          rotated: slot.rotated,
+        });
+        this.saveState();
+        return { ok: true, zone: "backpack" };
+      }
+    }
+    const sb = this.getSafeboxTier();
+    const sbSlot = findFirstFitOnGrid(sb.cols, sb.rows, this.state.safeboxItems, def, Boolean(inst.rotated));
+    if (sbSlot) {
+      this.state.safeboxItems.push({
+        ...inst,
+        uid: `auc_${this.state.nextUid++}`,
+        x: sbSlot.x,
+        y: sbSlot.y,
+        rotated: sbSlot.rotated,
+      });
+      this.saveState();
+      return { ok: true, zone: "safebox" };
+    }
+    return { ok: false, zone: null };
   }
 
   public getHeavySpeedBonusPct(): number {
@@ -2685,6 +2814,21 @@ export class InventoryManager {
         formatTierSummary: (t) => t.name,
       };
     }
+    if (kind === "auction") {
+      return {
+        label: "Slot Đấu Giá",
+        maxLabel: "20 Slot",
+        targetId: this.state.auctionContract?.targetTierId ?? null,
+        requirements: this.state.auctionContract?.requirements ?? null,
+        applyUpgrade: (id) => {
+          this.state.auctionSlotsId = id;
+          const nextTier = getNextAuctionTier(id);
+          this.state.auctionContract = nextTier ? generateAuctionContract(nextTier.id) : null;
+          return this.getAuctionTier();
+        },
+        formatTierSummary: (t) => t.name,
+      };
+    }
     return {
       label: "Safebox",
       maxLabel: "5×5",
@@ -2712,7 +2856,7 @@ export class InventoryManager {
     message: string;
   } {
     const meta = this.resolveUpgradeMeta(kind);
-    if (!atHome) {
+    if (!atHome && kind !== "auction") {
       return {
         ok: false,
         upgraded: false,
@@ -2779,7 +2923,7 @@ export class InventoryManager {
     message: string;
   } {
     const meta = this.resolveUpgradeMeta(kind);
-    if (!atHome) {
+    if (!atHome && kind !== "auction") {
       return {
         deliveredTotal: 0,
         upgraded: false,
@@ -3196,6 +3340,47 @@ export class InventoryManager {
       if (r <= 0) return entry.item;
     }
     return pool[0];
+  }
+
+  public replacePersistedState(nextState: PersistedInventoryState): void {
+    this.state = cloneInventoryState(nextState);
+    this.cachedBackpackWeightKg = null;
+    this.purgeExpiredContainers();
+  }
+
+  public removeItemFromBackpackByUid(uid: string): GridItemInstance | null {
+    const idx = this.state.backpackItems.findIndex((it) => it.uid === uid);
+    if (idx < 0) return null;
+    const [removed] = this.state.backpackItems.splice(idx, 1);
+    this.saveState();
+    return removed;
+  }
+
+  public applySharedContainerSnapshot(
+    containerId: string,
+    title: string,
+    sourceType: LootSourceType,
+    biome: BiomeId,
+    cols: number,
+    rows: number,
+    items: GridItemInstance[],
+    generatedAt: number,
+    refreshAt: number,
+  ): ContainerLootState {
+    const next: ContainerLootState = {
+      containerId,
+      title,
+      sourceType,
+      biome,
+      cols,
+      rows,
+      items: items.map((it) => ({ ...it })),
+      generatedAt,
+      refreshAt,
+    };
+    this.state.containers[containerId] = next;
+    this.saveState();
+    return next;
   }
 
   private saveState(): void {
