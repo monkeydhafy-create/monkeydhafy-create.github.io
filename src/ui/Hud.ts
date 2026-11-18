@@ -971,6 +971,7 @@ export class Hud {
         sourceType: target.sourceType,
         kind: target.kind,
         seed: target.seed,
+        zone: target.zone,
         difficulty,
         extraMisses: target.zone === "red" ? 1 : 0,
       },
@@ -1869,18 +1870,18 @@ export class Hud {
     this.policeGridEl.replaceChildren();
     const introStage = document.createElement("div");
     introStage.className = "police-intro-stage";
-    const modelImg = document.createElement("img");
-    modelImg.className = "police-intro-model";
-    modelImg.src = withAssetHash(
-      isJapan ? "assets/world/char_samurai_blue.png" : "assets/world/char_ninja_blue.png",
-    );
-    modelImg.alt = officer.name;
+    const modelCanvas = document.createElement("canvas");
+    modelCanvas.width = 160;
+    modelCanvas.height = 160;
+    modelCanvas.className = "police-intro-model";
+    modelCanvas.setAttribute("aria-label", officer.name);
+    void this.drawPolicePreviewCanvas(modelCanvas, isJapan, zone);
     const introCaption = document.createElement("div");
     introCaption.style.fontWeight = "800";
     introCaption.style.fontSize = "14px";
     introCaption.style.color = "#bfdbfe";
     introCaption.textContent = "Đang áp giải vào khu vực kiểm tra (3 giây)...";
-    introStage.append(modelImg, introCaption);
+    introStage.append(modelCanvas, introCaption);
     this.policeGridEl.appendChild(introStage);
     this.policeModalEl.classList.add("is-open");
 
@@ -5973,6 +5974,36 @@ export class Hud {
     if (accDef) orderedLayers.push({ key: accDef.layerKey, tint: accDef.tint });
     if (hatDef) orderedLayers.push({ key: resolveGarmentLayerKey(hatDef, gender), tint: hatDef.tint });
 
+    await this.drawLpcLayersToCanvas(canvas, orderedLayers, getCharacterBodyScale(gender));
+  }
+
+  private async drawPolicePreviewCanvas(
+    canvas: HTMLCanvasElement,
+    isJapan: boolean,
+    zone: SecurityZone,
+  ): Promise<void> {
+    const tints = isJapan
+      ? zone === "red"
+        ? { feet: 0x09090b, legs: 0x18181b, torso: 0xdc2626, hat: 0xfacc15 }
+        : { feet: 0x1e293b, legs: 0x1e1b4b, torso: 0x38bdf8, hat: 0xfef08a }
+      : { feet: 0x334155, legs: 0x1e293b, torso: 0xdbeafe, hat: 0x1d4ed8 };
+
+    const orderedLayers: Array<{ key: string; tint: number }> = [
+      { key: "body_male", tint: 0xffffff },
+      { key: "feet_boots", tint: tints.feet },
+      { key: "legs_formal", tint: tints.legs },
+      { key: "torso_jacket_navy", tint: tints.torso },
+      { key: "head_male", tint: 0xffffff },
+      { key: "hat_cap", tint: tints.hat },
+    ];
+    await this.drawLpcLayersToCanvas(canvas, orderedLayers, { x: 1.05, y: 1.05 });
+  }
+
+  private async drawLpcLayersToCanvas(
+    canvas: HTMLCanvasElement,
+    orderedLayers: Array<{ key: string; tint: number }>,
+    bodyScale: { x: number; y: number },
+  ): Promise<void> {
     const loaded = await Promise.all(
       orderedLayers.map(async (entry) => ({
         img: await this.loadLpcPreviewImage(entry.key),
@@ -5991,7 +6022,6 @@ export class Hud {
     const tCtx = tintCanvas.getContext("2d")!;
     tCtx.imageSmoothingEnabled = false;
 
-    const bodyScale = getCharacterBodyScale(gender);
     const drawW = canvas.width * bodyScale.x;
     const drawH = canvas.height * bodyScale.y;
     const drawX = (canvas.width - drawW) / 2;

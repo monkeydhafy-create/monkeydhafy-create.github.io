@@ -2401,9 +2401,9 @@ button {
 }
 
 .police-intro-model {
-  width: 112px;
-  height: 112px;
-  object-fit: contain;
+  width: 156px;
+  height: 156px;
+  display: block;
   image-rendering: pixelated;
   filter: drop-shadow(0 6px 18px rgba(59, 130, 246, 0.45));
   animation: policeSirenBob 0.75s ease-in-out infinite alternate;
@@ -2905,6 +2905,16 @@ button {
   grid-template-rows: repeat(6, var(--vp-cell, 45px));
 }
 
+.vp-grid-7 {
+  grid-template-columns: repeat(7, var(--vp-cell, 42px));
+  grid-template-rows: repeat(7, var(--vp-cell, 42px));
+}
+
+.vp-grid-8 {
+  grid-template-columns: repeat(8, var(--vp-cell, 38px));
+  grid-template-rows: repeat(8, var(--vp-cell, 38px));
+}
+
 .vp-cell {
   position: relative;
   width: 100%;
@@ -3090,11 +3100,47 @@ button {
 
 .vp-signal-cell.is-target {
   background: rgba(16, 185, 129, 0.22);
-  font-size: 22px;
+  font-size: 20px;
+}
+
+.vp-signal-cell.is-target-incomplete {
+  background: rgba(249, 115, 22, 0.28);
+  border-color: rgba(251, 146, 60, 0.85);
+}
+
+.vp-signal-cell.is-relay {
+  background: rgba(139, 92, 246, 0.16);
+  border-color: rgba(167, 139, 250, 0.55);
+  font-size: 18px;
+  cursor: default;
+}
+
+.vp-signal-cell.is-relay.is-relay-lit {
+  background: rgba(34, 197, 94, 0.26);
+  border-color: rgba(74, 222, 128, 0.85);
+  box-shadow: inset 0 0 10px rgba(74, 222, 128, 0.45);
+}
+
+.vp-signal-cell.is-fixed-mirror {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(251, 191, 36, 0.65);
+  cursor: not-allowed;
 }
 
 .vp-signal-cell.is-mirror:hover {
   border-color: #fde047;
+}
+
+.vp-signal-cell.is-open-mirror {
+  background: rgba(56, 189, 248, 0.08);
+  border-style: dashed;
+  border-color: rgba(125, 211, 252, 0.55);
+}
+
+.vp-signal-emitter {
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .vp-mirror-bar {
@@ -3103,6 +3149,32 @@ button {
   border-radius: 4px;
   background: linear-gradient(90deg, #93c5fd, #e0f2fe, #93c5fd);
   box-shadow: 0 0 8px rgba(147, 197, 253, 0.75);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.vp-mirror-bar.is-fixed {
+  background: linear-gradient(90deg, #f59e0b, #fef08a, #f59e0b);
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.75);
+}
+
+.vp-mirror-lock {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.vp-mirror-open {
+  width: 44%;
+  height: 44%;
+  border-radius: 4px;
+  transform: rotate(45deg);
+  border: 2px dashed rgba(125, 211, 252, 0.8);
+  background: rgba(56, 189, 248, 0.12);
   pointer-events: none;
   z-index: 4;
 }
@@ -3238,6 +3310,12 @@ button {
   .vp-grid-6 {
     --vp-cell: min(43px, calc((100vw - 86px) / 6));
   }
+  .vp-grid-7 {
+    --vp-cell: min(40px, calc((100vw - 88px) / 7));
+  }
+  .vp-grid-8 {
+    --vp-cell: min(36px, calc((100vw - 92px) / 8));
+  }
 }
 
 @media (max-height: 540px) {
@@ -3257,6 +3335,12 @@ button {
   }
   .vp-grid-6 {
     --vp-cell: min(34px, calc((100dvh - 184px) / 6));
+  }
+  .vp-grid-7 {
+    --vp-cell: min(30px, calc((100dvh - 188px) / 7));
+  }
+  .vp-grid-8 {
+    --vp-cell: min(27px, calc((100dvh - 192px) / 8));
   }
   .vp-code-slot {
     height: 34px;

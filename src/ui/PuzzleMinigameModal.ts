@@ -4,6 +4,7 @@ import {
   type ArcadeDifficulty,
   type ArcadeMinigameKind,
 } from "./ArcadeMinigames.ts";
+import type { SecurityZone } from "../world/types.ts";
 
 export type VaultPuzzleKind = "wires" | "pipes" | "signal" | "code4" | ArcadeMinigameKind;
 
@@ -13,8 +14,15 @@ export interface VaultPuzzleTarget {
   sourceType: "chest_royal" | "house_vault" | "jail_station";
   kind?: VaultPuzzleKind;
   seed?: number;
+  zone?: SecurityZone;
   difficulty?: ArcadeDifficulty;
   extraMisses?: number;
+}
+
+export function getCode4MaxAttempts(zone?: SecurityZone): number {
+  if (zone === "red") return 4;
+  if (zone === "yellow") return 5;
+  return 6;
 }
 
 type Dir = 0 | 1 | 2 | 3; // 0:N, 1:E, 2:S, 3:W
@@ -38,14 +46,14 @@ const PUZZLE_TITLES: Record<VaultPuzzleKind, { badge: string; title: string; gui
     guide: "Chạm vào từng đoạn ống để xoay 90°, dẫn dòng nước từ 💧 Nguồn tới 🔋 Van Đích.",
   },
   signal: {
-    badge: "📡 MA TRẬN GƯƠNG 6×6",
+    badge: "📡 MA TRẬN GƯƠNG",
     title: "Đường Dẫn Tín Hiệu",
-    guide: "Chạm xoay gương phản xạ (/ ↔ \\) để bẻ hướng tia tín hiệu từ 📡 Máy Phát tới 🎯 Bộ Thu.",
+    guide: "Chạm gương xoay 3 chế độ (/ → \\ → ◇ xuyên thẳng). Dẫn tia qua đủ trạm ⚡ rồi tới 🎯 Bộ Thu! (Gương viền vàng 🔒 là cố định)",
   },
   code4: {
     badge: "🔢 KHÓA MẬT MÃ 4 SỐ",
-    title: "Đoán Mã Két An Toàn (Tối đa 10 lượt)",
-    guide: "Nhập 4 chữ số khác nhau (0–9). Sai quá 10 lượt mật mã sẽ tự đổi mới! 🟢 Đúng số & đúng vị trí • 🟡 Đúng số nhưng sai vị trí • ⬛ Không có.",
+    title: "Đoán Mã Két An Toàn (Tối đa 6 lượt)",
+    guide: "Nhập 4 chữ số khác nhau (0–9). Sai quá 6 lượt mật mã sẽ tự đổi mới! 🟢 Đúng số & đúng vị trí • 🟡 Đúng số nhưng sai vị trí • ⬛ Không có.",
   },
   memory_cards: {
     badge: ARCADE_MINIGAME_META.memory_cards.badge,
@@ -179,16 +187,28 @@ interface PipesState {
   solved: boolean;
 }
 
-// ===================== SIGNAL (LASER MIRRORS 6x6) =====================
+// ===================== SIGNAL (LASER MIRRORS 7x7 / 8x8) =====================
 
-type SignalCellKind = "empty" | "wall" | "slash" | "backslash" | "target";
+type SignalCellKind =
+  | "empty"
+  | "wall"
+  | "slash"
+  | "backslash"
+  | "open"
+  | "fixed_slash"
+  | "fixed_backslash"
+  | "relay"
+  | "target";
 
 interface SignalState {
-  size: 6;
+  size: 7 | 8;
   emitter: { r: number; c: number; dir: Dir }; // sits on border pointing inward
   grid: SignalCellKind[][];
-  beamPoints: Array<{ x: number; y: number }>; // normalized 0..6 SVG coords
+  beamPoints: Array<{ x: number; y: number }>; // normalized 0..size SVG coords
   beamLitCells: Set<string>;
+  relaysTotal: number;
+  relaysLit: number;
+  reachedTarget: boolean;
   solved: boolean;
 }
 
@@ -496,6 +516,14 @@ export function evaluateSignal(state: SignalState): void {
   const beamPoints: Array<{ x: number; y: number }> = [];
   const beamLitCells = new Set<string>();
   const seenStates = new Set<string>();
+  const litRelays = new Set<string>();
+
+  let relaysTotal = 0;
+  for (let rr = 0; rr < size; rr++) {
+    for (let cc = 0; cc < size; cc++) {
+      if (grid[rr][cc] === "relay") relaysTotal++;
+    }
+  }
 
   const startX = emitter.c + 0.5 - DIRS[emitter.dir].dc * 0.5;
   const startY = emitter.r + 0.5 - DIRS[emitter.dir].dr * 0.5;
@@ -504,9 +532,11 @@ export function evaluateSignal(state: SignalState): void {
   let r = emitter.r;
   let c = emitter.c;
   let dir = emitter.dir;
+  let reachedTarget = false;
   let solved = false;
 
-  for (let step = 0; step < 64; step++) {
+  const maxSteps = size * size * 2;
+  for (let step = 0; step < maxSteps; step++) {
     if (r < 0 || r >= size || c < 0 || c >= size) {
       break;
     }
@@ -523,16 +553,24 @@ export function evaluateSignal(state: SignalState): void {
       break;
     }
 
-    beamLitCells.add(keyRC(r, c));
+    const cellKey = keyRC(r, c);
+    beamLitCells.add(cellKey);
     beamPoints.push({ x: c + 0.5, y: r + 0.5 });
 
+    if (cell === "relay") {
+      litRelays.add(cellKey);
+    }
+
     if (cell === "target") {
-      solved = true;
+      reachedTarget = true;
+      solved = litRelays.size === relaysTotal;
       break;
     }
 
-    if (cell === "slash" || cell === "backslash") {
-      dir = reflectDir(cell, dir);
+    if (cell === "slash" || cell === "fixed_slash") {
+      dir = reflectDir("slash", dir);
+    } else if (cell === "backslash" || cell === "fixed_backslash") {
+      dir = reflectDir("backslash", dir);
     }
 
     const nr = r + DIRS[dir].dr;
@@ -550,29 +588,111 @@ export function evaluateSignal(state: SignalState): void {
 
   state.beamPoints = beamPoints;
   state.beamLitCells = beamLitCells;
+  state.relaysTotal = relaysTotal;
+  state.relaysLit = litRelays.size;
+  state.reachedTarget = reachedTarget;
   state.solved = solved;
 }
 
-export function createSignalState(rng: () => number = Math.random): SignalState {
-  const size = 6;
-  for (let attempt = 0; attempt < 70; attempt++) {
-    const startRow = randInt(rng, size);
+interface SignalDifficultyConfig {
+  size: 7 | 8;
+  minBounces: number;
+  maxBounces: number;
+  relays: number;
+  fixedMirrors: number;
+  inlineDecoys: number;
+  offPathDecoys: number;
+  walls: number;
+}
+
+export function getSignalDifficultyConfig(zone?: SecurityZone): SignalDifficultyConfig {
+  if (zone === "red") {
+    return {
+      size: 8,
+      minBounces: 9,
+      maxBounces: 11,
+      relays: 3,
+      fixedMirrors: 2,
+      inlineDecoys: 4,
+      offPathDecoys: 12,
+      walls: 8,
+    };
+  }
+  if (zone === "yellow") {
+    return {
+      size: 7,
+      minBounces: 7,
+      maxBounces: 9,
+      relays: 2,
+      fixedMirrors: 2,
+      inlineDecoys: 3,
+      offPathDecoys: 9,
+      walls: 6,
+    };
+  }
+  return {
+    size: 7,
+    minBounces: 6,
+    maxBounces: 7,
+    relays: 2,
+    fixedMirrors: 1,
+    inlineDecoys: 2,
+    offPathDecoys: 7,
+    walls: 5,
+  };
+}
+
+function nextSignalMirrorKind(kind: "slash" | "backslash" | "open"): "slash" | "backslash" | "open" {
+  if (kind === "slash") return "backslash";
+  if (kind === "backslash") return "open";
+  return "slash";
+}
+
+function pickDifferentMirrorKind(
+  solution: "slash" | "backslash" | "open",
+  rng: () => number,
+): "slash" | "backslash" | "open" {
+  const opts = (["slash", "backslash", "open"] as const).filter((k) => k !== solution);
+  return opts[randInt(rng, opts.length)];
+}
+
+export function createSignalState(
+  rng: () => number = Math.random,
+  zone?: SecurityZone,
+): SignalState {
+  const cfg = getSignalDifficultyConfig(zone);
+  const { size } = cfg;
+
+  for (let attempt = 0; attempt < 180; attempt++) {
+    const edge = randInt(rng, 4);
+    const startPos = randInt(rng, size);
+    const emitter: { r: number; c: number; dir: Dir } =
+      edge === 0
+        ? { r: startPos, c: 0, dir: 1 }
+        : edge === 1
+          ? { r: startPos, c: size - 1, dir: 3 }
+          : edge === 2
+            ? { r: 0, c: startPos, dir: 2 }
+            : { r: size - 1, c: startPos, dir: 0 };
+
     const grid: SignalCellKind[][] = Array.from({ length: size }, () =>
       Array<SignalCellKind>(size).fill("empty"),
     );
-    const mirrorCoords: Array<[number, number]> = [];
+    const solutionMirrors: Array<{ r: number; c: number; kind: "slash" | "backslash" }> = [];
+    const straightCells: Array<[number, number]> = [];
     const passedAir = new Set<string>();
 
-    let r = startRow;
-    let c = 0;
-    let dir: Dir = 1; // enter heading East
+    let r = emitter.r;
+    let c = emitter.c;
+    let dir: Dir = emitter.dir;
     passedAir.add(keyRC(r, c));
 
-    const targetBounces = 4 + randInt(rng, 3); // 4..6 mirror turns
+    const targetBounces = cfg.minBounces + randInt(rng, cfg.maxBounces - cfg.minBounces + 1);
     let ok = true;
+
     for (let b = 0; b < targetBounces; b++) {
-      const candidates: Array<{ mr: number; mc: number; newDir: Dir }> = [];
-      for (let dist = 1; dist <= 4; dist++) {
+      const candidates: Array<{ mr: number; mc: number; newDir: Dir; dist: number }> = [];
+      for (let dist = 1; dist <= size - 2; dist++) {
         const mr = r + DIRS[dir].dr * dist;
         const mc = c + DIRS[dir].dc * dist;
         if (mr < 0 || mr >= size || mc < 0 || mc >= size) break;
@@ -582,7 +702,7 @@ export function createSignalState(rng: () => number = Math.random): SignalState 
           const ar = mr + DIRS[nd].dr;
           const ac = mc + DIRS[nd].dc;
           if (ar >= 0 && ar < size && ac >= 0 && ac < size && !passedAir.has(keyRC(ar, ac))) {
-            candidates.push({ mr, mc, newDir: nd });
+            candidates.push({ mr, mc, newDir: nd, dist });
           }
         }
       }
@@ -595,14 +715,19 @@ export function createSignalState(rng: () => number = Math.random): SignalState 
       let sc = c;
       while (sr !== pick.mr || sc !== pick.mc) {
         passedAir.add(keyRC(sr, sc));
+        if (!(sr === emitter.r && sc === emitter.c)) {
+          straightCells.push([sr, sc]);
+        }
         sr += DIRS[dir].dr;
         sc += DIRS[dir].dc;
       }
       passedAir.add(keyRC(pick.mr, pick.mc));
 
       const slashRes = reflectDir("slash", dir);
-      grid[pick.mr][pick.mc] = slashRes === pick.newDir ? "slash" : "backslash";
-      mirrorCoords.push([pick.mr, pick.mc]);
+      const mirrorKind: "slash" | "backslash" = slashRes === pick.newDir ? "slash" : "backslash";
+      grid[pick.mr][pick.mc] = mirrorKind;
+      solutionMirrors.push({ r: pick.mr, c: pick.mc, kind: mirrorKind });
+
       r = pick.mr + DIRS[pick.newDir].dr;
       c = pick.mc + DIRS[pick.newDir].dc;
       dir = pick.newDir;
@@ -616,17 +741,53 @@ export function createSignalState(rng: () => number = Math.random): SignalState 
 
     let tr = r;
     let tc = c;
-    const extraSteps = randInt(rng, 3);
+    const extraSteps = 1 + randInt(rng, 3);
     for (let s = 0; s < extraSteps; s++) {
       const nr = tr + DIRS[dir].dr;
       const nc = tc + DIRS[dir].dc;
       if (nr < 0 || nr >= size || nc < 0 || nc >= size || passedAir.has(keyRC(nr, nc))) break;
+      straightCells.push([tr, tc]);
       tr = nr;
       tc = nc;
       passedAir.add(keyRC(tr, tc));
     }
     grid[tr][tc] = "target";
 
+    if (straightCells.length < cfg.relays + cfg.inlineDecoys) continue;
+
+    // Place mandatory relays spread evenly along the solution path
+    const relaySet = new Set<string>();
+    for (let i = 0; i < cfg.relays; i++) {
+      const segStart = Math.floor((i * straightCells.length) / cfg.relays);
+      const segEnd = Math.max(segStart + 1, Math.floor(((i + 1) * straightCells.length) / cfg.relays));
+      const chosen = straightCells[segStart + randInt(rng, segEnd - segStart)];
+      const k = keyRC(chosen[0], chosen[1]);
+      if (!relaySet.has(k)) {
+        relaySet.add(k);
+        grid[chosen[0]][chosen[1]] = "relay";
+      }
+    }
+    if (relaySet.size < cfg.relays) continue;
+
+    // Convert some interior solution mirrors into fixed anchors
+    const fixPool = solutionMirrors.slice(1);
+    shuffleInPlace(fixPool, rng);
+    const fixedSet = new Set<string>();
+    for (let i = 0; i < Math.min(cfg.fixedMirrors, fixPool.length); i++) {
+      const fm = fixPool[i];
+      grid[fm.r][fm.c] = fm.kind === "slash" ? "fixed_slash" : "fixed_backslash";
+      fixedSet.add(keyRC(fm.r, fm.c));
+    }
+
+    // Place inline pass-through traps (solution = "open", scrambled to slash/backslash)
+    const remainingStraight = straightCells.filter(([sr, sc]) => !relaySet.has(keyRC(sr, sc)));
+    shuffleInPlace(remainingStraight, rng);
+    const inlineDecoys = remainingStraight.slice(0, cfg.inlineDecoys);
+    for (const [dr, dc] of inlineDecoys) {
+      grid[dr][dc] = "open";
+    }
+
+    // Place walls and off-path decoy mirrors on untouched cells
     const untouched: Array<[number, number]> = [];
     for (let rr = 0; rr < size; rr++) {
       for (let cc = 0; cc < size; cc++) {
@@ -634,35 +795,68 @@ export function createSignalState(rng: () => number = Math.random): SignalState 
       }
     }
     shuffleInPlace(untouched, rng);
-    for (let i = 0; i < Math.min(4, untouched.length); i++) {
+    const wallCount = Math.min(cfg.walls, untouched.length);
+    for (let i = 0; i < wallCount; i++) {
       const [wr, wc] = untouched[i];
       grid[wr][wc] = "wall";
     }
-    for (let i = 4; i < Math.min(8, untouched.length); i++) {
-      const [mr, mc] = untouched[i];
-      grid[mr][mc] = rng() < 0.5 ? "slash" : "backslash";
-      mirrorCoords.push([mr, mc]);
+    const offPathDecoys = untouched.slice(wallCount, wallCount + cfg.offPathDecoys);
+    for (const [mr, mc] of offPathDecoys) {
+      const roll = rng();
+      grid[mr][mc] = roll < 0.44 ? "slash" : roll < 0.88 ? "backslash" : "open";
     }
 
-    const emitter = { r: startRow, c: 0, dir: 1 as Dir };
-    for (let sTry = 0; sTry < 10; sTry++) {
-      let flippedCount = 0;
-      for (const [mr, mc] of mirrorCoords) {
-        if (rng() < 0.7) {
-          grid[mr][mc] = grid[mr][mc] === "slash" ? "backslash" : "slash";
-          flippedCount++;
+    // Verify unscrambled solution is 100% solvable
+    const verifyState: SignalState = {
+      size,
+      emitter,
+      grid,
+      beamPoints: [],
+      beamLitCells: new Set(),
+      relaysTotal: 0,
+      relaysLit: 0,
+      reachedTarget: false,
+      solved: false,
+    };
+    evaluateSignal(verifyState);
+    if (!verifyState.solved) continue;
+
+    // Scramble rotatable mirrors
+    const rotatableSolution = solutionMirrors.filter((m) => !fixedSet.has(keyRC(m.r, m.c)));
+    const minWrong = Math.max(4, Math.ceil(rotatableSolution.length * 0.72));
+
+    for (let sTry = 0; sTry < 12; sTry++) {
+      const scrambledGrid = grid.map((row) => row.slice());
+      // Always close inline pass-through traps into angled deflectors at start
+      for (const [dr, dc] of inlineDecoys) {
+        scrambledGrid[dr][dc] = rng() < 0.5 ? "slash" : "backslash";
+      }
+      // Scramble rotatable mirrors along solution path
+      const solOrder = rotatableSolution.slice();
+      shuffleInPlace(solOrder, rng);
+      for (let i = 0; i < solOrder.length; i++) {
+        const m = solOrder[i];
+        if (i < minWrong || rng() < 0.65) {
+          scrambledGrid[m.r][m.c] = pickDifferentMirrorKind(m.kind, rng);
+        } else {
+          scrambledGrid[m.r][m.c] = m.kind;
         }
       }
-      if (flippedCount === 0 && mirrorCoords.length > 0) {
-        const [mr, mc] = mirrorCoords[0];
-        grid[mr][mc] = grid[mr][mc] === "slash" ? "backslash" : "slash";
+      // Reshuffle off-path decoys
+      for (const [mr, mc] of offPathDecoys) {
+        const roll = rng();
+        scrambledGrid[mr][mc] = roll < 0.44 ? "slash" : roll < 0.88 ? "backslash" : "open";
       }
+
       const st: SignalState = {
         size,
         emitter,
-        grid,
+        grid: scrambledGrid,
         beamPoints: [],
         beamLitCells: new Set(),
+        relaysTotal: 0,
+        relaysLit: 0,
+        reachedTarget: false,
         solved: false,
       };
       evaluateSignal(st);
@@ -670,23 +864,54 @@ export function createSignalState(rng: () => number = Math.random): SignalState 
     }
   }
 
-  // Deterministic guaranteed-solvable 6x6 fallback
-  const fbGrid: SignalCellKind[][] = Array.from({ length: 6 }, () =>
-    Array<SignalCellKind>(6).fill("empty"),
+  // Deterministic guaranteed-solvable 7x7 / 8x8 fallback
+  const fbGrid: SignalCellKind[][] = Array.from({ length: size }, () =>
+    Array<SignalCellKind>(size).fill("empty"),
   );
-  fbGrid[2][2] = "backslash"; // solution: "slash"
-  fbGrid[0][2] = "backslash"; // solution: "slash"
+  // Path: (0,0)E -> (0,1)[relay] -> (0,2)[open trap] -> (0,4)[\] -> (2,4)[/] -> (2,3)[open trap] ->
+  // (2,1)[/] -> (4,1)[\] -> (4,3)[relay] -> (4,5)[fixed /] -> (1,5)[/] -> (1,6)[\] ->
+  // (3,6)[relay on 8x8] -> (5,6)[/] -> (5,3)[target on 7x7, / -> (7,3) target on 8x8]
+  fbGrid[0][1] = "relay";
+  fbGrid[0][2] = "slash"; // solution: "open"
   fbGrid[0][4] = "slash"; // solution: "backslash"
-  fbGrid[4][4] = "slash"; // solution: "backslash"
-  fbGrid[1][3] = "wall";
-  fbGrid[3][1] = "wall";
-  fbGrid[4][5] = "target";
+  fbGrid[2][4] = "backslash"; // solution: "slash"
+  fbGrid[2][3] = "backslash"; // solution: "open"
+  fbGrid[2][1] = "open"; // solution: "slash"
+  fbGrid[4][1] = "slash"; // solution: "backslash"
+  fbGrid[4][3] = "relay";
+  fbGrid[4][5] = "fixed_slash";
+  fbGrid[1][5] = "backslash"; // solution: "slash"
+  fbGrid[1][6] = "open"; // solution: "backslash"
+  fbGrid[5][6] = "backslash"; // solution: "slash"
+  if (size === 8) {
+    fbGrid[3][6] = "relay";
+    fbGrid[5][3] = "backslash"; // solution: "slash" -> South to (7,3)
+    fbGrid[7][3] = "target";
+    fbGrid[6][5] = "wall";
+    fbGrid[6][1] = "slash";
+    fbGrid[7][6] = "backslash";
+  } else {
+    fbGrid[5][3] = "target";
+  }
+  fbGrid[1][2] = "wall";
+  fbGrid[3][2] = "wall";
+  fbGrid[3][4] = "wall";
+  fbGrid[5][1] = "wall";
+  fbGrid[6][4] = "wall";
+  fbGrid[1][0] = "slash";
+  fbGrid[3][0] = "backslash";
+  fbGrid[5][0] = "slash";
+  fbGrid[6][2] = "backslash";
+  fbGrid[0][6] = "slash";
   const fb: SignalState = {
-    size: 6,
-    emitter: { r: 2, c: 0, dir: 1 },
+    size,
+    emitter: { r: 0, c: 0, dir: 1 },
     grid: fbGrid,
     beamPoints: [],
     beamLitCells: new Set(),
+    relaysTotal: 0,
+    relaysLit: 0,
+    reachedTarget: false,
     solved: false,
   };
   evaluateSignal(fb);
@@ -697,7 +922,7 @@ export function createCode4State(
   rng: () => number = Math.random,
   resetCount = 0,
   justReset = false,
-  maxAttempts = 10,
+  maxAttempts = 6,
 ): Code4State {
   const digits = shuffleInPlace(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], rng);
   return {
@@ -806,12 +1031,24 @@ export class PuzzleMinigameModal {
     this.solveTransitionPending = false;
 
     const meta = PUZZLE_TITLES[pickedKind];
+    const code4MaxAttempts = getCode4MaxAttempts(target.zone);
+    const signalCfg = getSignalDifficultyConfig(target.zone);
+    const badgeBase =
+      pickedKind === "signal"
+        ? `${meta.badge} ${signalCfg.size}×${signalCfg.size}`
+        : meta.badge;
     this.badgeEl.textContent = isJail
-      ? `❗ MINIGAME GIẢM ÁN • ${meta.badge}`
-      : `${meta.badge} • ${this.activeDifficulty === "nightmare" ? "CẤP ĐỘ ĐỎ" : "KHÓ"}`;
-    this.titleEl.textContent = meta.title;
+      ? `❗ MINIGAME GIẢM ÁN • ${badgeBase}`
+      : `${badgeBase} • ${target.zone === "red" || this.activeDifficulty === "nightmare" ? "CẤP ĐỘ ĐỎ" : "KHÓ"}`;
+    this.titleEl.textContent =
+      pickedKind === "code4"
+        ? `Đoán Mã Két An Toàn (Tối đa ${code4MaxAttempts} lượt)`
+        : meta.title;
     this.subtitleEl.textContent = isJail ? "⏳ Giảm 1 phút tạm giam" : `🔐 ${target.title}`;
-    this.guideEl.textContent = meta.guide;
+    this.guideEl.textContent =
+      pickedKind === "code4"
+        ? `Nhập 4 chữ số khác nhau (0–9). Sai quá ${code4MaxAttempts} lượt mật mã sẽ tự đổi mới! 🟢 Đúng số & đúng vị trí • 🟡 Đúng số nhưng sai vị trí • ⬛ Không có.`
+        : meta.guide;
     this.guideEl.style.display = "block";
     this.resetBtn.style.display =
       pickedKind === "code4" || pickedKind === "lockpick" || pickedKind === "timing_bar" || pickedKind === "memory_cards"
@@ -824,7 +1061,12 @@ export class PuzzleMinigameModal {
       this.pipes = cached.pipes ?? null;
       this.signal = cached.signal ?? null;
       this.code4 = cached.code4 ?? null;
-      if (this.code4 && this.code4.maxAttempts < 10) this.code4.maxAttempts = 10;
+      if (this.code4 && this.code4.maxAttempts !== code4MaxAttempts) {
+        this.code4.maxAttempts = code4MaxAttempts;
+        if (!this.code4.solved && this.code4.attempts.length >= code4MaxAttempts) {
+          this.code4 = createCode4State(this.activeRng, this.code4.resetCount + 1, true, code4MaxAttempts);
+        }
+      }
     } else {
       this.initPuzzleState();
       if (!isJail) {
@@ -877,9 +1119,9 @@ export class PuzzleMinigameModal {
     this.activeRng = createPuzzleRng(this.activeSeed);
     if (this.kind === "wires") this.wires = createWiresState(this.activeRng);
     else if (this.kind === "pipes") this.pipes = createPipesState(this.activeRng);
-    else if (this.kind === "signal") this.signal = createSignalState(this.activeRng);
+    else if (this.kind === "signal") this.signal = createSignalState(this.activeRng, this.activeTarget?.zone);
     else if (this.kind === "code4") {
-      this.code4 = createCode4State(this.activeRng, 0, false, 10 + (this.activeTarget?.extraMisses ?? 0));
+      this.code4 = createCode4State(this.activeRng, 0, false, getCode4MaxAttempts(this.activeTarget?.zone));
     }
   }
 
@@ -1195,14 +1437,19 @@ export class PuzzleMinigameModal {
 
   private renderSignal(st: SignalState): void {
     this.statusEl.textContent = st.solved
-      ? "📡 Tín hiệu đã truyền thẳng tới 🎯 Bộ Thu!"
-      : `📡 Tia tín hiệu chiếu qua ${st.beamLitCells.size} ô • Chạm gương để đảo góc / ↔ \\`;
+      ? `📡 Đã kích hoạt đủ ${st.relaysTotal}/${st.relaysTotal} trạm ⚡ và truyền tới 🎯 Bộ Thu!`
+      : st.reachedTarget
+        ? `⚠️ Đã chạm 🎯 nhưng mới qua ${st.relaysLit}/${st.relaysTotal} trạm ⚡ — Cần kích hoạt đủ tất cả trạm!`
+        : `📡 Trạm ⚡: ${st.relaysLit}/${st.relaysTotal} • Tia qua ${st.beamLitCells.size} ô • Chạm gương xoay / → \\ → ◇`;
 
     const wrap = document.createElement("div");
     wrap.className = "vp-signal-wrap";
 
     const grid = document.createElement("div");
-    grid.className = "vp-grid vp-grid-6";
+    grid.className = `vp-grid vp-grid-${st.size}`;
+
+    const emitterArrow =
+      st.emitter.dir === 0 ? "↑" : st.emitter.dir === 1 ? "→" : st.emitter.dir === 2 ? "↓" : "←";
 
     for (let r = 0; r < st.size; r++) {
       for (let c = 0; c < st.size; c++) {
@@ -1214,8 +1461,8 @@ export class PuzzleMinigameModal {
 
         if (r === st.emitter.r && c === st.emitter.c) {
           const badge = document.createElement("span");
-          badge.className = "vp-edge-badge is-src";
-          badge.textContent = "📡";
+          badge.className = "vp-edge-badge is-src vp-signal-emitter";
+          badge.textContent = `📡${emitterArrow}`;
           btn.appendChild(badge);
         }
 
@@ -1225,17 +1472,45 @@ export class PuzzleMinigameModal {
           btn.textContent = "🧱";
         } else if (cellType === "target") {
           btn.classList.add("is-target");
+          if (st.reachedTarget && !st.solved) {
+            btn.classList.add("is-target-incomplete");
+          }
           btn.disabled = true;
           btn.textContent = "🎯";
-        } else if (cellType === "slash" || cellType === "backslash") {
-          btn.classList.add("is-mirror");
+        } else if (cellType === "relay") {
+          btn.classList.add("is-relay");
+          if (isLit) btn.classList.add("is-relay-lit");
+          btn.disabled = true;
+          btn.textContent = "⚡";
+        } else if (cellType === "fixed_slash" || cellType === "fixed_backslash") {
+          btn.classList.add("is-fixed-mirror");
+          btn.disabled = true;
           const bar = document.createElement("span");
-          bar.className = `vp-mirror-bar ${cellType === "slash" ? "is-slash" : "is-backslash"}`;
+          bar.className = `vp-mirror-bar is-fixed ${cellType === "fixed_slash" ? "is-slash" : "is-backslash"}`;
           btn.appendChild(bar);
+          const lock = document.createElement("span");
+          lock.className = "vp-mirror-lock";
+          lock.textContent = "🔒";
+          btn.appendChild(lock);
+        } else if (cellType === "slash" || cellType === "backslash" || cellType === "open") {
+          btn.classList.add("is-mirror");
+          if (cellType === "open") {
+            btn.classList.add("is-open-mirror");
+            const ring = document.createElement("span");
+            ring.className = "vp-mirror-open";
+            btn.appendChild(ring);
+          } else {
+            const bar = document.createElement("span");
+            bar.className = `vp-mirror-bar ${cellType === "slash" ? "is-slash" : "is-backslash"}`;
+            btn.appendChild(bar);
+          }
           btn.addEventListener("click", (e) => {
             e.stopPropagation();
             if (this.solveTransitionPending) return;
-            st.grid[r][c] = st.grid[r][c] === "slash" ? "backslash" : "slash";
+            const cur = st.grid[r][c];
+            if (cur === "slash" || cur === "backslash" || cur === "open") {
+              st.grid[r][c] = nextSignalMirrorKind(cur);
+            }
             evaluateSignal(st);
             this.saveSessionToCache();
             this.render();
@@ -1254,6 +1529,9 @@ export class PuzzleMinigameModal {
     svg.setAttribute("viewBox", `0 0 ${st.size} ${st.size}`);
     svg.setAttribute("class", "vp-signal-svg");
 
+    const beamColor = st.solved ? "#22c55e" : st.reachedTarget ? "#f97316" : "#facc15";
+    const tipColor = st.solved ? "#4ade80" : st.reachedTarget ? "#fb923c" : "#fde047";
+
     if (st.beamPoints.length >= 2) {
       const polyline = document.createElementNS(svgNS, "polyline");
       polyline.setAttribute(
@@ -1261,7 +1539,7 @@ export class PuzzleMinigameModal {
         st.beamPoints.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(" "),
       );
       polyline.setAttribute("fill", "none");
-      polyline.setAttribute("stroke", st.solved ? "#22c55e" : "#facc15");
+      polyline.setAttribute("stroke", beamColor);
       polyline.setAttribute("stroke-width", "0.14");
       polyline.setAttribute("stroke-linecap", "round");
       polyline.setAttribute("stroke-linejoin", "round");
@@ -1272,7 +1550,7 @@ export class PuzzleMinigameModal {
       dot.setAttribute("cx", tip.x.toFixed(3));
       dot.setAttribute("cy", tip.y.toFixed(3));
       dot.setAttribute("r", "0.16");
-      dot.setAttribute("fill", st.solved ? "#4ade80" : "#fde047");
+      dot.setAttribute("fill", tipColor);
       svg.appendChild(dot);
     }
 

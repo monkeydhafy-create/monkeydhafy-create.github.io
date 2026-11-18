@@ -2604,7 +2604,7 @@ export class WorldScene {
           title: cv.chest.name,
           sourceType: "chest_royal",
           biome: cv.chest.biome,
-          zone: chestZone === "green" ? "yellow" : chestZone,
+          zone: chestZone,
           kind: puzzle.kind,
           seed: puzzle.seed,
           chestId: cv.chest.id,
@@ -2657,7 +2657,7 @@ export class WorldScene {
         title: target.name,
         sourceType: "house_vault",
         biome: target.biome,
-        zone: bldZone === "green" ? "yellow" : bldZone,
+        zone: bldZone,
         kind: puzzle.kind,
         seed: puzzle.seed,
       };
