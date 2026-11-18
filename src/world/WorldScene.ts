@@ -1,6 +1,7 @@
 import { sound } from "@pixi/sound";
 import { Assets, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
 import type { Application, FederatedPointerEvent } from "pixi.js";
+import { withAssetHash } from "../assetUrl.ts";
 import type { PlayerGameSaveV3 } from "../security/SaveVault.ts";
 import type { ArcadeMinigameKind } from "../ui/ArcadeMinigames.ts";
 import { AtmosphereSystem } from "./AtmosphereSystem.ts";
@@ -2318,8 +2319,8 @@ export class WorldScene {
     }
 
     if (won) {
-      // ALL police ignore the player temporarily on 1 win (shorter window on hardcore Japan map)
-      const ignoreMs = this.activeMapId === "japan" ? 70_000 : 96_000;
+      // ALL police ignore the player temporarily for 45 seconds after winning a check
+      const ignoreMs = 45_000;
       this.globalPoliceIgnoreUntil = Date.now() + ignoreMs;
       this.ignoreUntilByOfficer = {};
       this.advanceMinigameQuests(1);
@@ -3614,10 +3615,11 @@ export class WorldScene {
   }
 
   private getOrbitTexture(src: string): Promise<Texture> {
-    let p = this.orbitTextureCache.get(src);
+    const hashed = withAssetHash(src);
+    let p = this.orbitTextureCache.get(hashed);
     if (!p) {
-      p = Assets.load<Texture>(src);
-      this.orbitTextureCache.set(src, p);
+      p = Assets.load<Texture>(hashed);
+      this.orbitTextureCache.set(hashed, p);
     }
     return p;
   }

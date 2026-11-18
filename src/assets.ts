@@ -1,9 +1,11 @@
+import { withAssetHash } from "./assetUrl.ts";
+
 /**
  * Static assets preloaded before the PixiJS v8 open-world scene initializes.
  * Pixel art packs sourced from NinjaAdventure, Kenney City/Urban, and
  * hoanglong256/pixel-buildings (all CC0 Public Domain).
  */
-export const assets = [
+const RAW_ASSETS = [
   { alias: "sfx-press", src: "assets/sounds/sfx-press.wav" },
   { alias: "char-shadow", src: "assets/world/shadow.png" },
   { alias: "tileset-floor", src: "assets/world/tileset_floor.png" },
@@ -99,3 +101,8 @@ export const assets = [
   { alias: "lpc-acc_cape_fg", src: "assets/world/lpc/acc_cape_fg.png" },
   { alias: "lpc-acc_cape_bg", src: "assets/world/lpc/acc_cape_bg.png" },
 ];
+
+export const assets = RAW_ASSETS.map((entry) => ({
+  alias: entry.alias,
+  src: withAssetHash(entry.src),
+}));

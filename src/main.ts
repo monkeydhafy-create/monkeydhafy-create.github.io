@@ -1,3 +1,4 @@
+import "./style.css";
 import "@pixi/sound";
 import { Application, Assets } from "pixi.js";
 

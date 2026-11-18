@@ -1,3 +1,4 @@
+import { withAssetHash } from "../assetUrl.ts";
 import {
   CONSUMABLE_BY_ID,
   CONSUMABLE_CATALOG,
@@ -994,6 +995,10 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
     excludeFromRandomLoot: b.id === "starter_4x4",
   })),
 ];
+
+for (const item of ITEM_CATALOG) {
+  (item as { iconSrc: string }).iconSrc = withAssetHash(item.iconSrc);
+}
 
 export const ITEM_BY_ID: Record<string, CollectibleItemDef> = Object.fromEntries(
   ITEM_CATALOG.map((item) => [item.id, item]),

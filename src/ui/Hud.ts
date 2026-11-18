@@ -1,3 +1,4 @@
+import { withAssetHash } from "../assetUrl.ts";
 import {
   AIRPORT_GENDER_CHANGE_COST,
   AIRPORT_JAPAN_FLIGHT_COST,
@@ -1165,7 +1166,7 @@ export class Hud {
     mediaWrap.className = "guide-slide-media";
     const img = document.createElement("img");
     img.className = `guide-slide-img${slide.imageFit === "cover" ? " is-cover" : ""}`;
-    img.src = slide.imageSrc;
+    img.src = withAssetHash(slide.imageSrc);
     img.alt = slide.heading;
     img.loading = "eager";
     mediaWrap.appendChild(img);
@@ -1870,7 +1871,9 @@ export class Hud {
     introStage.className = "police-intro-stage";
     const modelImg = document.createElement("img");
     modelImg.className = "police-intro-model";
-    modelImg.src = isJapan ? "assets/world/char_samurai_blue.png" : "assets/world/char_ninja_blue.png";
+    modelImg.src = withAssetHash(
+      isJapan ? "assets/world/char_samurai_blue.png" : "assets/world/char_ninja_blue.png",
+    );
     modelImg.alt = officer.name;
     const introCaption = document.createElement("div");
     introCaption.style.fontWeight = "800";
@@ -1959,7 +1962,7 @@ export class Hud {
       this.scene.resolvePoliceChallenge(true);
       this.showDiscoveryToast(
         "✅ Vượt kiểm tra thành công!",
-        `Tất cả Cảnh Sát sẽ bỏ qua bạn trong ${this.scene.getActiveMapId() === "japan" ? 70 : 96} giây tới.`,
+        "Tất cả Cảnh Sát sẽ bỏ qua bạn trong 45 giây tới.",
       );
       return;
     }
@@ -3788,7 +3791,8 @@ export class Hud {
     this.applyTrimmedItemSrc(img, def.iconSrc);
   }
 
-  private applyTrimmedItemSrc(img: HTMLImageElement, iconSrc: string): void {
+  private applyTrimmedItemSrc(img: HTMLImageElement, rawIconSrc: string): void {
+    const iconSrc = withAssetHash(rawIconSrc);
     const cached = this.trimmedIconCache.get(iconSrc);
     if (cached) {
       img.src = cached;
@@ -5935,7 +5939,7 @@ export class Hud {
         resolve(img);
       };
       img.onerror = () => resolve(null);
-      img.src = `assets/world/lpc/${layerKey}.png`;
+      img.src = withAssetHash(`assets/world/lpc/${layerKey}.png`);
     });
   }
 

@@ -1,3 +1,4 @@
+import { withAssetHash } from "../assetUrl.ts";
 import { ITEM_BY_ID, ITEM_CATALOG, type CollectibleItemDef } from "./LootSystem.ts";
 import type { ItemRarity, MapId } from "./types.ts";
 
@@ -324,6 +325,15 @@ export const PET_CATALOG: readonly PetDef[] = [
     },
   },
 ];
+
+for (const pet of PET_CATALOG) {
+  pet.iconSrc = withAssetHash(pet.iconSrc);
+  pet.runIconSrc = withAssetHash(pet.runIconSrc);
+  if (pet.playIconSrc) pet.playIconSrc = withAssetHash(pet.playIconSrc);
+  pet.spriteSheet.idleSrc = withAssetHash(pet.spriteSheet.idleSrc);
+  pet.spriteSheet.runSrc = withAssetHash(pet.spriteSheet.runSrc);
+  if (pet.spriteSheet.playSrc) pet.spriteSheet.playSrc = withAssetHash(pet.spriteSheet.playSrc);
+}
 
 export const PET_BY_ID: Record<string, PetDef> = Object.fromEntries(
   PET_CATALOG.map((p) => [p.id, p]),

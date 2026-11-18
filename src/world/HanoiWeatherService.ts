@@ -1,3 +1,4 @@
+import { withFreshBust } from "../assetUrl.ts";
 import type { MapId } from "./types.ts";
 
 export type WeatherCondition =
@@ -290,7 +291,7 @@ export class HanoiWeatherService {
 
   private async fetchHanoiWeather(): Promise<void> {
     try {
-      const res = await fetch(HANOI_API_URL);
+      const res = await fetch(withFreshBust(HANOI_API_URL), { cache: "no-store" });
       if (!res.ok) return;
       const json = (await res.json()) as OpenMeteoResponse;
       const cur = json.current;
