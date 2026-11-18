@@ -183,7 +183,10 @@ export class AtmosphereSystem {
 
     // Warm streetlamps, park lanterns & architectural porch glow
     for (const prop of worldData.props) {
-      const isLamp = prop.kind === "street_lamp" || prop.kind === "park_lantern";
+      const isLamp =
+        prop.kind === "street_lamp" ||
+        prop.kind === "park_lantern" ||
+        prop.kind === "jp_stone_lantern";
       const isClassic =
         prop.kind === "lodge" ||
         prop.kind === "hut" ||
@@ -227,7 +230,7 @@ export class AtmosphereSystem {
   public resize(width: number, height: number): void {
     this.screenW = width;
 
-    this.mistOverlay.clear().rect(0, 0, width, height).fill(0x94a3b8);
+    this.mistOverlay.clear().rect(0, 0, width, height).fill(0xffffff);
     this.lightningFlash.clear().rect(0, 0, width, height).fill(0xe0f2fe);
 
     for (let i = 0; i < this.sunbeams.length; i++) {
@@ -252,9 +255,9 @@ export class AtmosphereSystem {
     // 1. Apply Hanoi solar + weather color grading to the world
     targetWorldTintContainer.tint = this.computeWorldTint(env);
 
-    // 2. Player & Landmark lights turn on gracefully from dusk through night or heavy storm
-    // Soft ambient lantern halo: gently illuminates terrain around hero without washing out character pixels
-    const glowActivity = Math.max(env.nightFactor * 0.92, env.rainIntensity * 0.32);
+    // 2. Player & Landmark lights turn on gracefully from dusk through night or heavy storm/blizzard
+    const snowIntensity = env.snowIntensity ?? 0;
+    const glowActivity = Math.max(env.nightFactor * 0.92, env.rainIntensity * 0.32, snowIntensity * 0.35);
     const lightsActive = glowActivity > 0.005;
     this.worldLightLayer.visible = lightsActive;
 
@@ -323,8 +326,14 @@ export class AtmosphereSystem {
       beam.alpha = beamStrength * (0.72 + Math.sin(this.elapsed * 0.9 + i * 2.1) * 0.28);
     }
 
-    // 5. Fog & Rain atmospheric haze
-    const fogAlpha = env.condition === "fog" ? 0.16 : env.rainIntensity * 0.12;
+    // 5. Fog, Rain & Winter Snowstorm atmospheric haze
+    const fogAlpha =
+      snowIntensity > 0
+        ? 0.14 + snowIntensity * 0.12
+        : env.condition === "fog"
+          ? 0.16
+          : env.rainIntensity * 0.12;
+    this.mistOverlay.tint = snowIntensity > 0 ? 0xe0f2fe : 0x94a3b8;
     this.mistOverlay.visible = fogAlpha > 0.005;
     this.mistOverlay.alpha = fogAlpha;
 
@@ -361,12 +370,16 @@ export class AtmosphereSystem {
       }
     }
 
-    // Slightly desaturate & cool daylight when cloudy/rainy (still vivid & readable)
-    const stormDamp = Math.min(0.32, env.rainIntensity * 0.28 + (env.cloudCoverPct / 100) * 0.12);
+    // Slightly desaturate & cool daylight when cloudy/rainy/snowy (still vivid & readable)
+    const snowIntensity = env.snowIntensity ?? 0;
+    const stormDamp = Math.min(
+      0.34,
+      env.rainIntensity * 0.28 + snowIntensity * 0.24 + (env.cloudCoverPct / 100) * 0.12,
+    );
     if (stormDamp > 0.01) {
-      const coolR = 165;
-      const coolG = 185;
-      const coolB = 205;
+      const coolR = snowIntensity > 0 ? 205 : 165;
+      const coolG = snowIntensity > 0 ? 224 : 185;
+      const coolB = snowIntensity > 0 ? 245 : 205;
       r = r * (1 - stormDamp) + coolR * stormDamp;
       g = g * (1 - stormDamp) + coolG * stormDamp;
       b = b * (1 - stormDamp) + coolB * stormDamp;

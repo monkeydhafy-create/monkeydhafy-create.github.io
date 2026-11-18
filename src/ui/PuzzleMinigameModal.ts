@@ -1,6 +1,7 @@
 import {
   ARCADE_MINIGAME_META,
   ArcadeMinigameController,
+  type ArcadeDifficulty,
   type ArcadeMinigameKind,
 } from "./ArcadeMinigames.ts";
 
@@ -11,6 +12,8 @@ export interface VaultPuzzleTarget {
   title: string;
   sourceType: "chest_royal" | "house_vault" | "jail_station";
   kind?: VaultPuzzleKind;
+  seed?: number;
+  difficulty?: ArcadeDifficulty;
 }
 
 type Dir = 0 | 1 | 2 | 3; // 0:N, 1:E, 2:S, 3:W
@@ -24,24 +27,24 @@ const DIRS: ReadonlyArray<{ dr: number; dc: number; opp: Dir }> = [
 
 const PUZZLE_TITLES: Record<VaultPuzzleKind, { badge: string; title: string; guide: string }> = {
   wires: {
-    badge: "⚡ MẠCH ĐIỆN 5×5",
+    badge: "⚡ MẠCH ĐIỆN 6×6",
     title: "Nối Dây Điện Đồng Màu",
-    guide: "Kéo hoặc chạm nối từng cặp chân màu giống nhau mà không cắt ngang dây khác (không giới hạn thời gian).",
+    guide: "Kéo hoặc chạm nối từng cặp chân màu giống nhau trên bảng 6×6 mà không cắt ngang dây khác.",
   },
   pipes: {
-    badge: "🔧 HỆ THỐNG ỐNG 5×5",
+    badge: "🔧 HỆ THỐNG ỐNG 6×6",
     title: "Xoay Ống Dẫn Nước",
     guide: "Chạm vào từng đoạn ống để xoay 90°, dẫn dòng nước từ 💧 Nguồn tới 🔋 Van Đích.",
   },
   signal: {
-    badge: "📡 MA TRẬN GƯƠNG 5×5",
+    badge: "📡 MA TRẬN GƯƠNG 6×6",
     title: "Đường Dẫn Tín Hiệu",
     guide: "Chạm xoay gương phản xạ (/ ↔ \\) để bẻ hướng tia tín hiệu từ 📡 Máy Phát tới 🎯 Bộ Thu.",
   },
   code4: {
     badge: "🔢 KHÓA MẬT MÃ 4 SỐ",
-    title: "Đoán Mã Két An Toàn",
-    guide: "Nhập 4 chữ số khác nhau (0–9). 🟢 Đúng số & đúng chỗ • 🟡 Đúng số nhưng sai chỗ.",
+    title: "Đoán Mã Két An Toàn (Tối đa 6 lượt)",
+    guide: "Nhập 4 chữ số khác nhau (0–9). Sai quá 6 lượt mật mã sẽ tự đổi mới! 🟢 Đúng chỗ • 🟡 Sai chỗ.",
   },
   memory_cards: {
     badge: ARCADE_MINIGAME_META.memory_cards.badge,
@@ -60,7 +63,20 @@ const PUZZLE_TITLES: Record<VaultPuzzleKind, { badge: string; title: string; gui
   },
 };
 
-// ===================== WIRES (FLOW 5x5) =====================
+export function createPuzzleRng(seed?: number): () => number {
+  if (typeof seed !== "number" || !Number.isFinite(seed)) {
+    return () => Math.random();
+  }
+  let s = (seed >>> 0) || 1;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ===================== WIRES (FLOW 6x6) =====================
 
 interface WireTemplate {
   walls: Array<[number, number]>;
@@ -69,65 +85,72 @@ interface WireTemplate {
 
 export const WIRE_TEMPLATES: readonly WireTemplate[] = [
   {
-    walls: [],
-    pairs: [
-      [[2, 0], [1, 2]],
-      [[0, 3], [4, 4]],
-      [[1, 1], [4, 0]],
-      [[1, 3], [3, 2]],
-      [[3, 3], [4, 1]],
-    ],
-  },
-  {
-    walls: [],
-    pairs: [
-      [[1, 0], [0, 2]],
-      [[0, 3], [3, 4]],
-      [[2, 0], [1, 2]],
-      [[1, 3], [4, 2]],
-      [[3, 3], [4, 4]],
-    ],
-  },
-  {
     walls: [
-      [1, 1],
+      [2, 2],
       [3, 3],
     ],
     pairs: [
       [[0, 0], [1, 4]],
-      [[1, 0], [4, 2]],
-      [[1, 2], [4, 3]],
-      [[2, 1], [3, 1]],
-    ],
-  },
-  {
-    walls: [
-      [1, 3],
-      [2, 1],
-    ],
-    pairs: [
-      [[0, 1], [4, 1]],
-      [[0, 2], [2, 4]],
-      [[1, 1], [4, 3]],
-      [[3, 1], [4, 2]],
+      [[1, 0], [2, 4]],
+      [[2, 0], [4, 2]],
+      [[3, 0], [5, 5]],
+      [[2, 5], [4, 3]],
     ],
   },
   {
     walls: [],
     pairs: [
-      [[0, 2], [2, 0]],
-      [[0, 3], [3, 4]],
-      [[1, 1], [4, 0]],
-      [[1, 3], [4, 1]],
+      [[0, 1], [3, 0]],
+      [[0, 2], [2, 4]],
+      [[1, 1], [1, 4]],
+      [[2, 1], [3, 5]],
+      [[4, 0], [4, 3]],
+      [[4, 4], [5, 0]],
+    ],
+  },
+  {
+    walls: [
+      [1, 4],
+      [4, 1],
+    ],
+    pairs: [
+      [[0, 0], [2, 5]],
+      [[1, 1], [3, 4]],
+      [[1, 0], [3, 3]],
+      [[3, 0], [5, 3]],
+      [[3, 5], [4, 2]],
+    ],
+  },
+  {
+    walls: [
+      [2, 1],
+      [3, 4],
+    ],
+    pairs: [
+      [[0, 1], [2, 4]],
+      [[0, 4], [3, 5]],
+      [[0, 0], [2, 3]],
+      [[2, 0], [4, 4]],
+      [[4, 5], [5, 0]],
+    ],
+  },
+  {
+    walls: [],
+    pairs: [
+      [[0, 2], [2, 2]],
+      [[0, 1], [3, 0]],
+      [[1, 1], [3, 3]],
       [[2, 3], [4, 4]],
+      [[4, 0], [4, 3]],
+      [[4, 5], [5, 0]],
     ],
   },
 ];
 
-const WIRE_COLORS = ["#ef4444", "#38bdf8", "#facc15", "#22c55e", "#c084fc"];
+const WIRE_COLORS = ["#ef4444", "#38bdf8", "#facc15", "#22c55e", "#c084fc", "#fb923c"];
 
 interface WiresState {
-  size: 5;
+  size: 6;
   walls: Set<string>;
   terminals: Map<string, number>; // key "r,c" -> wireId
   pairEnds: Array<[string, string]>;
@@ -137,7 +160,7 @@ interface WiresState {
   solved: boolean;
 }
 
-// ===================== PIPES (5x5 ROTATION) =====================
+// ===================== PIPES (6x6 ROTATION) =====================
 
 type PipeShape = "straight" | "elbow" | "tee" | "block";
 
@@ -147,7 +170,7 @@ interface PipeCell {
 }
 
 interface PipesState {
-  size: 5;
+  size: 6;
   srcRow: number;
   dstRow: number;
   grid: PipeCell[][];
@@ -155,15 +178,15 @@ interface PipesState {
   solved: boolean;
 }
 
-// ===================== SIGNAL (LASER MIRRORS 5x5) =====================
+// ===================== SIGNAL (LASER MIRRORS 6x6) =====================
 
 type SignalCellKind = "empty" | "wall" | "slash" | "backslash" | "target";
 
 interface SignalState {
-  size: 5;
+  size: 6;
   emitter: { r: number; c: number; dir: Dir }; // sits on border pointing inward
   grid: SignalCellKind[][];
-  beamPoints: Array<{ x: number; y: number }>; // normalized 0..5 SVG coords
+  beamPoints: Array<{ x: number; y: number }>; // normalized 0..6 SVG coords
   beamLitCells: Set<string>;
   solved: boolean;
 }
@@ -180,7 +203,19 @@ interface Code4State {
   secret: string;
   input: string;
   attempts: CodeAttempt[];
+  maxAttempts: number;
+  resetCount: number;
+  justReset: boolean;
   solved: boolean;
+}
+
+interface CachedPuzzleSession {
+  kind: VaultPuzzleKind;
+  seed: number;
+  wires?: WiresState;
+  pipes?: PipesState;
+  signal?: SignalState;
+  code4?: Code4State;
 }
 
 function keyRC(r: number, c: number): string {
@@ -192,19 +227,19 @@ function parseRC(k: string): [number, number] {
   return [Number(rs), Number(cs)];
 }
 
-function randInt(n: number): number {
-  return Math.floor(Math.random() * n);
+function randInt(rng: () => number, n: number): number {
+  return Math.floor(rng() * n);
 }
 
-function shuffleInPlace<T>(arr: T[]): T[] {
+function shuffleInPlace<T>(arr: T[], rng: () => number): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = randInt(i + 1);
+    const j = randInt(rng, i + 1);
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
 }
 
-function transformRC(r: number, c: number, rot: number, flipX: boolean, size = 5): [number, number] {
+function transformRC(r: number, c: number, rot: number, flipX: boolean, size = 6): [number, number] {
   let nr = r;
   let nc = flipX ? size - 1 - c : c;
   for (let i = 0; i < rot; i++) {
@@ -216,24 +251,24 @@ function transformRC(r: number, c: number, rot: number, flipX: boolean, size = 5
   return [nr, nc];
 }
 
-export function createWiresState(): WiresState {
-  const tpl = WIRE_TEMPLATES[randInt(WIRE_TEMPLATES.length)];
-  const rot = randInt(4);
-  const flip = Math.random() < 0.5;
-  const colors = shuffleInPlace([...WIRE_COLORS]).slice(0, tpl.pairs.length);
+export function createWiresState(rng: () => number = Math.random): WiresState {
+  const tpl = WIRE_TEMPLATES[randInt(rng, WIRE_TEMPLATES.length)];
+  const rot = randInt(rng, 4);
+  const flip = rng() < 0.5;
+  const colors = shuffleInPlace([...WIRE_COLORS], rng).slice(0, tpl.pairs.length);
 
   const walls = new Set<string>();
   for (const [wr, wc] of tpl.walls) {
-    const [tr, tc] = transformRC(wr, wc, rot, flip);
+    const [tr, tc] = transformRC(wr, wc, rot, flip, 6);
     walls.add(keyRC(tr, tc));
   }
 
   const terminals = new Map<string, number>();
   const pairEnds: Array<[string, string]> = [];
-  const shuffledPairs = shuffleInPlace([...tpl.pairs]);
+  const shuffledPairs = shuffleInPlace([...tpl.pairs], rng);
   shuffledPairs.forEach(([[r1, c1], [r2, c2]], idx) => {
-    const [aR, aC] = transformRC(r1, c1, rot, flip);
-    const [bR, bC] = transformRC(r2, c2, rot, flip);
+    const [aR, aC] = transformRC(r1, c1, rot, flip, 6);
+    const [bR, bC] = transformRC(r2, c2, rot, flip, 6);
     const kA = keyRC(aR, aC);
     const kB = keyRC(bR, bC);
     terminals.set(kA, idx);
@@ -242,7 +277,7 @@ export function createWiresState(): WiresState {
   });
 
   return {
-    size: 5,
+    size: 6,
     walls,
     terminals,
     pairEnds,
@@ -302,27 +337,111 @@ export function evaluatePipes(state: PipesState): void {
     getPipePorts(grid[dstRow][size - 1].shape, grid[dstRow][size - 1].rot).has(1);
 }
 
-export function createPipesState(): PipesState {
-  const size = 5;
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const srcRow = randInt(size);
-    const dstRow = randInt(size);
+function buildPipesBoardFromPath(
+  size: 6,
+  srcRow: number,
+  dstRow: number,
+  path: Array<[number, number]>,
+  rng: () => number,
+): PipesState {
+  const grid: PipeCell[][] = Array.from({ length: size }, () =>
+    Array.from({ length: size }, () => ({ shape: "elbow" as PipeShape, rot: 0 as Dir })),
+  );
+
+  const onPath = new Set<string>(path.map(([r, c]) => keyRC(r, c)));
+  for (let i = 0; i < path.length; i++) {
+    const [r, c] = path[i];
+    let inDir: Dir = 3;
+    if (i > 0) {
+      const [pr, pc] = path[i - 1];
+      inDir = DIRS.findIndex((dd) => pr - r === dd.dr && pc - c === dd.dc) as Dir;
+    }
+    let outDir: Dir = 1;
+    if (i < path.length - 1) {
+      const [nr, nc] = path[i + 1];
+      outDir = DIRS.findIndex((dd) => nr - r === dd.dr && nc - c === dd.dc) as Dir;
+    }
+
+    if (rng() < 0.08) {
+      const rots = shuffleInPlace<Dir>([0, 1, 2, 3], rng);
+      const validRot =
+        rots.find((rt) => {
+          const p = getPipePorts("tee", rt);
+          return p.has(inDir) && p.has(outDir);
+        }) ?? 0;
+      grid[r][c] = { shape: "tee", rot: validRot };
+    } else if ((inDir + 2) % 4 === outDir) {
+      grid[r][c] = { shape: "straight", rot: (inDir % 2 === 0 ? 0 : 1) as Dir };
+    } else {
+      const validRot =
+        ([0, 1, 2, 3] as Dir[]).find((rt) => {
+          const p = getPipePorts("elbow", rt);
+          return p.has(inDir) && p.has(outDir);
+        }) ?? 0;
+      grid[r][c] = { shape: "elbow", rot: validRot };
+    }
+  }
+
+  let blocks = 0;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (onPath.has(keyRC(r, c))) continue;
+      if (blocks < 4 && rng() < 0.18) {
+        grid[r][c] = { shape: "block", rot: 0 };
+        blocks++;
+      } else {
+        const shapes: PipeShape[] = ["straight", "elbow", "elbow", "tee"];
+        grid[r][c] = { shape: shapes[randInt(rng, shapes.length)], rot: randInt(rng, 4) as Dir };
+      }
+    }
+  }
+
+  for (let sTry = 0; sTry < 12; sTry++) {
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (grid[r][c].shape === "block") continue;
+        const delta = onPath.has(keyRC(r, c)) ? 1 + randInt(rng, 3) : randInt(rng, 4);
+        grid[r][c].rot = ((grid[r][c].rot + delta) % 4) as Dir;
+      }
+    }
+    const st: PipesState = {
+      size,
+      srcRow,
+      dstRow,
+      grid,
+      powered: [],
+      solved: false,
+    };
+    evaluatePipes(st);
+    if (!st.solved) return st;
+  }
+
+  grid[srcRow][0].rot = ((grid[srcRow][0].rot + 1) % 4) as Dir;
+  const forced: PipesState = { size, srcRow, dstRow, grid, powered: [], solved: false };
+  evaluatePipes(forced);
+  return forced;
+}
+
+export function createPipesState(rng: () => number = Math.random): PipesState {
+  const size = 6;
+  for (let attempt = 0; attempt < 55; attempt++) {
+    const srcRow = randInt(rng, size);
+    const dstRow = randInt(rng, size);
     const visited = Array.from({ length: size }, () => Array<boolean>(size).fill(false));
     const path: Array<[number, number]> = [];
 
     const walk = (r: number, c: number): boolean => {
       visited[r][c] = true;
       path.push([r, c]);
-      if (r === dstRow && c === size - 1 && path.length >= 9) {
+      if (r === dstRow && c === size - 1 && path.length >= 15) {
         return true;
       }
-      const nextDirs = shuffleInPlace<Dir>([0, 1, 2, 3]);
+      const nextDirs = shuffleInPlace<Dir>([0, 1, 2, 3], rng);
       for (const d of nextDirs) {
         const nr = r + DIRS[d].dr;
         const nc = c + DIRS[d].dc;
         if (nr < 0 || nr >= size || nc < 0 || nc >= size || visited[nr][nc]) continue;
-        // Avoid locking into dstRow early when too short
-        if (nr === dstRow && nc === size - 1 && path.length < 8) continue;
+        if (nr === dstRow && nc === size - 1 && path.length < 14) continue;
         if (walk(nr, nc)) return true;
       }
       path.pop();
@@ -331,92 +450,32 @@ export function createPipesState(): PipesState {
     };
 
     if (!walk(srcRow, 0)) continue;
-
-    const grid: PipeCell[][] = Array.from({ length: size }, () =>
-      Array.from({ length: size }, () => ({ shape: "elbow" as PipeShape, rot: 0 as Dir })),
-    );
-
-    const onPath = new Set<string>(path.map(([r, c]) => keyRC(r, c)));
-    for (let i = 0; i < path.length; i++) {
-      const [r, c] = path[i];
-      let inDir: Dir = 3;
-      if (i > 0) {
-        const [pr, pc] = path[i - 1];
-        inDir = DIRS.findIndex((dd) => pr - r === dd.dr && pc - c === dd.dc) as Dir;
-      }
-      let outDir: Dir = 1;
-      if (i < path.length - 1) {
-        const [nr, nc] = path[i + 1];
-        outDir = DIRS.findIndex((dd) => nr - r === dd.dr && nc - c === dd.dc) as Dir;
-      }
-
-      if (Math.random() < 0.22) {
-        // Pick a Tee rotation covering both inDir and outDir
-        const rots = shuffleInPlace<Dir>([0, 1, 2, 3]);
-        const validRot = rots.find((rt) => {
-          const p = getPipePorts("tee", rt);
-          return p.has(inDir) && p.has(outDir);
-        }) ?? 0;
-        grid[r][c] = { shape: "tee", rot: validRot };
-      } else if ((inDir + 2) % 4 === outDir) {
-        grid[r][c] = { shape: "straight", rot: (inDir % 2 === 0 ? 0 : 1) as Dir };
-      } else {
-        const validRot = ([0, 1, 2, 3] as Dir[]).find((rt) => {
-          const p = getPipePorts("elbow", rt);
-          return p.has(inDir) && p.has(outDir);
-        }) ?? 0;
-        grid[r][c] = { shape: "elbow", rot: validRot };
-      }
-    }
-
-    // Fill off-path decor tiles
-    let blocks = 0;
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        if (onPath.has(keyRC(r, c))) continue;
-        if (blocks < 2 && Math.random() < 0.14) {
-          grid[r][c] = { shape: "block", rot: 0 };
-          blocks++;
-        } else {
-          const shapes: PipeShape[] = ["straight", "elbow", "elbow", "tee"];
-          grid[r][c] = { shape: shapes[randInt(shapes.length)], rot: randInt(4) as Dir };
-        }
-      }
-    }
-
-    // Scramble rotations so initial board is unsolved
-    for (let sTry = 0; sTry < 10; sTry++) {
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          if (grid[r][c].shape === "block") continue;
-          const delta = onPath.has(keyRC(r, c)) ? 1 + randInt(3) : randInt(4);
-          grid[r][c].rot = ((grid[r][c].rot + delta) % 4) as Dir;
-        }
-      }
-      const st: PipesState = {
-        size,
-        srcRow,
-        dstRow,
-        grid,
-        powered: [],
-        solved: false,
-      };
-      evaluatePipes(st);
-      if (!st.solved) return st;
-    }
+    return buildPipesBoardFromPath(size, srcRow, dstRow, path, rng);
   }
 
-  // Deterministic fallback guaranteed unsolved
-  const fallbackGrid: PipeCell[][] = [
-    [{ shape: "straight", rot: 0 }, { shape: "elbow", rot: 0 }, { shape: "straight", rot: 0 }, { shape: "elbow", rot: 1 }, { shape: "block", rot: 0 }],
-    [{ shape: "elbow", rot: 1 }, { shape: "elbow", rot: 2 }, { shape: "tee", rot: 0 }, { shape: "straight", rot: 0 }, { shape: "elbow", rot: 2 }],
-    [{ shape: "straight", rot: 1 }, { shape: "straight", rot: 0 }, { shape: "elbow", rot: 0 }, { shape: "elbow", rot: 3 }, { shape: "straight", rot: 0 }],
-    [{ shape: "block", rot: 0 }, { shape: "elbow", rot: 0 }, { shape: "straight", rot: 1 }, { shape: "elbow", rot: 1 }, { shape: "elbow", rot: 0 }],
-    [{ shape: "elbow", rot: 0 }, { shape: "straight", rot: 1 }, { shape: "straight", rot: 1 }, { shape: "elbow", rot: 3 }, { shape: "straight", rot: 0 }],
+  // Deterministic 19-cell solvable 6x6 fallback
+  const fallbackPath: Array<[number, number]> = [
+    [2, 0],
+    [2, 1],
+    [1, 1],
+    [1, 2],
+    [0, 2],
+    [0, 3],
+    [0, 4],
+    [1, 4],
+    [2, 4],
+    [3, 4],
+    [3, 3],
+    [3, 2],
+    [4, 2],
+    [4, 3],
+    [4, 4],
+    [4, 5],
+    [3, 5],
+    [2, 5],
+    [1, 5],
   ];
-  const fb: PipesState = { size: 5, srcRow: 2, dstRow: 1, grid: fallbackGrid, powered: [], solved: false };
-  evaluatePipes(fb);
-  return fb;
+  return buildPipesBoardFromPath(6, 2, 1, fallbackPath, rng);
 }
 
 function reflectDir(mirror: "slash" | "backslash", inDir: Dir): Dir {
@@ -434,7 +493,6 @@ export function evaluateSignal(state: SignalState): void {
   const beamLitCells = new Set<string>();
   const seenStates = new Set<string>();
 
-  // Entry point on grid border edge
   const startX = emitter.c + 0.5 - DIRS[emitter.dir].dc * 0.5;
   const startY = emitter.r + 0.5 - DIRS[emitter.dir].dr * 0.5;
   beamPoints.push({ x: startX, y: startY });
@@ -444,7 +502,7 @@ export function evaluateSignal(state: SignalState): void {
   let dir = emitter.dir;
   let solved = false;
 
-  for (let step = 0; step < 48; step++) {
+  for (let step = 0; step < 64; step++) {
     if (r < 0 || r >= size || c < 0 || c >= size) {
       break;
     }
@@ -454,7 +512,6 @@ export function evaluateSignal(state: SignalState): void {
 
     const cell = grid[r][c];
     if (cell === "wall") {
-      // Stop right at outer edge of wall tile
       beamPoints.push({
         x: c + 0.5 - DIRS[dir].dc * 0.42,
         y: r + 0.5 - DIRS[dir].dr * 0.42,
@@ -492,10 +549,10 @@ export function evaluateSignal(state: SignalState): void {
   state.solved = solved;
 }
 
-export function createSignalState(): SignalState {
-  const size = 5;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const startRow = randInt(size);
+export function createSignalState(rng: () => number = Math.random): SignalState {
+  const size = 6;
+  for (let attempt = 0; attempt < 70; attempt++) {
+    const startRow = randInt(rng, size);
     const grid: SignalCellKind[][] = Array.from({ length: size }, () =>
       Array<SignalCellKind>(size).fill("empty"),
     );
@@ -507,16 +564,15 @@ export function createSignalState(): SignalState {
     let dir: Dir = 1; // enter heading East
     passedAir.add(keyRC(r, c));
 
-    const targetBounces = 3 + randInt(2); // 3..4 mirror turns
+    const targetBounces = 4 + randInt(rng, 3); // 4..6 mirror turns
     let ok = true;
     for (let b = 0; b < targetBounces; b++) {
-      // Collect possible step lengths 1..3 inside grid
       const candidates: Array<{ mr: number; mc: number; newDir: Dir }> = [];
-      for (let dist = 1; dist <= 3; dist++) {
+      for (let dist = 1; dist <= 4; dist++) {
         const mr = r + DIRS[dir].dr * dist;
         const mc = c + DIRS[dir].dc * dist;
         if (mr < 0 || mr >= size || mc < 0 || mc >= size) break;
-        if (passedAir.has(keyRC(mr, mc))) break; // don't place mirror on previously crossed lane
+        if (passedAir.has(keyRC(mr, mc))) break;
         const turnOpts: Dir[] = [((dir + 1) % 4) as Dir, ((dir + 3) % 4) as Dir];
         for (const nd of turnOpts) {
           const ar = mr + DIRS[nd].dr;
@@ -530,8 +586,7 @@ export function createSignalState(): SignalState {
         ok = false;
         break;
       }
-      const pick = candidates[randInt(candidates.length)];
-      // Mark straight steps as passedAir
+      const pick = candidates[randInt(rng, candidates.length)];
       let sr = r;
       let sc = c;
       while (sr !== pick.mr || sc !== pick.mc) {
@@ -541,7 +596,6 @@ export function createSignalState(): SignalState {
       }
       passedAir.add(keyRC(pick.mr, pick.mc));
 
-      // Determine which mirror matches dir -> pick.newDir
       const slashRes = reflectDir("slash", dir);
       grid[pick.mr][pick.mc] = slashRes === pick.newDir ? "slash" : "backslash";
       mirrorCoords.push([pick.mr, pick.mc]);
@@ -556,10 +610,9 @@ export function createSignalState(): SignalState {
     }
     if (!ok) continue;
 
-    // Walk 0..2 more untouched steps to place target
     let tr = r;
     let tc = c;
-    const extraSteps = randInt(3);
+    const extraSteps = randInt(rng, 3);
     for (let s = 0; s < extraSteps; s++) {
       const nr = tr + DIRS[dir].dr;
       const nc = tc + DIRS[dir].dc;
@@ -570,31 +623,28 @@ export function createSignalState(): SignalState {
     }
     grid[tr][tc] = "target";
 
-    // Add 2..3 firewalls & 1..2 decoy mirrors on untouched cells
     const untouched: Array<[number, number]> = [];
     for (let rr = 0; rr < size; rr++) {
       for (let cc = 0; cc < size; cc++) {
         if (!passedAir.has(keyRC(rr, cc))) untouched.push([rr, cc]);
       }
     }
-    shuffleInPlace(untouched);
-    for (let i = 0; i < Math.min(3, untouched.length); i++) {
+    shuffleInPlace(untouched, rng);
+    for (let i = 0; i < Math.min(4, untouched.length); i++) {
       const [wr, wc] = untouched[i];
       grid[wr][wc] = "wall";
     }
-    for (let i = 3; i < Math.min(5, untouched.length); i++) {
+    for (let i = 4; i < Math.min(8, untouched.length); i++) {
       const [mr, mc] = untouched[i];
-      grid[mr][mc] = Math.random() < 0.5 ? "slash" : "backslash";
+      grid[mr][mc] = rng() < 0.5 ? "slash" : "backslash";
       mirrorCoords.push([mr, mc]);
     }
 
-    // Rotate 0..3 times for directional variety
     const emitter = { r: startRow, c: 0, dir: 1 as Dir };
-    // Scramble mirrors and verify unsolved
-    for (let sTry = 0; sTry < 8; sTry++) {
+    for (let sTry = 0; sTry < 10; sTry++) {
       let flippedCount = 0;
       for (const [mr, mc] of mirrorCoords) {
-        if (Math.random() < 0.65) {
+        if (rng() < 0.7) {
           grid[mr][mc] = grid[mr][mc] === "slash" ? "backslash" : "slash";
           flippedCount++;
         }
@@ -616,24 +666,19 @@ export function createSignalState(): SignalState {
     }
   }
 
-  // Deterministic guaranteed-solvable fallback
-  const fbGrid: SignalCellKind[][] = [
-    ["empty", "backslash", "empty", "empty", "slash"],
-    ["empty", "empty", "wall", "empty", "empty"],
-    ["slash", "empty", "empty", "empty", "target"],
-    ["empty", "empty", "wall", "empty", "empty"],
-    ["empty", "slash", "empty", "backslash", "empty"],
-  ];
-  // Path: enter (2,0) E -> needs backslash? No: (2,0) set "\" -> turns S? Make (2,0) set "slash" initially wrong vs solution:
-  // Actually let's check simple path: (2,0) "\" turns S -> (4,0)? Wait col 0 empty at (4,0), row 4 col 1 has slash!
-  // Let's make exact fallback: enter (2,0) E -> (2,1) "/" -> (0,1) "\" -> (0,4) "/" -> wait: (0,1) "\" turns E -> (0,4) needs "\" to turn S -> (2,4) target!
-  fbGrid[2][0] = "empty";
-  fbGrid[2][1] = "backslash"; // solution is "slash"
-  fbGrid[0][1] = "slash"; // solution is "backslash"
-  fbGrid[0][4] = "slash"; // solution is "backslash"
-  fbGrid[2][4] = "target";
+  // Deterministic guaranteed-solvable 6x6 fallback
+  const fbGrid: SignalCellKind[][] = Array.from({ length: 6 }, () =>
+    Array<SignalCellKind>(6).fill("empty"),
+  );
+  fbGrid[2][2] = "backslash"; // solution: "slash"
+  fbGrid[0][2] = "backslash"; // solution: "slash"
+  fbGrid[0][4] = "slash"; // solution: "backslash"
+  fbGrid[4][4] = "slash"; // solution: "backslash"
+  fbGrid[1][3] = "wall";
+  fbGrid[3][1] = "wall";
+  fbGrid[4][5] = "target";
   const fb: SignalState = {
-    size: 5,
+    size: 6,
     emitter: { r: 2, c: 0, dir: 1 },
     grid: fbGrid,
     beamPoints: [],
@@ -644,12 +689,19 @@ export function createSignalState(): SignalState {
   return fb;
 }
 
-export function createCode4State(): Code4State {
-  const digits = shuffleInPlace(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+export function createCode4State(
+  rng: () => number = Math.random,
+  resetCount = 0,
+  justReset = false,
+): Code4State {
+  const digits = shuffleInPlace(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], rng);
   return {
     secret: digits.slice(0, 4).join(""),
     input: "",
     attempts: [],
+    maxAttempts: 6,
+    resetCount,
+    justReset,
     solved: false,
   };
 }
@@ -667,6 +719,9 @@ export class PuzzleMinigameModal {
 
   private activeTarget: VaultPuzzleTarget | null = null;
   private kind: VaultPuzzleKind = "wires";
+  private activeSeed = 0;
+  private activeDifficulty: ArcadeDifficulty = "hard";
+  private activeRng: () => number = Math.random;
   private onSolvedCb: (() => void) | null = null;
   private onCancelCb: (() => void) | null = null;
 
@@ -676,6 +731,7 @@ export class PuzzleMinigameModal {
   private code4: Code4State | null = null;
   private arcadeCtrl: ArcadeMinigameController | null = null;
   private solveTransitionPending = false;
+  private readonly sessionCache = new Map<string, CachedPuzzleSession>();
 
   constructor() {
     this.modalEl = document.getElementById("vault-puzzle-modal")!;
@@ -708,6 +764,10 @@ export class PuzzleMinigameModal {
     return this.activeTarget !== null;
   }
 
+  public clearSession(containerId: string): void {
+    this.sessionCache.delete(containerId);
+  }
+
   public open(
     target: VaultPuzzleTarget,
     onSolved: () => void,
@@ -722,31 +782,50 @@ export class PuzzleMinigameModal {
       "lockpick",
       "timing_bar",
     ];
-    const pickedKind = target.kind ?? pool[randInt(pool.length)];
+    const pickedKind = target.kind ?? pool[Math.floor(Math.random() * pool.length)];
+    const seed =
+      typeof target.seed === "number" && Number.isFinite(target.seed)
+        ? target.seed
+        : 1 + Math.floor(Math.random() * 0x7ffffff0);
+    const isJail = target.sourceType === "jail_station";
 
     this.arcadeCtrl?.destroy();
     this.arcadeCtrl = null;
     this.activeTarget = target;
     this.kind = pickedKind;
+    this.activeSeed = seed;
+    this.activeDifficulty = isJail ? "normal" : (target.difficulty ?? "hard");
+    this.activeRng = createPuzzleRng(seed);
     this.onSolvedCb = onSolved;
     this.onCancelCb = onCancel;
     this.solveTransitionPending = false;
 
     const meta = PUZZLE_TITLES[pickedKind];
-    const isJail = target.sourceType === "jail_station";
     this.badgeEl.textContent = isJail
       ? `❗ MINIGAME GIẢM ÁN • ${meta.badge}`
-      : `${meta.badge} • KHÔNG GIỚI HẠN THỜI GIAN`;
+      : `${meta.badge} • ${this.activeDifficulty === "nightmare" ? "CẤP ĐỘ ĐỎ" : "KHÓ"}`;
     this.titleEl.textContent = meta.title;
     this.subtitleEl.textContent = isJail ? "⏳ Giảm 1 phút tạm giam" : `🔐 ${target.title}`;
-    this.guideEl.textContent = "";
-    this.guideEl.style.display = "none";
+    this.guideEl.textContent = meta.guide;
+    this.guideEl.style.display = "block";
     this.resetBtn.style.display =
-      pickedKind === "code4" || pickedKind === "lockpick" || pickedKind === "timing_bar"
+      pickedKind === "code4" || pickedKind === "lockpick" || pickedKind === "timing_bar" || pickedKind === "memory_cards"
         ? "none"
         : "inline-flex";
 
-    this.initPuzzleState();
+    const cached = !isJail ? this.sessionCache.get(target.containerId) : undefined;
+    if (cached && cached.kind === pickedKind && cached.seed === seed) {
+      this.wires = cached.wires ?? null;
+      this.pipes = cached.pipes ?? null;
+      this.signal = cached.signal ?? null;
+      this.code4 = cached.code4 ?? null;
+    } else {
+      this.initPuzzleState();
+      if (!isJail) {
+        this.saveSessionToCache();
+      }
+    }
+
     this.modalEl.classList.add("is-open");
     this.render();
   }
@@ -763,7 +842,20 @@ export class PuzzleMinigameModal {
     this.modalEl.classList.remove("is-open");
   }
 
+  private saveSessionToCache(): void {
+    if (!this.activeTarget || this.activeTarget.sourceType === "jail_station") return;
+    this.sessionCache.set(this.activeTarget.containerId, {
+      kind: this.kind,
+      seed: this.activeSeed,
+      wires: this.wires ?? undefined,
+      pipes: this.pipes ?? undefined,
+      signal: this.signal ?? undefined,
+      code4: this.code4 ?? undefined,
+    });
+  }
+
   private cancel(): void {
+    this.saveSessionToCache();
     const cb = this.onCancelCb;
     this.close();
     cb?.();
@@ -776,10 +868,11 @@ export class PuzzleMinigameModal {
     this.pipes = null;
     this.signal = null;
     this.code4 = null;
-    if (this.kind === "wires") this.wires = createWiresState();
-    else if (this.kind === "pipes") this.pipes = createPipesState();
-    else if (this.kind === "signal") this.signal = createSignalState();
-    else if (this.kind === "code4") this.code4 = createCode4State();
+    this.activeRng = createPuzzleRng(this.activeSeed);
+    if (this.kind === "wires") this.wires = createWiresState(this.activeRng);
+    else if (this.kind === "pipes") this.pipes = createPipesState(this.activeRng);
+    else if (this.kind === "signal") this.signal = createSignalState(this.activeRng);
+    else if (this.kind === "code4") this.code4 = createCode4State(this.activeRng);
   }
 
   private resetCurrentPuzzle(): void {
@@ -787,16 +880,22 @@ export class PuzzleMinigameModal {
       this.wires.paths = this.wires.pairEnds.map(() => []);
       this.wires.activeWire = null;
       this.wires.solved = false;
+      this.saveSessionToCache();
       this.render();
       return;
     }
     this.initPuzzleState();
+    this.saveSessionToCache();
     this.render();
   }
 
   private triggerSolved(): void {
     if (this.solveTransitionPending) return;
     this.solveTransitionPending = true;
+    const solvedContainerId = this.activeTarget?.containerId;
+    if (solvedContainerId) {
+      this.sessionCache.delete(solvedContainerId);
+    }
     const isJail = this.activeTarget?.sourceType === "jail_station";
     this.statusEl.textContent = isJail
       ? "✅ Chiến thắng! Giảm 1 phút thời gian tạm giam!"
@@ -830,6 +929,8 @@ export class PuzzleMinigameModal {
       this.arcadeCtrl = new ArcadeMinigameController({
         kind: this.kind,
         mode: "free",
+        difficulty: this.activeDifficulty,
+        seed: this.activeSeed,
         boardEl: this.boardWrapEl,
         statusEl: this.statusEl,
         onWin: () => this.triggerSolved(),
@@ -857,7 +958,6 @@ export class PuzzleMinigameModal {
     const last = path[path.length - 1];
     if (last === k) return;
 
-    // Backtrack if stepping onto an existing cell of THIS wire
     const selfIdx = path.indexOf(k);
     if (selfIdx !== -1) {
       st.paths[wIdx] = path.slice(0, selfIdx + 1);
@@ -865,7 +965,6 @@ export class PuzzleMinigameModal {
       return;
     }
 
-    // Stop if this wire already links both terminals
     const [endA, endB] = st.pairEnds[wIdx];
     if (
       path.length >= 2 &&
@@ -877,7 +976,6 @@ export class PuzzleMinigameModal {
     const [lr, lc] = parseRC(last);
     if (Math.abs(lr - r) + Math.abs(lc - c) !== 1) return;
 
-    // Cut any other wire crossing this non-terminal cell
     for (let oi = 0; oi < st.paths.length; oi++) {
       if (oi === wIdx) continue;
       const cutIdx = st.paths[oi].indexOf(k);
@@ -895,6 +993,7 @@ export class PuzzleMinigameModal {
       st.activeWire = null;
       st.solved = true;
     }
+    this.saveSessionToCache();
     this.render();
     if (st.solved) this.triggerSolved();
   }
@@ -927,7 +1026,7 @@ export class PuzzleMinigameModal {
     this.statusEl.textContent = `⚡ Đã nối hoàn chỉnh: ${completedCount}/${st.pairEnds.length} cặp dây`;
 
     const grid = document.createElement("div");
-    grid.className = "vp-grid vp-grid-5";
+    grid.className = "vp-grid vp-grid-6";
 
     const cellWireOwner = new Map<string, number>();
     st.paths.forEach((p, wIdx) => {
@@ -994,6 +1093,7 @@ export class PuzzleMinigameModal {
           if (termId !== undefined) {
             st.activeWire = termId;
             st.paths[termId] = [k];
+            this.saveSessionToCache();
             this.render();
             return;
           }
@@ -1002,6 +1102,7 @@ export class PuzzleMinigameModal {
             const pIdx = st.paths[owner].indexOf(k);
             st.activeWire = owner;
             st.paths[owner] = st.paths[owner].slice(0, pIdx + 1);
+            this.saveSessionToCache();
             this.render();
             return;
           }
@@ -1024,7 +1125,7 @@ export class PuzzleMinigameModal {
     shell.className = "vp-pipes-shell";
 
     const grid = document.createElement("div");
-    grid.className = "vp-grid vp-grid-5";
+    grid.className = "vp-grid vp-grid-6";
 
     for (let r = 0; r < st.size; r++) {
       for (let c = 0; c < st.size; c++) {
@@ -1067,6 +1168,7 @@ export class PuzzleMinigameModal {
             if (this.solveTransitionPending) return;
             cellData.rot = ((cellData.rot + 1) % 4) as Dir;
             evaluatePipes(st);
+            this.saveSessionToCache();
             this.render();
             if (st.solved) this.triggerSolved();
           });
@@ -1091,7 +1193,7 @@ export class PuzzleMinigameModal {
     wrap.className = "vp-signal-wrap";
 
     const grid = document.createElement("div");
-    grid.className = "vp-grid vp-grid-5";
+    grid.className = "vp-grid vp-grid-6";
 
     for (let r = 0; r < st.size; r++) {
       for (let c = 0; c < st.size; c++) {
@@ -1126,6 +1228,7 @@ export class PuzzleMinigameModal {
             if (this.solveTransitionPending) return;
             st.grid[r][c] = st.grid[r][c] === "slash" ? "backslash" : "slash";
             evaluateSignal(st);
+            this.saveSessionToCache();
             this.render();
             if (st.solved) this.triggerSolved();
           });
@@ -1137,10 +1240,9 @@ export class PuzzleMinigameModal {
       }
     }
 
-    // SVG Beam overlay matching 5x5 grid normalized 0..5
     const svgNS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("viewBox", "0 0 5 5");
+    svg.setAttribute("viewBox", `0 0 ${st.size} ${st.size}`);
     svg.setAttribute("class", "vp-signal-svg");
 
     if (st.beamPoints.length >= 2) {
@@ -1169,17 +1271,16 @@ export class PuzzleMinigameModal {
     this.boardWrapEl.appendChild(wrap);
   }
 
-  // -------------------- RENDER: CODE4 (BULLS & COWS) --------------------
+  // -------------------- RENDER: CODE4 (BULLS & COWS, MAX 6 ATTEMPTS) --------------------
 
   private renderCode4(st: Code4State): void {
-    this.statusEl.textContent = st.attempts.length === 0
-      ? "🔢 Nhập 4 chữ số khác nhau (không giới hạn lượt thử)"
-      : `🔢 Đã thử ${st.attempts.length} lượt • Tiếp tục suy luận mật mã`;
+    this.statusEl.textContent = st.justReset
+      ? `🔒 Hết ${st.maxAttempts} lượt sai — Mật mã đã tự đổi mới (Lần đổi #${st.resetCount})!`
+      : `🔢 Lượt đoán: ${st.attempts.length}/${st.maxAttempts} • Nhập 4 chữ số khác nhau`;
 
     const wrap = document.createElement("div");
     wrap.className = "vp-code-wrap";
 
-    // Display 4 digit boxes
     const slots = document.createElement("div");
     slots.className = "vp-code-slots";
     for (let i = 0; i < 4; i++) {
@@ -1189,13 +1290,12 @@ export class PuzzleMinigameModal {
       slots.appendChild(box);
     }
 
-    // Attempts history log
     const log = document.createElement("div");
     log.className = "vp-code-history";
     if (st.attempts.length === 0) {
       const hint = document.createElement("div");
       hint.className = "vp-code-empty";
-      hint.textContent = "Ví dụ: Gợi ý 🟢2 🟡1 = 2 số đúng chỗ, 1 số có mặt nhưng sai vị trí.";
+      hint.textContent = "Đoán quá 6 lượt chưa trúng sẽ tự động đổi mã két mới! (🟢 Đúng chỗ • 🟡 Sai chỗ)";
       log.appendChild(hint);
     } else {
       for (let i = st.attempts.length - 1; i >= 0; i--) {
@@ -1213,7 +1313,6 @@ export class PuzzleMinigameModal {
       }
     }
 
-    // Keypad
     const pad = document.createElement("div");
     pad.className = "vp-code-pad";
     const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"];
@@ -1253,7 +1352,9 @@ export class PuzzleMinigameModal {
     const st = this.code4;
     if (!st || this.kind !== "code4" || this.solveTransitionPending) return;
     if (st.input.length >= 4 || st.input.includes(d)) return;
+    st.justReset = false;
     st.input += d;
+    this.saveSessionToCache();
     this.render();
   }
 
@@ -1262,6 +1363,7 @@ export class PuzzleMinigameModal {
     if (!st || this.kind !== "code4" || this.solveTransitionPending) return;
     if (st.input.length === 0) return;
     st.input = st.input.slice(0, -1);
+    this.saveSessionToCache();
     this.render();
   }
 
@@ -1282,12 +1384,19 @@ export class PuzzleMinigameModal {
 
     st.attempts.push({ guess: st.input, bulls, cows });
     st.input = "";
+    st.justReset = false;
     if (bulls === 4) {
       st.solved = true;
       this.render();
       this.triggerSolved();
       return;
     }
+
+    if (st.attempts.length >= st.maxAttempts) {
+      this.code4 = createCode4State(this.activeRng, st.resetCount + 1, true);
+    }
+
+    this.saveSessionToCache();
     this.render();
   }
 

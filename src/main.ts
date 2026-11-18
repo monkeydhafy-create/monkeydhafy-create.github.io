@@ -5,6 +5,7 @@ import { assets } from "./assets.ts";
 import { gameReady, initPlatform, setLoadingProgress } from "./platform.ts";
 import { SaveVault } from "./security/SaveVault.ts";
 import { Hud } from "./ui/Hud.ts";
+import { TILE_SIZE } from "./world/types.ts";
 import { generateOpenWorld } from "./world/WorldGenerator.ts";
 import { WorldScene } from "./world/WorldScene.ts";
 
@@ -86,15 +87,18 @@ await app.init({
 
 document.getElementById("pixi-container")!.appendChild(app.canvas);
 
-await Assets.load(assets, setLoadingProgress);
+const [, { vault: saveVault, initial: saveLoadResult }] = await Promise.all([
+  Assets.load(assets, (progress) => setLoadingProgress(progress * 0.85, "Đang tải tài nguyên đồ họa...")),
+  SaveVault.open({
+    spawnX: 19.5 * TILE_SIZE,
+    spawnY: 44.5 * TILE_SIZE,
+  }),
+]);
 
-const baseWorld = generateOpenWorld(202611, "vietnam");
-const { vault: saveVault, initial: saveLoadResult } = await SaveVault.open({
-  spawnX: baseWorld.spawn.x,
-  spawnY: baseWorld.spawn.y,
-});
+setLoadingProgress(0.92, "Đang khởi tạo bản đồ thế giới...");
 const savedMapId = saveLoadResult.save.profile.activeMapId === "japan" ? "japan" : "vietnam";
-const worldData = savedMapId === "vietnam" ? baseWorld : generateOpenWorld(202611, savedMapId);
+const worldData = generateOpenWorld(202611, savedMapId);
+setLoadingProgress(0.98, "Đang hoàn tất giao diện & ánh sáng...");
 
 let hud: Hud | null = null;
 

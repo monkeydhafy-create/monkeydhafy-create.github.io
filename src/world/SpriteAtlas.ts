@@ -198,6 +198,12 @@ export function createWorldAtlas(): WorldAtlas {
     sakura_small: sliceCell(villageTex, 4, 6, 2, 2),
     momiji_tree: sliceCell(villageTex, 0, 6, 4, 3),
     momiji_small: sliceCell(villageTex, 4, 6, 2, 2),
+    jp_torii_gate: Assets.get<Texture>("prop-jp_torii_gate"),
+    jp_stone_lantern: Assets.get<Texture>("prop-jp_stone_lantern"),
+    jp_bamboo_cluster: Assets.get<Texture>("prop-jp_bamboo_cluster"),
+    jp_vending_machine: Assets.get<Texture>("prop-jp_vending_machine"),
+    jp_snow_pine: Assets.get<Texture>("prop-jp_snow_pine"),
+    jp_snowman_jizo: Assets.get<Texture>("prop-jp_snowman_jizo"),
     park_lantern: sliceCell(urbanTex, 7, 6, 1, 2),
     street_lamp: sliceCell(urbanTex, 3, 6, 1, 2),
     traffic_light: sliceCell(urbanTex, 3, 15, 1, 1),
@@ -211,6 +217,12 @@ export function createWorldAtlas(): WorldAtlas {
   const chestOpen = Assets.get<Texture>("chest-open");
   chestClosed.source.scaleMode = "nearest";
   chestOpen.source.scaleMode = "nearest";
+  baseProps.jp_torii_gate.source.scaleMode = "nearest";
+  baseProps.jp_stone_lantern.source.scaleMode = "nearest";
+  baseProps.jp_bamboo_cluster.source.scaleMode = "nearest";
+  baseProps.jp_vending_machine.source.scaleMode = "nearest";
+  baseProps.jp_snow_pine.source.scaleMode = "nearest";
+  baseProps.jp_snowman_jizo.source.scaleMode = "nearest";
 
   const lpcLayers: Record<string, CharacterFrames> = {};
   for (const key of LPC_WALK_KEYS) {

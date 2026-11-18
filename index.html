@@ -14,6 +14,20 @@
   <body>
     <div id="app">
       <div id="pixi-container"></div>
+      <div id="map-loader-overlay" class="map-loader-overlay is-visible" role="status" aria-live="polite">
+        <div class="map-loader-card">
+          <div id="map-loader-badge" class="map-loader-badge">🌏</div>
+          <h1 id="map-loader-title" class="map-loader-title">Săn Kho Báu &amp; Sinh Tồn</h1>
+          <div id="map-loader-sub" class="map-loader-sub">Đang tải tài nguyên thế giới...</div>
+          <div class="map-loader-track">
+            <div id="map-loader-fill" class="map-loader-fill"></div>
+          </div>
+          <div id="map-loader-pct" class="map-loader-pct">0%</div>
+          <div id="map-loader-tip" class="map-loader-tip">
+            Mẹo: Mặc trang phục giữ ấm khi tiến vào vùng núi tuyết Nhật Bản.
+          </div>
+        </div>
+      </div>
       <div id="survival-vignette" class="survival-vignette" aria-hidden="true"></div>
       <div id="hospital-overlay" class="hospital-overlay" role="alert" aria-live="assertive">
         <div class="hospital-card">
@@ -109,7 +123,16 @@
           <div class="fullmap-wrap">
             <canvas id="fullmap-canvas" width="730" height="420"></canvas>
           </div>
-          <div class="bag-footer">
+          <div class="bag-footer fullmap-footer">
+            <div id="fullmap-quick-nav" class="fullmap-quick-nav" aria-label="Đi nhanh tới địa điểm">
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_home_house">🏠 Nhà</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_collection_hall">🏛️ Sưu Tầm</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_backpack_shop">🏪 Shop Balo</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_clothing_shop">👔 Shop Áo</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_butcher_shop">🍜 Quán Ăn</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_pharmacy">💊 Thuốc</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_airport">✈️ Sân Bay</button>
+            </div>
             <span class="fullmap-legend">🏠 Nhà • 🏛️ Sưu Tầm • 🏪 Balo • 👔 Áo • 💇 Tóc • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện • 🏯 Thành Cổ • ⛩️ Thần Xã</span>
           </div>
         </div>

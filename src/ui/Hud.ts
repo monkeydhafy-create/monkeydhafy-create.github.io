@@ -48,14 +48,21 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
   YELLOW_END_COL,
+  type BuildingKind,
   type CharacterGender,
   type MapId,
   type SecurityZone,
   type TileType,
 } from "../world/types.ts";
+import {
+  hideMapTransitionOverlay,
+  setLoadingProgress,
+  showMapTransitionOverlay,
+} from "../platform.ts";
 import type { PendingVaultTarget, ShopKind, WorldScene } from "../world/WorldScene.ts";
 import {
   ArcadeMinigameController,
+  type ArcadeDifficulty,
   type ArcadeMinigameKind,
 } from "./ArcadeMinigames.ts";
 import { PuzzleMinigameModal } from "./PuzzleMinigameModal.ts";
@@ -74,6 +81,31 @@ const MINIMAP_COLORS: Record<TileType, string> = {
   road: "#334155",
   sidewalk: "#94a3b8",
 };
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+const MINIMAP_RGB: Record<TileType, [number, number, number]> = {
+  grass: hexToRgb(MINIMAP_COLORS.grass),
+  meadow: hexToRgb(MINIMAP_COLORS.meadow),
+  forest: hexToRgb(MINIMAP_COLORS.forest),
+  sand: hexToRgb(MINIMAP_COLORS.sand),
+  puddle: hexToRgb(MINIMAP_COLORS.puddle),
+  shallow: hexToRgb(MINIMAP_COLORS.shallow),
+  water: hexToRgb(MINIMAP_COLORS.water),
+  dirt: hexToRgb(MINIMAP_COLORS.dirt),
+  stone: hexToRgb(MINIMAP_COLORS.stone),
+  bridge: hexToRgb(MINIMAP_COLORS.bridge),
+  road: hexToRgb(MINIMAP_COLORS.road),
+  sidewalk: hexToRgb(MINIMAP_COLORS.sidewalk),
+};
+
+const SNOW_FOREST_RGB = hexToRgb("#cbd5e1");
+const SNOW_MEADOW_RGB = hexToRgb("#f8fafc");
+const SNOW_SAND_RGB = hexToRgb("#e0f2fe");
+const SNOW_DEFAULT_RGB = hexToRgb("#e2e8f0");
 
 interface ActiveDragState {
   item: GridItemInstance;
@@ -102,6 +134,7 @@ export class Hud {
   private readonly minimapCanvas: HTMLCanvasElement;
   private readonly minimapCtx: CanvasRenderingContext2D;
   private terrainSnapshot: HTMLCanvasElement;
+  private readonly terrainSnapshotCache = new Map<MapId, HTMLCanvasElement>();
   private readonly toastEl: HTMLElement;
   private readonly toastTitleEl: HTMLElement;
   private readonly toastSubEl: HTMLElement;
@@ -309,6 +342,7 @@ export class Hud {
     officerId: string;
     officerName: string;
     zone: SecurityZone;
+    difficulty: ArcadeDifficulty;
     maxAttempts: number;
     maxFails: number;
     attempt: number;
@@ -318,6 +352,7 @@ export class Hud {
     phase: "preview" | "input" | "done" | "cooldown";
     flashIdx: number;
     flashTimerMs: number;
+    inputMaxMs: number;
     inputRemainingMs: number;
     picked: number[];
   } | null = null;
@@ -714,11 +749,15 @@ export class Hud {
   public openVaultPuzzleModal(target: PendingVaultTarget): void {
     if (this.isPoliceModalOpen) return;
     this.closeAllModals("vaultpuzzle");
+    const difficulty: ArcadeDifficulty = target.zone === "red" ? "nightmare" : "hard";
     this.vaultPuzzle.open(
       {
         containerId: target.containerId,
         title: target.title,
         sourceType: target.sourceType,
+        kind: target.kind,
+        seed: target.seed,
+        difficulty,
       },
       () => {
         this.scene.completeVaultPuzzle();
@@ -906,19 +945,24 @@ export class Hud {
     this.policeArcadeCtrl?.destroy();
     this.policeArcadeCtrl = null;
 
+    const isJapan = this.scene.getActiveMapId() === "japan";
     const zone: SecurityZone =
       officer.zone === "red" || officer.zone === "yellow"
         ? officer.zone
         : this.scene.getCurrentSecurityZone() === "red"
           ? "red"
           : "yellow";
-    const maxAttempts = zone === "red" ? 2 : 5;
-    const maxFails = zone === "red" ? 2 : 3;
+    const maxAttempts = zone === "red" ? 1 : isJapan ? 3 : 5;
+    const maxFails = zone === "red" ? 1 : isJapan ? 2 : 3;
+    const difficulty: ArcadeDifficulty =
+      zone === "red" ? (isJapan ? "nightmare" : "hard") : "normal";
+    const inputMaxMs = zone === "red" ? (isJapan ? 9_500 : 11_000) : isJapan ? 11_000 : 15_000;
 
     this.policeGame = {
       officerId: officer.id,
       officerName: officer.name,
       zone,
+      difficulty,
       maxAttempts,
       maxFails,
       attempt: 1,
@@ -928,7 +972,8 @@ export class Hud {
       phase: "preview",
       flashIdx: 0,
       flashTimerMs: 0,
-      inputRemainingMs: 15_000,
+      inputMaxMs,
+      inputRemainingMs: inputMaxMs,
       picked: [],
     };
     this.isPoliceModalOpen = true;
@@ -948,11 +993,12 @@ export class Hud {
       "lockpick",
       "timing_bar",
     ];
+    const isJapan = this.scene.getActiveMapId() === "japan";
     g.gameKind = games[Math.floor(Math.random() * games.length)];
     g.phase = "preview";
     g.flashIdx = 0;
     g.flashTimerMs = 0;
-    g.inputRemainingMs = 15_000;
+    g.inputRemainingMs = g.inputMaxMs;
     g.picked = [];
 
     if (g.gameKind === "police_4x4") {
@@ -961,7 +1007,8 @@ export class Hud {
         const j = Math.floor(Math.random() * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
       }
-      g.sequence = pool.slice(0, 5);
+      const seqLen = g.zone === "red" ? (isJapan ? 7 : 6) : isJapan ? 6 : 5;
+      g.sequence = pool.slice(0, seqLen);
     } else {
       g.sequence = [];
     }
@@ -984,7 +1031,7 @@ export class Hud {
       this.scene.resolvePoliceChallenge(true);
       this.showDiscoveryToast(
         "✅ Vượt kiểm tra thành công!",
-        "Tất cả Cảnh Sát sẽ bỏ qua bạn trong 96 giây tới.",
+        `Tất cả Cảnh Sát sẽ bỏ qua bạn trong ${this.scene.getActiveMapId() === "japan" ? 70 : 96} giây tới.`,
       );
       return;
     }
@@ -1042,11 +1089,12 @@ export class Hud {
 
   public showFaintedHospitalScreen(reason: string, feeGold: number): void {
     this.closeAllModals();
+    const hospName = this.scene.getActiveMapId() === "japan" ? "Bệnh Viện Tokyo" : "Bệnh Viện Thành Phố";
     this.hospitalTitleEl.textContent = `🚑 Ngất xỉu do ${reason}!`;
     const feeMsg =
       feeGold > 0
-        ? `Chi phí cấp cứu ${feeGold} Vàng. Đang phục hồi sức khỏe tại Bệnh Viện Thành Phố...`
-        : "Đã được đưa về cấp cứu miễn phí tại Bệnh Viện Thành Phố...";
+        ? `Chi phí cấp cứu ${feeGold} Vàng. Đang phục hồi sức khỏe tại ${hospName}...`
+        : `Đã được đưa về cấp cứu miễn phí tại ${hospName}...`;
     this.hospitalSubEl.textContent = feeMsg;
     this.hospitalOverlayEl.classList.add("is-open");
     this.updateSurvivalHud();
@@ -1057,7 +1105,7 @@ export class Hud {
     this.hospitalTimer = window.setTimeout(() => {
       this.hospitalOverlayEl.classList.remove("is-open");
       this.showDiscoveryToast(
-        "🏥 Đã hồi tỉnh tại Bệnh Viện Thành Phố",
+        `🏥 Đã hồi tỉnh tại ${hospName}`,
         "Thể trạng đã được cấp cứu ổn định.",
       );
     }, 2500);
@@ -1094,6 +1142,9 @@ export class Hud {
   }
 
   public handleContainersRefreshed(expiredIds: string[]): void {
+    for (const id of expiredIds) {
+      this.vaultPuzzle.clearSession(id);
+    }
     this.updateInteractPrompt();
     if (
       this.isBagOpen &&
@@ -1255,18 +1306,46 @@ export class Hud {
   }
 
   private bakeTerrainSnapshot(): HTMLCanvasElement {
+    const { cols, rows, tiles, mapId } = this.scene.data;
+    const cached = this.terrainSnapshotCache.get(mapId);
+    if (cached) {
+      return cached;
+    }
+
     const offscreen = document.createElement("canvas");
-    const { cols, rows, tiles } = this.scene.data;
     offscreen.width = cols;
     offscreen.height = rows;
 
+    const isJapan = mapId === "japan";
     const ctx = offscreen.getContext("2d")!;
+    const imgData = ctx.createImageData(cols, rows);
+    const px = imgData.data;
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        ctx.fillStyle = MINIMAP_COLORS[tiles[r * cols + c]];
-        ctx.fillRect(c, r, 1, 1);
+        const idx = r * cols + c;
+        const tile = tiles[idx];
+        let rgb: [number, number, number];
+        if (isJapan && c >= 98 && tile !== "water" && tile !== "shallow" && tile !== "road" && tile !== "bridge") {
+          rgb =
+            tile === "forest" || tile === "dirt"
+              ? SNOW_FOREST_RGB
+              : tile === "meadow"
+                ? SNOW_MEADOW_RGB
+                : tile === "sand"
+                  ? SNOW_SAND_RGB
+                  : SNOW_DEFAULT_RGB;
+        } else {
+          rgb = MINIMAP_RGB[tile];
+        }
+        const offset = idx * 4;
+        px[offset] = rgb[0];
+        px[offset + 1] = rgb[1];
+        px[offset + 2] = rgb[2];
+        px[offset + 3] = 255;
       }
     }
+    ctx.putImageData(imgData, 0, 0);
 
     // Subtle zone borders on minimap terrain snapshot
     ctx.fillStyle = "rgba(16, 185, 129, 0.72)";
@@ -1288,6 +1367,8 @@ export class Hud {
         ctx.fillRect(bx - 1, by - 1, 3, 2);
       }
     }
+
+    this.terrainSnapshotCache.set(mapId, offscreen);
     return offscreen;
   }
 
@@ -1417,6 +1498,24 @@ export class Hud {
       this.scene.moveToWorldPoint(nx * WORLD_WIDTH, ny * WORLD_HEIGHT, true);
       this.setFullmapOpen(false);
     });
+
+    const quickNavEl = document.getElementById("fullmap-quick-nav");
+    if (quickNavEl) {
+      for (const btn of quickNavEl.querySelectorAll<HTMLButtonElement>("[data-nav-kind]")) {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (this.scene.isMovementLocked()) return;
+          const kind = btn.dataset.navKind as BuildingKind | undefined;
+          if (!kind) return;
+          const res = this.scene.navigateToBuildingKind(kind);
+          this.setFullmapOpen(false);
+          this.showDiscoveryToast(
+            res.ok ? "🧭 Đang dẫn đường" : "Không tìm thấy địa điểm",
+            res.ok ? `Tự động di chuyển tới ${res.name}.` : res.name,
+          );
+        });
+      }
+    }
 
     this.interactBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
     this.interactBtn.addEventListener("click", (e) => {
@@ -1634,20 +1733,35 @@ export class Hud {
       this.openPurchaseConfirm({
         subtitle: "✈️ Sân Bay Quốc Tế — Vé Máy Bay Quốc Tế",
         itemTitle: isToJapan
-          ? "🛫 Bay sang Nhật Bản (Tokyo – Kyoto – Thành Shogun)"
+          ? "🛫 Bay sang Nhật Bản (Tokyo – Nông Thôn Samurai – Núi Tuyết)"
           : "🛫 Bay về Việt Nam (Hà Nội – Đồng Bằng – Hoàng Thành)",
         itemDesc:
           "Giữ nguyên balo, trang bị, ví vàng, đồ sưu tầm và đồng bộ thời gian thực tại điểm đến.",
         priceGold: AIRPORT_JAPAN_FLIGHT_COST,
         onConfirm: () => {
-          const res = this.scene.flyToMap(targetMap);
-          this.showDiscoveryToast(
-            res.ok ? `✈️ Đã hạ cánh tại ${MAP_LABELS[res.activeMapId]}!` : "Không thể xuất cảnh",
-            res.message,
-          );
-          if (res.ok) {
-            this.closeAllModals();
-          }
+          const destLabel = isToJapan ? "Nhật Bản (Tokyo Narita)" : "Việt Nam (Nội Bài)";
+          showMapTransitionOverlay({
+            badge: isToJapan ? "🛫🇯🇵" : "🛫🇻🇳",
+            title: `Chuyến bay đến ${destLabel}`,
+            subtitle: "Đang làm thủ tục & khởi tạo bản đồ mới...",
+            tip: isToJapan
+              ? "Mẹo: Mua trang phục giữ ấm tại Tokyo trước khi tiến lên vùng núi tuyết Hokkaido."
+              : "Mẹo: Ghé Nhà Riêng để cất bảo vật Nhật Bản vào Phòng Sưu Tầm.",
+            progressPct: 35,
+          });
+          this.closeAllModals();
+          window.requestAnimationFrame(() => {
+            setLoadingProgress(0.75, `Đang hạ cánh xuống ${destLabel}...`);
+            const res = this.scene.flyToMap(targetMap);
+            setLoadingProgress(1, res.ok ? "Đã hạ cánh an toàn!" : res.message);
+            window.setTimeout(() => {
+              hideMapTransitionOverlay();
+              this.showDiscoveryToast(
+                res.ok ? `✈️ Đã hạ cánh tại ${MAP_LABELS[res.activeMapId]}!` : "Không thể xuất cảnh",
+                res.message,
+              );
+            }, 320);
+          });
         },
       });
     });
@@ -1818,14 +1932,21 @@ export class Hud {
 
     ctx.font = "bold 13px system-ui, sans-serif";
     ctx.textAlign = "center";
-    const zoneHeaders: Array<[string, number, string]> = [
-      ["🟢 VÙNG XANH (AN TOÀN)", greenEndX * 0.5, "#6ee7b7"],
-      ["🟡 VÙNG VÀNG (CHIẾM ĐA SỐ)", (greenEndX + yellowEndX) * 0.5, "#fde047"],
-      ["🔴 VÙNG ĐỎ (NHIỀU ĐỒ)", (yellowEndX + w) * 0.5, "#fca5a5"],
-    ];
+    const isJapanMap = this.scene.getActiveMapId() === "japan";
+    const zoneHeaders: Array<[string, number, string]> = isJapanMap
+      ? [
+          ["🟢 ĐÔ THỊ TOKYO (AN TOÀN)", greenEndX * 0.5, "#6ee7b7"],
+          ["🟡 NÔNG THÔN SAMURAI", (greenEndX + yellowEndX) * 0.5, "#fde047"],
+          ["🔴 NÚI TUYẾT SHOGUN (KHẮC NGHIỆT)", (yellowEndX + w) * 0.5, "#fca5a5"],
+        ]
+      : [
+          ["🟢 VÙNG XANH (AN TOÀN)", greenEndX * 0.5, "#6ee7b7"],
+          ["🟡 VÙNG VÀNG (CHIẾM ĐA SỐ)", (greenEndX + yellowEndX) * 0.5, "#fde047"],
+          ["🔴 VÙNG ĐỎ (NHIỀU ĐỒ)", (yellowEndX + w) * 0.5, "#fca5a5"],
+        ];
     for (const [label, zx, colHex] of zoneHeaders) {
       ctx.fillStyle = "rgba(2, 6, 23, 0.78)";
-      ctx.fillRect(zx - 94, 8, 188, 24);
+      ctx.fillRect(zx - 114, 8, 228, 24);
       ctx.fillStyle = colHex;
       ctx.fillText(label, zx, 24);
     }
@@ -1860,22 +1981,27 @@ export class Hud {
 
     // Highlight Home Storage, Shops & City Hospital clearly
     const mapPoiStyles: Record<string, { color: string; label: string; textColor: string }> = {
-      city_home_house: { color: "#10b981", label: "🏠 Nhà", textColor: "#a7f3d0" },
-      city_collection_hall: { color: "#e11d48", label: "🏛️ Sưu Tầm", textColor: "#fecdd3" },
-      city_backpack_shop: { color: "#facc15", label: "🏪 Shop Balo", textColor: "#fef08a" },
-      city_clothing_shop: { color: "#c084fc", label: "👔 Shop Áo", textColor: "#e9d5ff" },
-      city_hair_salon: { color: "#f472b6", label: "💇 Tiệm Tóc", textColor: "#fbcfe8" },
-      city_pharmacy: { color: "#14b8a6", label: "💊 Nhà Thuốc", textColor: "#99f6e4" },
-      city_butcher_shop: { color: "#fb923c", label: "🍜 Quán Ăn", textColor: "#fed7aa" },
-      plains_garden_inn: { color: "#fb923c", label: "🍜 Nhà Hàng", textColor: "#fed7aa" },
+      city_home_house: { color: "#10b981", label: isJapanMap ? "🏯 Nhà" : "🏠 Nhà", textColor: "#a7f3d0" },
+      city_collection_hall: { color: "#e11d48", label: isJapanMap ? "🗼 Tháp Bảo Tàng" : "🏛️ Sưu Tầm", textColor: "#fecdd3" },
+      city_backpack_shop: { color: "#facc15", label: isJapanMap ? "🎒 Akihabara" : "🏪 Shop Balo", textColor: "#fef08a" },
+      city_clothing_shop: { color: "#c084fc", label: isJapanMap ? "👘 Kimono" : "👔 Shop Áo", textColor: "#e9d5ff" },
+      city_hair_salon: { color: "#f472b6", label: isJapanMap ? "💇 Harajuku" : "💇 Tiệm Tóc", textColor: "#fbcfe8" },
+      city_pharmacy: { color: "#14b8a6", label: isJapanMap ? "💊 Kanpo" : "💊 Nhà Thuốc", textColor: "#99f6e4" },
+      city_butcher_shop: { color: "#fb923c", label: isJapanMap ? "🍜 Ramen" : "🍜 Quán Ăn", textColor: "#fed7aa" },
+      plains_garden_inn: { color: "#fb923c", label: isJapanMap ? "🍣 Omakase" : "🍜 Nhà Hàng", textColor: "#fed7aa" },
       plains_pagoda: { color: "#f59e0b", label: "⛩️ Chùa Cổ", textColor: "#fde68a" },
-      city_airport: { color: "#38bdf8", label: "✈️ Sân Bay", textColor: "#bae6fd" },
-      city_police_station: { color: "#2563eb", label: "🚓 Phường", textColor: "#93c5fd" },
+      city_airport: { color: "#38bdf8", label: isJapanMap ? "✈️ Narita" : "✈️ Sân Bay", textColor: "#bae6fd" },
+      city_police_station: { color: "#2563eb", label: isJapanMap ? "🚓 Koban" : "🚓 Phường", textColor: "#93c5fd" },
       city_hospital: { color: "#f43f5e", label: "🏥 Bệnh Viện", textColor: "#fecdd3" },
       jp_ryokan_inn: { color: "#f97316", label: "🏮 Lữ Quán", textColor: "#fed7aa" },
       jp_shinto_shrine: { color: "#f43f5e", label: "⛩️ Thần Xã", textColor: "#fecdd3" },
       jp_ninja_dojo: { color: "#a855f7", label: "🥷 Võ Đường", textColor: "#e9d5ff" },
       jp_shogun_castle: { color: "#ef4444", label: "🏯 Thành Shogun", textColor: "#fecaca" },
+      jp_tokyo_tower: { color: "#fb7185", label: "🗼 Tháp Tokyo", textColor: "#fecdd3" },
+      jp_shinkansen_station: { color: "#0ea5e9", label: "🚄 Shinkansen", textColor: "#bae6fd" },
+      jp_akihabara_arcade: { color: "#ec4899", label: "🏙️ Akihabara", textColor: "#fbcfe8" },
+      jp_samurai_manor: { color: "#f59e0b", label: "⚔️ Samurai", textColor: "#fde68a" },
+      jp_snow_onsen_temple: { color: "#7dd3fc", label: "♨️ Đền Tuyết", textColor: "#e0f2fe" },
     };
 
     for (const prop of this.scene.data.props) {
@@ -3838,9 +3964,11 @@ export class Hud {
   private renderClothingShopModal(): void {
     const sum = this.scene.inventory.getSummary();
     const equipped = this.scene.getEquippedGear();
+    const activeMap = this.scene.getActiveMapId();
 
     this.clothShopStatsEl.replaceChildren();
     for (const txt of [
+      `🗺️ ${MAP_LABELS[activeMap]}`,
       `🪙 Ví: ${sum.walletGold.toLocaleString("vi-VN")} Vàng`,
       `📦 Balo: ${sum.usedCells}/${sum.totalCells} ô`,
     ]) {
@@ -3979,6 +4107,7 @@ export class Hud {
     this.clothShopListEl.replaceChildren();
     for (const g of GARMENT_CATALOG) {
       if (g.priceGold === 0 || g.excludeFromShop) continue;
+      if ((g.mapOrigin ?? "vietnam") !== activeMap) continue;
       const isEquipped = equipped[g.slot] === g.id;
       const isTrying = this.clothShopPreviewGear?.[g.slot] === g.id;
 
@@ -4119,10 +4248,13 @@ export class Hud {
     const sum = this.scene.inventory.getSummary();
     const { state } = this.scene.getSurvivalSnapshot();
     const isPharmacy = this.foodShopMode === "pharmacy";
+    const activeMap = this.scene.getActiveMapId();
 
     this.foodShopTitleEl.textContent = isPharmacy
       ? "💊 Hiệu Thuốc & Dược Phẩm Tăng Lực"
-      : "🍜 Quán Ăn & Giải Khát";
+      : activeMap === "japan"
+        ? "🍜 Quán Ramen & Trà Đạo Nhật Bản"
+        : "🍜 Quán Ăn & Giải Khát Việt Nam";
 
     this.foodShopStatsEl.replaceChildren();
     for (const txt of [
@@ -4140,6 +4272,7 @@ export class Hud {
     this.foodShopListEl.replaceChildren();
     for (const f of CONSUMABLE_CATALOG) {
       if (f.shopCategory !== this.foodShopMode) continue;
+      if (!isPharmacy && (f.mapOrigin ?? "vietnam") !== activeMap) continue;
       const singlePrice = getConsumableSingleUsePrice(f);
       const card = document.createElement("div");
       card.className = "shop-item-card";
@@ -4424,19 +4557,19 @@ export class Hud {
         makeMapCard(
           "Điểm đến tiếp theo",
           "🇯🇵 Nhật Bản",
-          "Tokyo an toàn • Cố đô Kyoto (hoa Anh Đào, Thần Xã, Lữ Quán) • Thành Shogun & Làng Ninja Iga (12 cổ vật + 3 Đồ Đỏ mới). Thời tiết ngẫu nhiên, đồng hồ thực Tokyo.",
+          "Đô thị Tokyo an toàn • Nông thôn Samurai • Núi tuyết Hokkaido giá rét (10 món ăn Nhật, 10 trang phục Nhật & thời tiết tuyết rơi/bão tuyết khắc nghiệt).",
           true,
         ),
       );
       this.airportFlightNoteEl.textContent =
-        "Chuyến bay sang Nhật Bản mở ra khu vực Tokyo – Kyoto – Thành Cổ Shogun với thời tiết ngẫu nhiên theo giờ thực Tokyo (UTC+9), cùng Onigiri, Ramen và Khay Sushi Nhật. Balo, Safebox và Phòng Sưu Tầm được đồng bộ xuyên bản đồ.";
-      this.airportFlyMapBtn.textContent = `🛫 Bay sang Nhật Bản (🪙 ${AIRPORT_JAPAN_FLIGHT_COST})`;
+        `Chuyến bay ${AIRPORT_JAPAN_FLIGHT_COST.toLocaleString("vi-VN")} Vàng đưa bạn sang Nhật Bản (Tokyo – Nông thôn Samurai – Núi tuyết) với đồng hồ thực Tokyo (UTC+9), cảnh sát gắt gao và băng tuyết gây hạ thân nhiệt. Balo, Safebox và Phòng Sưu Tầm đồng bộ xuyên bản đồ.`;
+      this.airportFlyMapBtn.textContent = `🛫 Bay sang Nhật Bản (🪙 ${AIRPORT_JAPAN_FLIGHT_COST.toLocaleString("vi-VN")})`;
     } else {
       this.airportFlightInfoEl.append(
         makeMapCard(
           "Vị trí hiện tại",
           "🇯🇵 Nhật Bản",
-          `Giờ thực Tokyo ${env.hanoiTimeText} • ${env.temperatureC}°C (${env.conditionLabel}). Có Lữ Quán, Thần Xã, Võ Đường & Thành Cổ Shogun.`,
+          `Giờ thực Tokyo ${env.hanoiTimeText} • ${env.temperatureC}°C (${env.conditionLabel}). Đô thị Tokyo, Nông thôn Samurai & Núi tuyết Shogun.`,
           false,
         ),
         makeMapCard(
@@ -4447,8 +4580,8 @@ export class Hud {
         ),
       );
       this.airportFlightNoteEl.textContent =
-        "Chuyến bay khứ hồi đưa bạn từ sân bay Tokyo Narita trở về Việt Nam. Toàn bộ báu vật Nhật Bản vừa săn được (bao gồm 3 Đồ Đỏ Nhật Bản) vẫn nằm an toàn trong balo và Phòng Sưu Tầm.";
-      this.airportFlyMapBtn.textContent = `🛫 Bay về Việt Nam (🪙 ${AIRPORT_JAPAN_FLIGHT_COST})`;
+        "Chuyến bay khứ hồi đưa bạn từ sân bay Tokyo Narita trở về Việt Nam. Toàn bộ báu vật Nhật Bản vừa săn được vẫn nằm an toàn trong balo và Phòng Sưu Tầm.";
+      this.airportFlyMapBtn.textContent = `🛫 Bay về Việt Nam (🪙 ${AIRPORT_JAPAN_FLIGHT_COST.toLocaleString("vi-VN")})`;
     }
 
     // Tab 2: Preserved Thailand Gender Switch
@@ -4577,7 +4710,8 @@ export class Hud {
 
     if (g.phase === "preview") {
       g.flashTimerMs += dtMs;
-      const stepDurMs = 560; // 420ms lit + 140ms dark gap
+      const stepDurMs = g.zone === "red" ? 420 : 560;
+      const litDurMs = g.zone === "red" ? 310 : 420;
       const nextStep = Math.floor(g.flashTimerMs / stepDurMs);
       if (nextStep >= g.sequence.length) {
         g.phase = "input";
@@ -4585,8 +4719,8 @@ export class Hud {
         this.renderPoliceModal();
         return;
       }
-      if (nextStep !== g.flashIdx || (g.flashTimerMs % stepDurMs >= 420 && g.flashIdx !== -1)) {
-        const shouldLit = g.flashTimerMs % stepDurMs < 420;
+      if (nextStep !== g.flashIdx || (g.flashTimerMs % stepDurMs >= litDurMs && g.flashIdx !== -1)) {
+        const shouldLit = g.flashTimerMs % stepDurMs < litDurMs;
         const targetVal = shouldLit ? nextStep : -1;
         if (g.flashIdx !== targetVal) {
           g.flashIdx = targetVal;
@@ -4598,8 +4732,8 @@ export class Hud {
 
     if (g.phase === "input") {
       g.inputRemainingMs = Math.max(0, g.inputRemainingMs - dtMs);
-      this.policeTimerFillEl.style.width = `${((g.inputRemainingMs / 15_000) * 100).toFixed(1)}%`;
-      this.policeStatusEl.textContent = `⏱️ Bấm lại đúng thứ tự (${g.picked.length}/5) • Còn ${(g.inputRemainingMs / 1000).toFixed(1)}s`;
+      this.policeTimerFillEl.style.width = `${((g.inputRemainingMs / g.inputMaxMs) * 100).toFixed(1)}%`;
+      this.policeStatusEl.textContent = `⏱️ Bấm lại đúng thứ tự (${g.picked.length}/${g.sequence.length}) • Còn ${(g.inputRemainingMs / 1000).toFixed(1)}s`;
       if (g.inputRemainingMs <= 0) {
         this.handlePoliceRoundResult(false);
       }
@@ -4665,6 +4799,7 @@ export class Hud {
       this.policeArcadeCtrl = new ArcadeMinigameController({
         kind: arcadeKind,
         mode: "police",
+        difficulty: g.difficulty,
         boardEl: this.policeArcadeStageEl,
         statusEl: this.policeStatusEl,
         onWin: () => this.handlePoliceRoundResult(true),
@@ -4676,10 +4811,10 @@ export class Hud {
     this.policeArcadeStageEl.replaceChildren();
 
     if (g.phase === "preview") {
-      this.policeStatusEl.textContent = "👀 Quan sát kỹ 5 ô sáng theo thứ tự 1 → 5...";
+      this.policeStatusEl.textContent = `👀 Quan sát kỹ ${g.sequence.length} ô sáng theo thứ tự 1 → ${g.sequence.length}...`;
       this.policeTimerFillEl.style.width = "100%";
     } else {
-      this.policeStatusEl.textContent = `⏱️ Bấm lại đúng thứ tự (${g.picked.length}/5) • Còn ${(g.inputRemainingMs / 1000).toFixed(1)}s`;
+      this.policeStatusEl.textContent = `⏱️ Bấm lại đúng thứ tự (${g.picked.length}/${g.sequence.length}) • Còn ${(g.inputRemainingMs / 1000).toFixed(1)}s`;
     }
 
     if (this.policeGridEl.children.length !== 16) {

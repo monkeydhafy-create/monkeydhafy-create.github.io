@@ -48,6 +48,7 @@ import {
   type ContainerLootState,
   type GridItemInstance,
   type GridZone,
+  type LockedPuzzleKind,
   type LootSourceType,
   type UpgradeKind,
 } from "./LootSystem.ts";
@@ -136,6 +137,9 @@ export interface PendingVaultTarget {
   title: string;
   sourceType: "chest_royal" | "house_vault";
   biome: BiomeId;
+  zone: SecurityZone;
+  kind: LockedPuzzleKind;
+  seed: number;
   chestId?: string;
 }
 
@@ -242,6 +246,7 @@ export class WorldScene {
 
   private readonly lilypadSprites: Array<{ sprite: Sprite; x: number; y: number; phase: number }> = [];
   private readonly propNodes: Array<{ node: Container; x: number; y: number }> = [];
+  private pendingProps: WorldProp[] = [];
   private readonly foodCartProps: WorldProp[] = [];
   private readonly occludableProps: OccludableProp[] = [];
   private readonly buildingOccludables: OccludableProp[] = [];
@@ -251,14 +256,25 @@ export class WorldScene {
   private readonly waterDroplets: WaterDroplet[] = [];
   private readonly terrainChunks: Array<{
     node: Container;
+    cx: number;
+    cy: number;
+    maxCol: number;
+    maxRow: number;
     minX: number;
     minY: number;
     maxX: number;
     maxY: number;
+    built: boolean;
   }> = [];
+  private readonly worldCache = new Map<MapId, { data: WorldData; pathfinder: Pathfinder }>();
+  private prewarmTimerId: number | null = null;
 
   private camX: number;
   private camY: number;
+  private lastCullCamX = Number.NaN;
+  private lastCullCamY = Number.NaN;
+  private lastCullZoom = Number.NaN;
+  private forceCullUpdate = true;
   private zoom = 1;
   private targetZoom = 1;
   private soundEnabled = true;
@@ -339,6 +355,7 @@ export class WorldScene {
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
 
     this.pathfinder = new Pathfinder(data.cols, data.rows, data.tileSize, data.collision);
+    this.worldCache.set(this.activeMapId, { data, pathfinder: this.pathfinder });
     const savedProfile = initialSave?.profile;
     const startX =
       savedProfile && this.pathfinder.isWalkableWorld(savedProfile.x, savedProfile.y)
@@ -385,6 +402,7 @@ export class WorldScene {
         this.getSurfaceAt(startX, startY),
         this.cachedEquipStats,
         this.survival.bodyTempC,
+        { inSnowZone: this.isInSnowZoneAt(startX) },
       ),
       blurIntensity: 0,
       speedMultiplier: 1,
@@ -468,11 +486,20 @@ export class WorldScene {
 
     this.updateResponsiveBaseZoom(app.screen.width, app.screen.height, true);
     this.syncCameraTransform();
+    this.ensureVisibleTerrainChunksBuilt();
     if (this.isDetained()) {
       this.enterJailRoom();
     }
     this.bindInputs();
     this.isSceneReady = true;
+
+    if (typeof window !== "undefined") {
+      const otherMapId: MapId = this.activeMapId === "vietnam" ? "japan" : "vietnam";
+      this.prewarmTimerId = window.setTimeout(() => {
+        this.prewarmTimerId = null;
+        this.getOrCreateWorld(otherMapId);
+      }, 1200);
+    }
   }
 
   public getSaveSnapshot(): PlayerGameSaveV3 {
@@ -615,6 +642,18 @@ export class WorldScene {
     return this.activeMapId;
   }
 
+  private getOrCreateWorld(mapId: MapId): { data: WorldData; pathfinder: Pathfinder } {
+    const cached = this.worldCache.get(mapId);
+    if (cached) {
+      return cached;
+    }
+    const data = generateOpenWorld(202611, mapId);
+    const pathfinder = new Pathfinder(data.cols, data.rows, data.tileSize, data.collision);
+    const entry = { data, pathfinder };
+    this.worldCache.set(mapId, entry);
+    return entry;
+  }
+
   public flyToMap(targetMapId: MapId): { ok: boolean; activeMapId: MapId; message: string } {
     if (this.activeMapId === targetMapId) {
       return {
@@ -638,7 +677,7 @@ export class WorldScene {
       };
     }
 
-    const nextWorld = generateOpenWorld(202611, targetMapId);
+    const { data: nextWorld, pathfinder: nextPathfinder } = this.getOrCreateWorld(targetMapId);
     for (const lm of nextWorld.landmarks) {
       if (this.discoveredLandmarkIds.has(lm.id)) {
         lm.discovered = true;
@@ -647,7 +686,8 @@ export class WorldScene {
 
     this.activeMapId = targetMapId;
     this.data = nextWorld;
-    this.pathfinder = new Pathfinder(nextWorld.cols, nextWorld.rows, nextWorld.tileSize, nextWorld.collision);
+    this.pathfinder = nextPathfinder;
+    this.forceCullUpdate = true;
 
     const oldGround = this.groundLayer.removeChildren();
     for (const child of oldGround) {
@@ -668,6 +708,7 @@ export class WorldScene {
       child.destroy({ children: true });
     }
     this.propNodes.length = 0;
+    this.pendingProps.length = 0;
     this.foodCartProps.length = 0;
     this.occludableProps.length = 0;
     this.buildingOccludables.length = 0;
@@ -711,6 +752,7 @@ export class WorldScene {
     this.lastSavedPlayerX = landX;
     this.lastSavedPlayerY = landY;
     this.syncCameraTransform();
+    this.ensureVisibleTerrainChunksBuilt();
 
     this.weatherService.setActiveMap(targetMapId);
     this.playPressSfx();
@@ -1550,6 +1592,12 @@ export class WorldScene {
     return this.data.securityZones[row * this.data.cols + col];
   }
 
+  private isInSnowZoneAt(x: number): boolean {
+    if (this.activeMapId !== "japan") return false;
+    const col = Math.floor(x / TILE_SIZE);
+    return col >= 98;
+  }
+
   public getCurrentSecurityZone(): SecurityZone {
     if (this.isInJail) return "green";
     return this.getSecurityZoneAt(this.player.x, this.player.y);
@@ -1580,6 +1628,43 @@ export class WorldScene {
 
   public getDestination(): Point | null {
     return this.player.getDestination();
+  }
+
+  public navigateToBuildingKind(kind: BuildingKind): { ok: boolean; name: string } {
+    const jpNames: Partial<Record<BuildingKind, string>> = {
+      city_home_house: "🏯 Dinh Thự Riêng Tokyo",
+      city_collection_hall: "🗼 Tháp Bảo Tàng Tokyo",
+      city_backpack_shop: "🎒 Tiệm Balo Akihabara",
+      city_clothing_shop: "👘 Tiệm Kimono & Giáp Samurai",
+      city_butcher_shop: "🍜 Quán Ramen Ichiraku",
+      city_pharmacy: "💊 Dược Đường Kanpo",
+      city_airport: "✈️ Sân Bay Narita",
+    };
+    const label = (this.activeMapId === "japan" ? jpNames[kind] : undefined) ?? BUILDING_META[kind].name;
+    const prop = this.data.props.find((p) => p.kind === kind);
+    if (!prop) {
+      return { ok: false, name: `Không tìm thấy ${label}` };
+    }
+    const offsets: Array<[number, number]> = [
+      [0, 42],
+      [0, 56],
+      [-36, 42],
+      [36, 42],
+      [-48, 24],
+      [48, 24],
+      [0, -24],
+    ];
+    let targetX = prop.x;
+    let targetY = prop.y + 42;
+    for (const [ox, oy] of offsets) {
+      if (this.pathfinder.isWalkableWorld(prop.x + ox, prop.y + oy)) {
+        targetX = prop.x + ox;
+        targetY = prop.y + oy;
+        break;
+      }
+    }
+    this.moveToWorldPoint(targetX, targetY, true);
+    return { ok: true, name: label };
   }
 
   public getPoliceMarkers(): PoliceOfficerMarker[] {
@@ -1620,6 +1705,7 @@ export class WorldScene {
       v.sourceType,
       v.biome,
       zone === "green" ? "yellow" : zone,
+      this.activeMapId,
     );
 
     if (v.chestId) {
@@ -1711,6 +1797,7 @@ export class WorldScene {
     this.worldContainer.visible = true;
     this.worldLightsContainer.visible = true;
     this.atmosphere.screenOverlayLayer.visible = true;
+    this.forceCullUpdate = true;
     this.syncCameraTransform();
   }
 
@@ -1728,8 +1815,9 @@ export class WorldScene {
     }
 
     if (won) {
-      // ALL police ignore the player for 96 seconds (reduced 20% from 2 minutes) on 1 win!
-      this.globalPoliceIgnoreUntil = Date.now() + 96_000;
+      // ALL police ignore the player temporarily on 1 win (shorter window on hardcore Japan map)
+      const ignoreMs = this.activeMapId === "japan" ? 70_000 : 96_000;
+      this.globalPoliceIgnoreUntil = Date.now() + ignoreMs;
       this.ignoreUntilByOfficer = {};
       this.callbacks.onRequestSave?.(true);
       return { won: true, lostItemCount: 0, lostBackpack: false, officerId };
@@ -1772,7 +1860,9 @@ export class WorldScene {
     let closestChest: ChestVisual | null = null;
     let bestChestDist = 104;
     for (const cv of this.chestVisuals) {
-      const d = Math.hypot(px - cv.chest.x, py - (cv.chest.y - 12));
+      const cy = cv.chest.y - 12;
+      if (Math.abs(px - cv.chest.x) >= bestChestDist || Math.abs(py - cy) >= bestChestDist) continue;
+      const d = Math.hypot(px - cv.chest.x, py - cy);
       if (d < bestChestDist) {
         bestChestDist = d;
         closestChest = cv;
@@ -1780,19 +1870,24 @@ export class WorldScene {
     }
 
     let closestFoodCartDist = 78;
-    let nearbyFoodCart = false;
+    let nearbyFoodProp: WorldProp | null = null;
     for (const prop of this.foodCartProps) {
-      const d = Math.hypot(px - prop.x, py - (prop.y - 12));
+      const fy = prop.y - 12;
+      if (Math.abs(px - prop.x) >= closestFoodCartDist || Math.abs(py - fy) >= closestFoodCartDist) continue;
+      const d = Math.hypot(px - prop.x, py - fy);
       if (d < closestFoodCartDist) {
         closestFoodCartDist = d;
-        nearbyFoodCart = true;
+        nearbyFoodProp = prop;
       }
     }
 
-    if (nearbyFoodCart && (!closestChest || closestFoodCartDist <= bestChestDist)) {
+    if (nearbyFoodProp && (!closestChest || closestFoodCartDist <= bestChestDist)) {
       return {
         type: "shop",
-        name: "Xe Đồ Ăn Nhanh",
+        name:
+          nearbyFoodProp.kind === "jp_vending_machine"
+            ? "🥤 Máy Bán Hàng Tự Động Nhật"
+            : "Xe Đồ Ăn Nhanh",
         shopKind: "food",
       };
     }
@@ -1961,11 +2056,16 @@ export class WorldScene {
             : "chest_wooden";
 
       if (sourceType === "chest_royal" && !this.inventory.isContainerSearched(cv.chest.id)) {
+        const chestZone = this.getSecurityZoneAt(cv.chest.x, cv.chest.y);
+        const puzzle = this.inventory.getOrAssignContainerPuzzle(cv.chest.id);
         this.activeVaultPuzzle = {
           containerId: cv.chest.id,
           title: cv.chest.name,
           sourceType: "chest_royal",
           biome: cv.chest.biome,
+          zone: chestZone === "green" ? "yellow" : chestZone,
+          kind: puzzle.kind,
+          seed: puzzle.seed,
           chestId: cv.chest.id,
         };
         this.player.clearPath();
@@ -2004,11 +2104,16 @@ export class WorldScene {
         : "house_standard";
 
     if (target.isVault && !this.inventory.isContainerSearched(containerId)) {
+      const bldZone = this.getSecurityZoneAt(target.x, target.y);
+      const puzzle = this.inventory.getOrAssignContainerPuzzle(containerId);
       this.activeVaultPuzzle = {
         containerId,
         title: target.name,
         sourceType: "house_vault",
         biome: target.biome,
+        zone: bldZone === "green" ? "yellow" : bldZone,
+        kind: puzzle.kind,
+        seed: puzzle.seed,
       };
       this.player.clearPath();
       this.player.setManualDirection(0, 0);
@@ -2174,6 +2279,7 @@ export class WorldScene {
         surface: this.player.getSurfaceState(),
         env,
         equip: this.cachedEquipStats,
+        inSnowZone: this.isInSnowZoneAt(this.player.x),
         totalWeightKg: this.inventory.getCarriedWeightKg(this.cachedEquipStats.weightKg),
         permanentStaminaBonusPct: this.inventory.getPermanentStaminaBonusPct(),
         heavySpeedBonusPct: this.inventory.getHeavySpeedBonusPct(),
@@ -2189,7 +2295,8 @@ export class WorldScene {
         this.pendingConsume = null;
         this.faintRespawnCooldown = 2.6;
         const walletGold = this.inventory.getGold();
-        const fee = Math.min(walletGold, 30);
+        const maxHospitalFee = this.activeMapId === "japan" ? 150 : 30;
+        const fee = Math.min(walletGold, maxHospitalFee);
         if (fee > 0) {
           this.inventory.trySpendGold(fee);
         }
@@ -2214,6 +2321,7 @@ export class WorldScene {
             "dry",
             this.cachedEquipStats,
             SURVIVAL_IDEAL_TEMP_C,
+            { inSnowZone: this.isInSnowZoneAt(this.data.hospitalRespawn.x) },
           ),
           blurIntensity: 0,
           speedMultiplier: 1,
@@ -2266,9 +2374,15 @@ export class WorldScene {
 
     this.atmosphere.update(dt, env, this.player.x, this.player.y, this.camX, this.worldContainer, viewBounds);
     this.weatherParticles.update(dt, env, viewBounds);
+    this.streamNextTerrainChunks(2);
+    this.streamNextProps(24);
   }
 
   public destroy(): void {
+    if (this.prewarmTimerId !== null) {
+      window.clearTimeout(this.prewarmTimerId);
+      this.prewarmTimerId = null;
+    }
     this.weatherService.stop();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
@@ -2276,96 +2390,172 @@ export class WorldScene {
   }
 
   private buildTerrainChunks(): void {
-    const { cols, rows, tiles, puddleUnderlay } = this.data;
+    this.initTerrainChunkGrid();
+  }
+
+  private initTerrainChunkGrid(): void {
+    const { cols, rows } = this.data;
 
     for (let cy = 0; cy < rows; cy += CHUNK_TILES) {
       for (let cx = 0; cx < cols; cx += CHUNK_TILES) {
         const chunk = new Container();
-        const decorGfx = new Graphics();
         const maxRow = Math.min(rows, cy + CHUNK_TILES);
         const maxCol = Math.min(cols, cx + CHUNK_TILES);
-
-        for (let row = cy; row < maxRow; row++) {
-          for (let col = cx; col < maxCol; col++) {
-            const idx = row * cols + col;
-            const tile = tiles[idx];
-            const px = col * TILE_SIZE;
-            const py = row * TILE_SIZE;
-
-            if (tile === "bridge") {
-              const waterTex = this.pickTileVariant(this.atlas.tiles.water, col, row);
-              const wSprite = new Sprite(waterTex);
-              wSprite.position.set(px, py);
-              wSprite.width = TILE_SIZE + 0.5;
-              wSprite.height = TILE_SIZE + 0.5;
-              wSprite.tint = 0x38bdf8;
-              chunk.addChild(wSprite);
-
-              decorGfx
-                .rect(px + 2, py, TILE_SIZE - 4, TILE_SIZE)
-                .fill(0x8b5a2b)
-                .rect(px + 2, py + 6, TILE_SIZE - 4, 2)
-                .fill(0x5c3a1b)
-                .rect(px + 2, py + 22, TILE_SIZE - 4, 2)
-                .fill(0x5c3a1b)
-                .rect(px + 2, py + 38, TILE_SIZE - 4, 2)
-                .fill(0x5c3a1b)
-                .rect(px, py, 5, TILE_SIZE)
-                .fill(0x4a2c11)
-                .rect(px + TILE_SIZE - 5, py, 5, TILE_SIZE)
-                .fill(0x4a2c11);
-              continue;
-            }
-
-            if (tile === "puddle") {
-              const baseTile = puddleUnderlay[idx];
-              const baseTex = this.resolveTileTexture(baseTile, col, row);
-              const baseSprite = new Sprite(baseTex);
-              baseSprite.position.set(px, py);
-              baseSprite.width = TILE_SIZE + 0.5;
-              baseSprite.height = TILE_SIZE + 0.5;
-              chunk.addChild(baseSprite);
-              this.drawPuddleOverlay(decorGfx, tiles, cols, rows, col, row, px, py);
-              continue;
-            }
-
-            const tex = this.resolveTileTexture(tile, col, row);
-            const sprite = new Sprite(tex);
-            sprite.position.set(px, py);
-            sprite.width = TILE_SIZE + 0.5;
-            sprite.height = TILE_SIZE + 0.5;
-
-            if (tile === "water") {
-              // Deeper azure pond/lake center (swim zone)
-              sprite.tint = 0x0284c7;
-            } else if (tile === "shallow") {
-              // Bright turquoise shallow rim (wade zone)
-              sprite.tint = 0x7dd3fc;
-              this.drawWaterEdgeFoam(decorGfx, tiles, cols, rows, col, row, px, py);
-            } else if (tile === "forest") {
-              sprite.tint = 0xdbeafe;
-            } else if (tile === "stone") {
-              this.drawStoneEdgeTrim(decorGfx, tiles, cols, rows, col, row, px, py);
-            } else if (tile === "sidewalk") {
-              this.drawSidewalkCurb(decorGfx, tiles, cols, rows, col, row, px, py);
-            } else if (tile === "road") {
-              this.drawRoadMarkings(decorGfx, tiles, cols, rows, col, row, px, py);
-            }
-
-            chunk.addChild(sprite);
-          }
-        }
-
-        chunk.addChild(decorGfx);
         this.groundLayer.addChild(chunk);
         this.terrainChunks.push({
           node: chunk,
+          cx,
+          cy,
+          maxCol,
+          maxRow,
           minX: cx * TILE_SIZE,
           minY: cy * TILE_SIZE,
           maxX: maxCol * TILE_SIZE,
           maxY: maxRow * TILE_SIZE,
+          built: false,
         });
       }
+    }
+    this.forceCullUpdate = true;
+  }
+
+  private populateTerrainChunk(ch: (typeof this.terrainChunks)[number]): void {
+    if (ch.built) return;
+    ch.built = true;
+
+    const { cols, rows, tiles, puddleUnderlay } = this.data;
+    const decorGfx = new Graphics();
+
+    for (let row = ch.cy; row < ch.maxRow; row++) {
+      for (let col = ch.cx; col < ch.maxCol; col++) {
+        const idx = row * cols + col;
+        const tile = tiles[idx];
+        const px = col * TILE_SIZE;
+        const py = row * TILE_SIZE;
+
+        if (tile === "bridge") {
+          const waterTex = this.pickTileVariant(this.atlas.tiles.water, col, row);
+          const wSprite = new Sprite(waterTex);
+          wSprite.position.set(px, py);
+          wSprite.width = TILE_SIZE + 0.5;
+          wSprite.height = TILE_SIZE + 0.5;
+          wSprite.tint = 0x38bdf8;
+          ch.node.addChild(wSprite);
+
+          decorGfx
+            .rect(px + 2, py, TILE_SIZE - 4, TILE_SIZE)
+            .fill(0x8b5a2b)
+            .rect(px + 2, py + 6, TILE_SIZE - 4, 2)
+            .fill(0x5c3a1b)
+            .rect(px + 2, py + 22, TILE_SIZE - 4, 2)
+            .fill(0x5c3a1b)
+            .rect(px + 2, py + 38, TILE_SIZE - 4, 2)
+            .fill(0x5c3a1b)
+            .rect(px, py, 5, TILE_SIZE)
+            .fill(0x4a2c11)
+            .rect(px + TILE_SIZE - 5, py, 5, TILE_SIZE)
+            .fill(0x4a2c11);
+          continue;
+        }
+
+        if (tile === "puddle") {
+          const baseTile = puddleUnderlay[idx];
+          const baseTex = this.resolveTileTexture(baseTile, col, row);
+          const baseSprite = new Sprite(baseTex);
+          baseSprite.position.set(px, py);
+          baseSprite.width = TILE_SIZE + 0.5;
+          baseSprite.height = TILE_SIZE + 0.5;
+          ch.node.addChild(baseSprite);
+          this.drawPuddleOverlay(decorGfx, tiles, cols, rows, col, row, px, py);
+          continue;
+        }
+
+        const tex = this.resolveTileTexture(tile, col, row);
+        const sprite = new Sprite(tex);
+        sprite.position.set(px, py);
+        sprite.width = TILE_SIZE + 0.5;
+        sprite.height = TILE_SIZE + 0.5;
+
+        const isSnowMountain = this.data.mapId === "japan" && col >= 98;
+        if (tile === "water") {
+          sprite.tint = isSnowMountain ? 0x0369a1 : 0x0284c7;
+        } else if (tile === "shallow") {
+          sprite.tint = isSnowMountain ? 0xbae6fd : 0x7dd3fc;
+          this.drawWaterEdgeFoam(decorGfx, tiles, cols, rows, col, row, px, py);
+        } else if (isSnowMountain) {
+          if (tile === "forest") {
+            sprite.tint = 0xcbd5e1;
+          } else if (tile === "meadow") {
+            sprite.tint = 0xf1f5f9;
+          } else if (tile === "grass") {
+            sprite.tint = 0xe2e8f0;
+          } else if (tile === "sand") {
+            sprite.tint = 0xe0f2fe;
+          } else if (tile === "dirt") {
+            sprite.tint = 0xdbeafe;
+            decorGfx
+              .rect(px + 4, py + 4, 8, 3)
+              .fill({ color: 0xf8fafc, alpha: 0.45 })
+              .rect(px + TILE_SIZE - 14, py + TILE_SIZE - 9, 9, 3)
+              .fill({ color: 0xe0f2fe, alpha: 0.45 });
+          }
+          if ((tile === "grass" || tile === "meadow" || tile === "forest") && (col * 13 + row * 7) % 5 === 0) {
+            decorGfx.ellipse(px + 24, py + 24, 14, 7).fill({ color: 0xffffff, alpha: 0.36 });
+          }
+        } else if (tile === "forest") {
+          sprite.tint = 0xdbeafe;
+        } else if (tile === "stone") {
+          if (this.data.mapId === "japan" && col <= 55) sprite.tint = 0xe2e8f0;
+          this.drawStoneEdgeTrim(decorGfx, tiles, cols, rows, col, row, px, py);
+        } else if (tile === "sidewalk") {
+          if (this.data.mapId === "japan" && col <= 55) sprite.tint = 0xe2e8f0;
+          this.drawSidewalkCurb(decorGfx, tiles, cols, rows, col, row, px, py);
+        } else if (tile === "road") {
+          if (this.data.mapId === "japan" && col <= 55) sprite.tint = 0xcbd5e1;
+          this.drawRoadMarkings(decorGfx, tiles, cols, rows, col, row, px, py);
+        }
+
+        ch.node.addChild(sprite);
+      }
+    }
+
+    ch.node.addChild(decorGfx);
+  }
+
+  private ensureVisibleTerrainChunksBuilt(): void {
+    const halfViewWorldW = this.app.screen.width / (2 * this.zoom);
+    const halfViewWorldH = this.app.screen.height / (2 * this.zoom);
+    const chunkSpan = CHUNK_TILES * TILE_SIZE;
+    const minX = this.camX - halfViewWorldW - chunkSpan;
+    const maxX = this.camX + halfViewWorldW + chunkSpan;
+    const minY = this.camY - halfViewWorldH - chunkSpan;
+    const maxY = this.camY + halfViewWorldH + chunkSpan;
+
+    for (const ch of this.terrainChunks) {
+      if (!ch.built && ch.maxX >= minX && ch.minX <= maxX && ch.maxY >= minY && ch.minY <= maxY) {
+        this.populateTerrainChunk(ch);
+      }
+    }
+  }
+
+  private streamNextTerrainChunks(budget = 2): void {
+    let remaining = budget;
+    while (remaining > 0) {
+      let bestChunk: (typeof this.terrainChunks)[number] | null = null;
+      let bestDistSq = Number.POSITIVE_INFINITY;
+      for (const ch of this.terrainChunks) {
+        if (ch.built) continue;
+        const cx = (ch.minX + ch.maxX) * 0.5;
+        const cy = (ch.minY + ch.maxY) * 0.5;
+        const dSq = (cx - this.camX) ** 2 + (cy - this.camY) ** 2;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          bestChunk = ch;
+        }
+      }
+      if (!bestChunk) break;
+      this.populateTerrainChunk(bestChunk);
+      remaining--;
     }
   }
 
@@ -2640,14 +2830,59 @@ export class WorldScene {
     }
   }
 
+  private mountPropNode(prop: WorldProp): void {
+    const node = this.createPropSprite(prop);
+    const halfW = this.app.screen.width / (2 * Math.max(0.6, this.zoom));
+    const halfH = this.app.screen.height / (2 * Math.max(0.6, this.zoom));
+    node.visible =
+      prop.x >= this.camX - halfW - TILE_SIZE - 240 &&
+      prop.x <= this.camX + halfW + TILE_SIZE + 240 &&
+      prop.y >= this.camY - halfH - TILE_SIZE - 80 &&
+      prop.y <= this.camY + halfH + TILE_SIZE + 380;
+    this.entityLayer.addChild(node);
+    this.propNodes.push({ node, x: prop.x, y: prop.y });
+  }
+
   private buildPropsAndBuildings(): void {
+    const halfViewW = this.app.screen.width / (2 * Math.max(0.6, this.zoom));
+    const halfViewH = this.app.screen.height / (2 * Math.max(0.6, this.zoom));
+    const minX = this.camX - halfViewW - 360;
+    const maxX = this.camX + halfViewW + 360;
+    const minY = this.camY - halfViewH - 360;
+    const maxY = this.camY + halfViewH + 360;
+
+    this.pendingProps = [];
     for (const prop of this.data.props) {
-      if (prop.kind === "food_cart") {
+      if (prop.kind === "food_cart" || prop.kind === "jp_vending_machine") {
         this.foodCartProps.push(prop);
       }
-      const node = this.createPropSprite(prop);
-      this.entityLayer.addChild(node);
-      this.propNodes.push({ node, x: prop.x, y: prop.y });
+      const inInitialView = prop.x >= minX && prop.x <= maxX && prop.y >= minY && prop.y <= maxY;
+      if (
+        inInitialView ||
+        isBuildingProp(prop.kind) ||
+        prop.kind === "food_cart" ||
+        prop.kind === "jp_vending_machine"
+      ) {
+        this.mountPropNode(prop);
+      } else {
+        this.pendingProps.push(prop);
+      }
+    }
+
+    // Sort descending by squared distance so .pop() yields nearest prop in O(1)
+    this.pendingProps.sort((a, b) => {
+      const da = (a.x - this.camX) ** 2 + (a.y - this.camY) ** 2;
+      const db = (b.x - this.camX) ** 2 + (b.y - this.camY) ** 2;
+      return db - da;
+    });
+  }
+
+  private streamNextProps(budget = 24): void {
+    let count = budget;
+    while (count > 0 && this.pendingProps.length > 0) {
+      const prop = this.pendingProps.pop()!;
+      this.mountPropNode(prop);
+      count--;
     }
   }
 
@@ -2656,16 +2891,32 @@ export class WorldScene {
     container.x = prop.x;
     container.y = prop.y;
 
-    const tex = this.atlas.props[prop.kind];
+    const isJapan = this.activeMapId === "japan";
+    const JP_GREEN_BLD_TEXTURE_OVERRIDE: Partial<Record<PropKind, BuildingKind>> = {
+      city_home_house: "jp_ryokan_inn",
+      city_collection_hall: "jp_tokyo_tower",
+      city_backpack_shop: "jp_akihabara_arcade",
+      city_clothing_shop: "jp_samurai_manor",
+      city_butcher_shop: "jp_village_machiya",
+      plains_garden_inn: "jp_snow_onsen_temple",
+      city_pharmacy: "plains_archway",
+      city_police_station: "jp_ninja_dojo",
+    };
+    const overrideKind = isJapan ? JP_GREEN_BLD_TEXTURE_OVERRIDE[prop.kind] : undefined;
+    const tex = overrideKind ? this.atlas.buildings[overrideKind] : this.atlas.props[prop.kind];
     const sprite = new Sprite(tex);
     sprite.anchor.set(0.5, 0.94);
     const isBld = isBuildingProp(prop.kind);
     sprite.scale.set(
       prop.kind === "city_collection_hall"
-        ? BUILDING_PIXEL_SCALE * 0.82
+        ? isJapan
+          ? BUILDING_PIXEL_SCALE * 0.94
+          : BUILDING_PIXEL_SCALE * 0.82
         : isBld
           ? BUILDING_PIXEL_SCALE
-          : PIXEL_SCALE,
+          : prop.kind === "jp_torii_gate"
+            ? PIXEL_SCALE * 1.15
+            : PIXEL_SCALE,
     );
     if (prop.kind === "sakura_tree" || prop.kind === "sakura_small") {
       sprite.tint = 0xffb7d5;
@@ -2702,7 +2953,21 @@ export class WorldScene {
       city_police_station: { text: "🚓 CÔNG AN PHƯỜNG", color: 0x93c5fd },
     };
 
-    const signMeta = SERVICE_SIGNS[prop.kind];
+    const JP_SERVICE_SIGNS: Partial<Record<PropKind, { text: string; color: number }>> = {
+      city_backpack_shop: { text: "🎒 TIỆM BALO AKIHABARA", color: 0xfef08a },
+      city_clothing_shop: { text: "👘 TIỆM KIMONO & GIÁP SAMURAI", color: 0xfbcfe8 },
+      city_hair_salon: { text: "💇 SALON TÓC HARAJUKU", color: 0xe9d5ff },
+      city_pharmacy: { text: "💊 DƯỢC ĐƯỜNG KANPO", color: 0x99f6e4 },
+      city_butcher_shop: { text: "🍜 QUÁN RAMEN ICHIRAKU", color: 0xfed7aa },
+      plains_garden_inn: { text: "🍣 NHÀ HÀNG OMAKASE & ONSEN", color: 0xfed7aa },
+      city_home_house: { text: "🏯 DINH THỰ RIÊNG TOKYO", color: 0xa7f3d0 },
+      city_collection_hall: { text: "🗼 THÁP BẢO TÀNG TOKYO", color: 0xfde047 },
+      city_airport: { text: "✈️ SÂN BAY NARITA (5.000🪙)", color: 0x7dd3fc },
+      city_hospital: { text: "🏥 BỆNH VIỆN TOKYO", color: 0xfecdd3 },
+      city_police_station: { text: "🚓 ĐỒN CẢNH SÁT KOBAN", color: 0x93c5fd },
+    };
+
+    const signMeta = (isJapan ? JP_SERVICE_SIGNS[prop.kind] : undefined) ?? SERVICE_SIGNS[prop.kind];
     if (signMeta) {
       const tag = new Text({
         text: signMeta.text,
@@ -2731,6 +2996,9 @@ export class WorldScene {
       prop.kind === "sakura_small" ||
       prop.kind === "momiji_tree" ||
       prop.kind === "momiji_small" ||
+      prop.kind === "jp_torii_gate" ||
+      prop.kind === "jp_bamboo_cluster" ||
+      prop.kind === "jp_snow_pine" ||
       prop.kind === "lodge" ||
       prop.kind === "hut" ||
       prop.kind === "watchtower" ||
@@ -3030,17 +3298,36 @@ export class WorldScene {
     this.worldLightsContainer.scale.set(this.zoom);
     this.worldLightsContainer.position.set(posX, posY);
 
+    const movedFar =
+      this.forceCullUpdate ||
+      Number.isNaN(this.lastCullCamX) ||
+      Math.abs(this.camX - this.lastCullCamX) >= 12 ||
+      Math.abs(this.camY - this.lastCullCamY) >= 12 ||
+      Math.abs(this.zoom - this.lastCullZoom) >= 0.005;
+    if (!movedFar) {
+      return;
+    }
+
+    this.lastCullCamX = this.camX;
+    this.lastCullCamY = this.camY;
+    this.lastCullZoom = this.zoom;
+    this.forceCullUpdate = false;
+
     const minVisibleX = this.camX - halfViewWorldW - TILE_SIZE;
     const maxVisibleX = this.camX + halfViewWorldW + TILE_SIZE;
     const minVisibleY = this.camY - halfViewWorldH - TILE_SIZE;
     const maxVisibleY = this.camY + halfViewWorldH + TILE_SIZE;
 
     for (const ch of this.terrainChunks) {
-      ch.node.visible =
+      const visible =
         ch.maxX >= minVisibleX &&
         ch.minX <= maxVisibleX &&
         ch.maxY >= minVisibleY &&
         ch.minY <= maxVisibleY;
+      ch.node.visible = visible;
+      if (visible && !ch.built) {
+        this.populateTerrainChunk(ch);
+      }
     }
 
     // Frustum-cull world entities cleanly outside the camera viewport (+sprite height/width padding)
@@ -3048,6 +3335,18 @@ export class WorldScene {
     const propMaxX = maxVisibleX + 240;
     const propMinY = minVisibleY - 80;
     const propMaxY = maxVisibleY + 380;
+
+    if (this.pendingProps.length > 0) {
+      for (let i = this.pendingProps.length - 1; i >= 0; i--) {
+        const p = this.pendingProps[i];
+        if (p.x >= propMinX && p.x <= propMaxX && p.y >= propMinY && p.y <= propMaxY) {
+          const lastIdx = this.pendingProps.length - 1;
+          this.pendingProps[i] = this.pendingProps[lastIdx];
+          this.pendingProps.pop();
+          this.mountPropNode(p);
+        }
+      }
+    }
 
     for (const pn of this.propNodes) {
       pn.node.visible =
@@ -3092,6 +3391,8 @@ export class WorldScene {
       this.app.stage.hitArea = this.app.screen;
       this.atmosphere.resize(width, height);
       this.updateResponsiveBaseZoom(width, height, false);
+      this.forceCullUpdate = true;
+      this.syncCameraTransform();
       if (this.isInJail) {
         this.jailRoom.syncCameraTransform(width, height, this.player.x, this.player.y);
       }

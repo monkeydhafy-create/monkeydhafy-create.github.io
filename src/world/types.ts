@@ -101,6 +101,12 @@ export const BUILDING_KEYS = [
   "jp_shinto_shrine",
   "jp_ninja_dojo",
   "jp_ryokan_inn",
+  "jp_tokyo_tower",
+  "jp_shinkansen_station",
+  "jp_akihabara_arcade",
+  "jp_samurai_manor",
+  "jp_village_machiya",
+  "jp_snow_onsen_temple",
   "plains_tea_house",
   "plains_garden_inn",
   "plains_riverside_tavern",
@@ -139,6 +145,12 @@ export type PropKind =
   | "sakura_small"
   | "momiji_tree"
   | "momiji_small"
+  | "jp_torii_gate"
+  | "jp_stone_lantern"
+  | "jp_bamboo_cluster"
+  | "jp_vending_machine"
+  | "jp_snow_pine"
+  | "jp_snowman_jizo"
   | "park_lantern"
   | "street_lamp"
   | "traffic_light"
@@ -217,6 +229,12 @@ export const BUILDING_META: Record<
   jp_shinto_shrine: { name: "Đền Thần Đạo Inari", tier: "landmark", isVault: true },
   jp_ninja_dojo: { name: "Võ Đường Ninja Iga", tier: "landmark", isVault: true },
   jp_ryokan_inn: { name: "Lữ Quán Suối Khoáng Ryokan", tier: "standard" },
+  jp_tokyo_tower: { name: "Tháp Tokyo SkyTree", tier: "landmark", isVault: true },
+  jp_shinkansen_station: { name: "Ga Tàu Cao Tốc Shinkansen", tier: "landmark", isVault: true },
+  jp_akihabara_arcade: { name: "Cao Ốc Neon Akihabara", tier: "landmark" },
+  jp_samurai_manor: { name: "Dinh Thự Võ Sĩ Samurai", tier: "landmark", isVault: true },
+  jp_village_machiya: { name: "Làng Cổ Thợ Rèn Samurai", tier: "standard" },
+  jp_snow_onsen_temple: { name: "Đền Tuyết Sơn Onsen", tier: "landmark", isVault: true },
   plains_tea_house: { name: "Quán Trà Ven Hồ", tier: "standard" },
   plains_garden_inn: { name: "Nhà Hàng Sân Vườn", tier: "shop", shopKind: "food" },
   plains_riverside_tavern: { name: "Quán Thủy Tạ Ven Sông", tier: "standard" },

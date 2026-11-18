@@ -8,4 +8,26 @@ export default defineConfig({
     port: 8080,
     open: true,
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          includeDependenciesRecursively: false,
+          groups: [
+            {
+              name: "vendor-pixi",
+              test: /node_modules[\\/](?:pixi\.js|@pixi)[\\/]/,
+              maxSize: 320_000,
+              priority: 20,
+            },
+            {
+              name: "vendor-misc",
+              test: /node_modules[\\/]/,
+              priority: 10,
+            },
+          ],
+        },
+      },
+    },
+  },
 });

@@ -136,7 +136,7 @@ interface PoliceOfficerAgent {
   sirenGfx: Graphics;
 }
 
-const OFFICER_SPECS: ReadonlyArray<{
+export const OFFICER_SPECS: ReadonlyArray<{
   id: string;
   name: string;
   japanName: string;
@@ -155,11 +155,18 @@ const OFFICER_SPECS: ReadonlyArray<{
   { id: "pol_red_2", name: "Đặc Nhiệm Khu Đỏ Bắc", japanName: "Đặc Nhiệm Thành Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 108, sectorMaxCol: 134 },
   { id: "pol_red_3", name: "Đặc Nhiệm Khu Đỏ Nam", japanName: "Đặc Nhiệm Thành Nam", biome: "countryside", patrolZone: "red", sectorMinCol: 112, sectorMaxCol: 138 },
   { id: "pol_red_4", name: "Đặc Nhiệm Rừng Sâu Đông", japanName: "Đặc Nhiệm Shogun Osaka", biome: "countryside", patrolZone: "red", sectorMinCol: 124, sectorMaxCol: 145 },
+  { id: "pol_red_5", name: "Đặc Nhiệm Đồn Biên Phòng", japanName: "Đặc Nhiệm Cổng Thành Iga", biome: "countryside", patrolZone: "red", sectorMinCol: 105, sectorMaxCol: 122 },
+  { id: "pol_red_6", name: "Đặc Nhiệm Thung Lũng Đỏ", japanName: "Đặc Nhiệm Hào Nước Osaka", biome: "countryside", patrolZone: "red", sectorMinCol: 114, sectorMaxCol: 132 },
+  { id: "pol_red_7", name: "Đặc Nhiệm Cơ Động Rừng Sâu", japanName: "Đặc Nhiệm Rừng Phong Đỏ", biome: "countryside", patrolZone: "red", sectorMinCol: 120, sectorMaxCol: 140 },
+  { id: "pol_red_8", name: "Đặc Nhiệm Bảo Vệ Kho Báu", japanName: "Đặc Nhiệm Nội Thành Shogun", biome: "countryside", patrolZone: "red", sectorMinCol: 128, sectorMaxCol: 145 },
 ];
 
 const PATROL_SPEED = 58;
 const INVESTIGATE_SPEED = 77;
 const CHASE_SPEED = 118;
+const JP_PATROL_SPEED = 68;
+const JP_INVESTIGATE_SPEED = 90;
+const JP_CHASE_SPEED = 134;
 const AI_THINK_INTERVAL = 0.16;
 const CATCH_RADIUS = 38;
 const LOOT_WAYPOINT_REJECT_PROB = 0.82;
@@ -290,10 +297,26 @@ export class PoliceSystem {
       const hatSprite = makeLayer();
 
       const isJapan = this.world.mapId === "japan";
-      legsSprite.tint = isJapan ? 0x0f172a : 0x1e293b;
-      torsoSprite.tint = isJapan ? 0x94a3b8 : 0xdbeafe;
-      hatSprite.tint = isJapan ? 0x0f172a : 0x1d4ed8;
-      feetSprite.tint = 0x334155;
+      if (isJapan) {
+        if (spec.patrolZone === "red") {
+          // Crimson Samurai / Oniwaban elite guard armor in Red Snow Zone
+          legsSprite.tint = 0x18181b;
+          torsoSprite.tint = 0xdc2626;
+          hatSprite.tint = 0xfacc15;
+          feetSprite.tint = 0x09090b;
+        } else {
+          // Bright Shinsengumi cyan-blue haori & deep indigo hakama in Tokyo / Samurai Zone
+          legsSprite.tint = 0x1e1b4b;
+          torsoSprite.tint = 0x38bdf8;
+          hatSprite.tint = 0xfef08a;
+          feetSprite.tint = 0x1e293b;
+        }
+      } else {
+        legsSprite.tint = 0x1e293b;
+        torsoSprite.tint = 0xdbeafe;
+        hatSprite.tint = 0x1d4ed8;
+        feetSprite.tint = 0x334155;
+      }
 
       const sirenGfx = new Graphics();
       const statusText = new Text({
@@ -415,8 +438,10 @@ export class PoliceSystem {
     const dy = py - agent.y;
     const dist = Math.hypot(dx, dy);
     const lootSightBonus = isLooting ? 45 : 0;
-    const sightRange = (agent.patrolZone === "red" ? 295 : 255) - nightFactor * 42 + lootSightBonus;
-    const hearRange = 104 + (isLooting ? 28 : 0);
+    const jpSightBonus = this.world.mapId === "japan" ? 35 : 0;
+    const sightRange =
+      (agent.patrolZone === "red" ? 295 : 255) + jpSightBonus - nightFactor * 42 + lootSightBonus;
+    const hearRange = 104 + (this.world.mapId === "japan" ? 18 : 0) + (isLooting ? 28 : 0);
 
     if (dist > sightRange) return false;
     if (dist <= hearRange) {
@@ -445,8 +470,8 @@ export class PoliceSystem {
     if (spotted) {
       agent.state = "chase";
       agent.pauseTimer = 0;
-      agent.chaseTimer = 9.0;
-      agent.investigateTimer = 11.0;
+      agent.chaseTimer = this.world.mapId === "japan" ? 11.5 : 9.0;
+      agent.investigateTimer = this.world.mapId === "japan" ? 13.0 : 11.0;
       agent.lastSeenPlayer = { x: px, y: py };
       // Predictive lead target cuts corners smoothly during chase
       const leadX = Math.max(TILE_SIZE * 3, Math.min(WORLD_WIDTH - TILE_SIZE * 3, px + pvx * 0.32));
@@ -498,12 +523,19 @@ export class PoliceSystem {
     const dist = Math.hypot(dx, dy);
     if (dist < 4) return false;
 
+    const isJapan = this.world.mapId === "japan";
     const speed =
       agent.state === "chase"
-        ? CHASE_SPEED
+        ? isJapan
+          ? JP_CHASE_SPEED
+          : CHASE_SPEED
         : agent.state === "investigate"
-          ? INVESTIGATE_SPEED
-          : PATROL_SPEED;
+          ? isJapan
+            ? JP_INVESTIGATE_SPEED
+            : INVESTIGATE_SPEED
+          : isJapan
+            ? JP_PATROL_SPEED
+            : PATROL_SPEED;
 
     const baseAngle = Math.atan2(dy, dx);
     const b = agent.turnBias;
@@ -586,8 +618,10 @@ export class PoliceSystem {
       agent.statusText.text = "?";
       agent.statusText.style.fill = "#fbbf24";
     } else {
-      agent.statusText.text = "🚓";
-      agent.statusText.style.fill = "#93c5fd";
+      agent.statusText.text =
+        this.world.mapId === "japan" ? (agent.patrolZone === "red" ? "👹" : "⚔️") : "🚓";
+      agent.statusText.style.fill =
+        this.world.mapId === "japan" && agent.patrolZone === "red" ? "#fca5a5" : "#93c5fd";
     }
   }
 

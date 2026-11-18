@@ -225,10 +225,28 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   };
 
   // Parks inside Safe Green Zone & Yellow Border:
-  carveParkBlock(15, 19, 23, 30, true);  // Park 1: Safe North Lake Park
-  carveParkBlock(3, 42, 10, 58, false);  // Park 2: Safe West Breeze Park
-  carveParkBlock(15, 42, 23, 49, false); // Park 3: Green Safe Central Plaza (Spawn!)
+  carveParkBlock(15, 19, 23, 30, true);  // Park 1: Safe North Lake Park / Tokyo Koi Zen Garden
+  carveParkBlock(3, 42, 10, 58, false);  // Park 2: Safe West Breeze Park / Asakusa Bamboo Garden
+  carveParkBlock(15, 42, 23, 49, false); // Park 3: Green Safe Central Plaza / Sakura Torii Promenade (Spawn!)
   carveParkBlock(28, 65, 36, 77, false); // Park 4: South Border Pocket Park
+
+  if (isJapan) {
+    // Japanese Zen dry-sand gravel courtyard borders in West Asakusa Bamboo Garden & North Koi Park
+    for (let r = 44; r <= 56; r++) {
+      for (let c = 4; c <= 9; c++) {
+        if (tiles[r * cols + c] === "meadow") {
+          tiles[r * cols + c] = (r + c) % 4 === 0 ? "sand" : "meadow";
+        }
+      }
+    }
+    for (let r = 20; r <= 29; r++) {
+      for (let c = 16; c <= 22; c++) {
+        if ((r === 20 || r === 29) && tiles[r * cols + c] === "meadow") {
+          tiles[r * cols + c] = "sand";
+        }
+      }
+    }
+  }
 
   // 4. City Asphalt Road Network + Cross-Plains Boulevard + Dirt Patrol Trails
   const roadNetwork: RoadNetworkMeta = {
@@ -365,8 +383,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     ? [
         {
           id: "jp-tokyo-plaza",
-          name: "Quảng Trường Tokyo (Vùng Xanh)",
-          subtitle: "Khu An Toàn Shibuya — Nơi đặt Nhà Riêng, toàn bộ Cửa Hàng & Sân Bay Narita",
+          name: "Đại Đô Thị Tokyo (Vùng Xanh)",
+          subtitle: "Khu An Toàn Shibuya – Akihabara với Tháp Tokyo, Ga Shinkansen & Tiệm Kimono",
           x: 19 * TILE_SIZE,
           y: 44 * TILE_SIZE,
           radius: 260,
@@ -375,8 +393,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
         },
         {
           id: "jp-narita-airport",
-          name: "Sân Bay Tokyo Narita",
-          subtitle: "Cửa ngõ bay về Việt Nam hoặc chuyển sang Thái Lan đổi giới tính",
+          name: "Sân Bay Narita & Ga Shinkansen",
+          subtitle: "Cửa ngõ bay về Việt Nam (5.000 Vàng) hoặc bay Thái Lan đổi giới tính",
           x: 19 * TILE_SIZE,
           y: 51 * TILE_SIZE,
           radius: 240,
@@ -385,8 +403,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
         },
         {
           id: "jp-kyoto-shrine",
-          name: "Cố Đô Kyoto & Đền Thần Đạo (Vùng Vàng)",
-          subtitle: "Vùng chiếm đa số bản đồ — Đường tuần tra & nhiều cổ vật Nhật Bản",
+          name: "Nông Thôn Samurai Cổ Trang (Vùng Vàng)",
+          subtitle: "Vùng chiếm đa số — Dinh thự Samurai, làng thợ rèn & Tuần tra Shinsengumi",
           x: 80 * TILE_SIZE,
           y: 18 * TILE_SIZE,
           radius: 260,
@@ -395,8 +413,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
         },
         {
           id: "jp-iga-ninja-village",
-          name: "Làng Ninja Iga (Vùng Đỏ Bắc)",
-          subtitle: "Khu nhà nhiều đồ Vàng & Đỏ — Đặc nhiệm tuần tra theo trục đường",
+          name: "Đèo Núi Tuyết & Làng Ninja (Vùng Đỏ Bắc)",
+          subtitle: "Giá rét khắc nghiệt làm tụt thân nhiệt & Đặc nhiệm Áo Đỏ gắt gao",
           x: 117 * TILE_SIZE,
           y: 16 * TILE_SIZE,
           radius: 280,
@@ -405,8 +423,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
         },
         {
           id: "jp-osaka-shogun-castle",
-          name: "Thành Cổ Shogun Osaka (Vùng Đỏ Đông)",
-          subtitle: "Kho báu Mạc phủ Nhật Bản — Rơi Yêu Đao Muramasa & Bảo Vật Đỏ",
+          name: "Núi Tuyết Shogun & Đền Onsen (Vùng Đỏ Đông)",
+          subtitle: "Vùng tuyết giá rét tột độ — Thành Cổ Shogun, Muramasa & Kho báu Đỏ",
           x: 135 * TILE_SIZE,
           y: 48 * TILE_SIZE,
           radius: 280,
@@ -513,40 +531,60 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   };
 
   // === ZONE 1: GREEN SAFE ZONE (col 2..31) — Home, ALL Shops, Airport, Hospital, Police (NO loot houses/chests, Trash Bins only!) ===
-  // West Block (col 5..10)
-  placeProp("city_pharmacy", 7, 13, 4, 2);
-  placeProp("city_hospital", 7, 23, 5, 3);
-  placeProp("city_clothing_shop", 7, 36, 4, 2);
-  placeProp("city_police_station", 7, 72, 4, 2);
-
-  // Center Safe Block (col 15..23) — Home House & Collection Hall side-by-side
-  placeProp("city_home_house", 16, 13, 3, 2);
-  placeProp("city_collection_hall", 21, 13, 4, 2);
-  placeProp("city_backpack_shop", 19, 36, 4, 2);
-  placeProp("city_airport", 19, 52, 5, 3);
-  placeProp("plains_garden_inn", 19, 60, 5, 2);
-  placeProp("city_hair_salon", 19, 72, 4, 2);
-
-  // East Safe Strip (col 28..31)
-  placeProp("city_butcher_shop", 29, 36, 4, 2);
-
-  // === ZONE 2: YELLOW ZONE (col 32..104 — Expanded +50% Area, Rearranged Urban East & Wide Plains) ===
   if (isJapan) {
-    // Urban East Tokyo Streets (col 32..55)
+    // Tokyo Shibuya / Harajuku / Ginza Japanese Safe Zone Layout
+    // West Block (col 5..10)
+    placeProp("city_hospital", 7, 23, 5, 3);
+    placeProp("city_backpack_shop", 7, 36, 4, 2);
+    placeProp("city_police_station", 7, 72, 4, 2);
+
+    // Center Block (col 15..23) — Ryokan Home, Museum, Kimono Pavilion, Narita Airport & Harajuku Hair
+    placeProp("city_home_house", 16, 13, 3, 2);
+    placeProp("city_collection_hall", 21, 13, 4, 2);
+    placeProp("city_clothing_shop", 19, 36, 4, 2);
+    placeProp("city_airport", 19, 52, 5, 3);
+    placeProp("city_hair_salon", 19, 60, 4, 2);
+
+    // East Safe Block (col 28..31) — Kanpo Apothecary, Tokyo Ramen & Ginza Omakase
+    placeProp("city_pharmacy", 29, 13, 4, 2);
+    placeProp("city_butcher_shop", 29, 36, 4, 2);
+    placeProp("plains_garden_inn", 29, 60, 5, 2);
+  } else {
+    // West Block (col 5..10)
+    placeProp("city_pharmacy", 7, 13, 4, 2);
+    placeProp("city_hospital", 7, 23, 5, 3);
+    placeProp("city_clothing_shop", 7, 36, 4, 2);
+    placeProp("city_police_station", 7, 72, 4, 2);
+
+    // Center Safe Block (col 15..23) — Home House & Collection Hall side-by-side
+    placeProp("city_home_house", 16, 13, 3, 2);
+    placeProp("city_collection_hall", 21, 13, 4, 2);
+    placeProp("city_backpack_shop", 19, 36, 4, 2);
+    placeProp("city_airport", 19, 52, 5, 3);
+    placeProp("plains_garden_inn", 19, 60, 5, 2);
+    placeProp("city_hair_salon", 19, 72, 4, 2);
+
+    // East Safe Strip (col 28..31)
+    placeProp("city_butcher_shop", 29, 36, 4, 2);
+  }
+
+  // === ZONE 2: YELLOW ZONE (col 32..104 — Urban East Tokyo + Samurai Countryside) ===
+  if (isJapan) {
+    // Region 1 East: Grand Tokyo Metropolis (col 32..55)
     placeProp("jp_ryokan_inn", 34, 13, 4, 2);
-    placeProp("city_post_office", 45, 13, 4, 2);
-    placeProp("city_courtyard_apt", 45, 28, 5, 3);
-    placeProp("city_arcade_house", 34, 36, 4, 2);
-    placeProp("city_green_terrace", 45, 52, 5, 3);
-    placeProp("city_terrace_houses", 34, 60, 4, 2);
-    placeProp("city_flower_shop", 45, 72, 4, 2);
-    // Expanded Kyoto Plains Clusters (col 56..104)
-    placeProp("plains_tea_house", 61, 16, 4, 2);
-    placeProp("plains_archway", 60, 36, 4, 2);
-    placeProp("plains_parasol_market", 61, 52, 5, 2);
+    placeProp("jp_shinto_shrine", 45, 13, 4, 2);
+    placeProp("jp_tokyo_tower", 45, 28, 5, 3);
+    placeProp("jp_akihabara_arcade", 34, 36, 4, 2);
+    placeProp("jp_shinkansen_station", 45, 52, 5, 3);
+    placeProp("jp_ryokan_inn", 34, 60, 4, 2);
+    placeProp("jp_akihabara_arcade", 45, 72, 4, 2);
+    // Region 2: Feudal Samurai Countryside & Estates (col 56..104)
+    placeProp("jp_samurai_manor", 61, 16, 5, 3);
+    placeProp("jp_village_machiya", 60, 36, 4, 2);
+    placeProp("jp_village_machiya", 61, 52, 4, 2);
     placeProp("jp_shinto_shrine", 80, 17, 5, 3);
-    placeProp("jp_ryokan_inn", 80, 36, 4, 2);
-    placeProp("plains_riverside_tavern", 82, 72, 4, 2);
+    placeProp("jp_samurai_manor", 80, 36, 5, 3);
+    placeProp("jp_village_machiya", 82, 72, 4, 2);
     placeProp("plains_pagoda", 97, 29, 5, 3);
     placeProp("jp_ninja_dojo", 97, 70, 4, 2);
   } else {
@@ -590,28 +628,77 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     });
   };
 
-  // Safe Central Plaza (around Spawn col 19, row 44)
-  tryStreetDecor("park_lantern", 16, 42);
-  tryStreetDecor("park_lantern", 22, 42);
-  tryStreetDecor("bench", 17, 47);
-  tryStreetDecor("bench", 21, 47);
-  tryStreetDecor("food_cart", 22, 44);
+  if (isJapan) {
+    // Tokyo Sakura & Torii Central Plaza (around Spawn col 19, row 44)
+    tryStreetDecor("jp_torii_gate", 19, 42, false);
+    tryStreetDecor("jp_torii_gate", 19, 49, false);
+    tryStreetDecor("jp_stone_lantern", 16, 42);
+    tryStreetDecor("jp_stone_lantern", 22, 42);
+    tryStreetDecor("jp_stone_lantern", 16, 48);
+    tryStreetDecor("jp_stone_lantern", 22, 48);
+    tryStreetDecor("sakura_small", 15, 47);
+    tryStreetDecor("sakura_small", 23, 47);
+    tryStreetDecor("bench", 17, 47);
+    tryStreetDecor("bench", 21, 47);
+    tryStreetDecor("food_cart", 22, 44);
 
-  // Safe North Lake Park
-  tryStreetDecor("park_lantern", 16, 20);
-  tryStreetDecor("park_lantern", 22, 20);
-  tryStreetDecor("bench", 17, 29);
-  tryStreetDecor(isJapan ? "sakura_small" : "city_tree", 16, 29);
-  tryStreetDecor(isJapan ? "sakura_small" : "city_tree_warm", 22, 29);
+    // North Koi Pond & Zen Park
+    tryStreetDecor("jp_stone_lantern", 16, 20);
+    tryStreetDecor("jp_stone_lantern", 22, 20);
+    tryStreetDecor("jp_bamboo_cluster", 15, 22);
+    tryStreetDecor("jp_bamboo_cluster", 23, 27);
+    tryStreetDecor("bench", 17, 29);
+    tryStreetDecor("sakura_small", 16, 29);
+    tryStreetDecor("sakura_small", 22, 29);
 
-  // Safe Breeze Park & Pocket Park
-  tryStreetDecor("park_lantern", 5, 44);
-  tryStreetDecor("bench", 7, 48);
-  tryStreetDecor("food_cart", 9, 46);
-  tryStreetDecor(isJapan ? "sakura_tree" : "oak_warm", 6, 53);
-  tryStreetDecor("park_lantern", 30, 67);
-  tryStreetDecor("bench", 33, 71);
-  tryStreetDecor(isJapan ? "sakura_small" : "city_tree", 30, 74);
+    // West Asakusa Bamboo & Lantern Garden + South Pocket Park
+    tryStreetDecor("jp_stone_lantern", 5, 44);
+    tryStreetDecor("jp_bamboo_cluster", 4, 48);
+    tryStreetDecor("jp_bamboo_cluster", 9, 49);
+    tryStreetDecor("jp_bamboo_cluster", 5, 55);
+    tryStreetDecor("bench", 7, 48);
+    tryStreetDecor("food_cart", 9, 46);
+    tryStreetDecor("sakura_tree", 6, 53);
+    tryStreetDecor("jp_stone_lantern", 30, 67);
+    tryStreetDecor("bench", 33, 71);
+    tryStreetDecor("sakura_small", 30, 74);
+
+    // Japanese sidewalk drink vending machines & Kyoto Shrine Torii / lanterns
+    tryStreetDecor("jp_vending_machine", 10, 37);
+    tryStreetDecor("jp_vending_machine", 23, 38);
+    tryStreetDecor("jp_vending_machine", 28, 38);
+    tryStreetDecor("jp_vending_machine", 23, 55);
+    tryStreetDecor("jp_vending_machine", 10, 26);
+    tryStreetDecor("jp_vending_machine", 27, 61);
+    tryStreetDecor("jp_torii_gate", 80, 20, false);
+    tryStreetDecor("jp_stone_lantern", 78, 20);
+    tryStreetDecor("jp_stone_lantern", 82, 20);
+    tryStreetDecor("jp_stone_lantern", 122, 18);
+    tryStreetDecor("jp_stone_lantern", 126, 18);
+  } else {
+    // Safe Central Plaza (around Spawn col 19, row 44)
+    tryStreetDecor("park_lantern", 16, 42);
+    tryStreetDecor("park_lantern", 22, 42);
+    tryStreetDecor("bench", 17, 47);
+    tryStreetDecor("bench", 21, 47);
+    tryStreetDecor("food_cart", 22, 44);
+
+    // Safe North Lake Park
+    tryStreetDecor("park_lantern", 16, 20);
+    tryStreetDecor("park_lantern", 22, 20);
+    tryStreetDecor("bench", 17, 29);
+    tryStreetDecor("city_tree", 16, 29);
+    tryStreetDecor("city_tree_warm", 22, 29);
+
+    // Safe Breeze Park & Pocket Park
+    tryStreetDecor("park_lantern", 5, 44);
+    tryStreetDecor("bench", 7, 48);
+    tryStreetDecor("food_cart", 9, 46);
+    tryStreetDecor("oak_warm", 6, 53);
+    tryStreetDecor("park_lantern", 30, 67);
+    tryStreetDecor("bench", 33, 71);
+    tryStreetDecor("city_tree", 30, 74);
+  }
 
   // Streetlamps, traffic signals & hydrants along City sidewalks
   for (const hr of roadNetwork.horizontalRoads) {
@@ -638,7 +725,16 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
       const r = rng();
       if (r < 0.032) {
         if (isJapan) {
-          tryStreetDecor(rng() < 0.72 ? "sakura_small" : "city_tree", col, row, true);
+          const jpPick = rng();
+          const jpKind: PropKind =
+            jpPick < 0.56
+              ? "sakura_small"
+              : jpPick < 0.82
+                ? "jp_bamboo_cluster"
+                : jpPick < 0.92
+                  ? "jp_stone_lantern"
+                  : "city_tree";
+          tryStreetDecor(jpKind, col, row, true);
         } else {
           tryStreetDecor(rng() < 0.55 ? "city_tree" : "city_tree_warm", col, row, true);
         }
@@ -654,21 +750,21 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     }
   }
 
-  // === ZONE 3: RED DANGER ZONE (col 105..143 — Expanded +50% Deep Compounds & Vaults) ===
+  // === ZONE 3: RED DANGER ZONE (col 105..143 — Snowy Hokkaido Mountains & Shogun Stronghold) ===
   if (isJapan) {
-    // West Iga Border Gate (col 106..114)
+    // West Snowy Iga Foothills (col 106..114)
     placeProp("jp_ninja_dojo", 110, 15, 4, 2);
-    placeProp("jp_ryokan_inn", 110, 35, 4, 2);
-    placeProp("jp_shinto_shrine", 110, 52, 4, 2);
-    placeProp("rural_log_cabin", 110, 77, 4, 2);
-    // Central Shogun Valley (col 118..130)
+    placeProp("jp_samurai_manor", 110, 35, 5, 3);
+    placeProp("jp_snow_onsen_temple", 110, 52, 5, 3);
+    placeProp("jp_village_machiya", 110, 77, 4, 2);
+    // Central Alpine Shogun Valley (col 118..130)
     placeProp("jp_shogun_castle", 124, 16, 5, 3);
     placeProp("plains_pagoda", 126, 36, 5, 3);
     placeProp("jp_ninja_dojo", 124, 49, 4, 2);
-    placeProp("rural_stilt_hut", 124, 77, 4, 2);
-    // Deep East Osaka Castle Compound (col 135..143)
+    placeProp("jp_snow_onsen_temple", 124, 77, 5, 3);
+    // Deep East Frozen Summit Fortress (col 135..143)
     placeProp("jp_shinto_shrine", 139, 15, 4, 2);
-    placeProp("jp_ryokan_inn", 139, 34, 4, 2);
+    placeProp("jp_samurai_manor", 139, 34, 5, 3);
     placeProp("jp_shogun_castle", 139, 55, 5, 3);
   } else {
     // West Red Gate (col 106..114)
@@ -834,19 +930,19 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
       const r = rng();
 
       if (zone === "countryside") {
-        // Countryside: flora heavily outnumbers buildings!
-        const bigTreeKind = isJapan ? "momiji_tree" : "oak_moss";
-        const smallTreeKind = isJapan ? "momiji_small" : "tree_small_moss";
-        const warmBigKind = isJapan ? "sakura_tree" : "oak_warm";
-        const warmSmallKind = isJapan ? "sakura_small" : "tree_small_warm";
+        // Countryside: on Japan map, alpine snowy mountain forests (Yuki-Matsu, Snow Jizo & crimson Momiji)
+        const bigTreeKind = isJapan ? (rng() < 0.25 ? "momiji_tree" : "jp_snow_pine") : "oak_moss";
+        const smallTreeKind = isJapan ? "jp_snow_pine" : "tree_small_moss";
+        const warmBigKind = isJapan ? (rng() < 0.35 ? "momiji_tree" : "jp_snow_pine") : "oak_warm";
+        const warmSmallKind = isJapan ? "momiji_small" : "tree_small_warm";
         if (tile === "forest") {
-          if (r < 0.068 && canFitMultiTile(cols, rows, collision, reserved, tiles, col, row, 3, 2)) {
+          if (r < 0.072 && canFitMultiTile(cols, rows, collision, reserved, tiles, col, row, 3, 2)) {
             placeProp(bigTreeKind, col, row, 3, 1, 0.5, 0.92);
-          } else if (r < 0.165) {
-            placeProp(smallTreeKind, col, row, 1, 1, 0.5, 0.92);
-          } else if (r < 0.205) {
-            placeProp(rng() < 0.5 ? "boulder" : "stump", col, row, 1, 1, 0.5, 0.92);
-          } else if (r < 0.28) {
+          } else if (r < 0.175) {
+            placeProp(isJapan && rng() < 0.2 ? "jp_snowman_jizo" : smallTreeKind, col, row, 1, 1, 0.5, 0.92);
+          } else if (r < 0.215) {
+            placeProp(rng() < 0.55 ? "boulder" : "stump", col, row, 1, 1, 0.5, 0.92);
+          } else if (r < 0.285) {
             props.push({
               id: propId++,
               kind: rng() < 0.5 ? "bush_a" : "bush_b",
@@ -856,13 +952,13 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
             });
           }
         } else if (tile === "grass" || tile === "meadow") {
-          if (r < 0.036 && canFitMultiTile(cols, rows, collision, reserved, tiles, col, row, 3, 2)) {
+          if (r < 0.042 && canFitMultiTile(cols, rows, collision, reserved, tiles, col, row, 3, 2)) {
             placeProp(warmBigKind, col, row, 3, 1, 0.5, 0.92);
-          } else if (r < 0.095) {
-            placeProp(warmSmallKind, col, row, 1, 1, 0.5, 0.92);
-          } else if (r < 0.125) {
+          } else if (r < 0.105) {
+            placeProp(isJapan && rng() < 0.3 ? "jp_snowman_jizo" : warmSmallKind, col, row, 1, 1, 0.5, 0.92);
+          } else if (r < 0.135) {
             placeProp(rng() < 0.5 ? "stone_small" : "stump", col, row, 1, 1, 0.5, 0.88);
-          } else if (r < 0.19) {
+          } else if (r < 0.195) {
             props.push({
               id: propId++,
               kind: rng() < 0.5 ? "bush_a" : "bush_b",
@@ -880,7 +976,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           if (r < 0.011 && canFitMultiTile(cols, rows, collision, reserved, tiles, col, row, 3, 2)) {
             placeProp(plainsBig, col, row, 3, 1, 0.5, 0.92);
           } else if (r < 0.028) {
-            placeProp(plainsSmall, col, row, 1, 1, 0.5, 0.92);
+            placeProp(isJapan && rng() < 0.32 ? "jp_bamboo_cluster" : plainsSmall, col, row, 1, 1, 0.5, 0.92);
           } else if (r < 0.038) {
             placeProp("stone_small", col, row, 1, 1, 0.5, 0.88);
           } else if (r < 0.062) {

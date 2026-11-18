@@ -19,6 +19,7 @@ import {
   GYM_BY_ID,
   HOME_STORAGE_BY_ID,
   ITEM_BY_ID,
+  LOCKED_PUZZLE_KINDS,
   MYTHIC_HARD_PITY,
   SAFEBOX_BY_ID,
   TREADMILL_BY_ID,
@@ -38,9 +39,11 @@ import {
   GOLD_LAMP_REQUIRED_COUNT,
   type CollectionSlotState,
   type ContainerLootState,
+  type ContainerPuzzleLockState,
   type FacilityUpgradeContract,
   type GridItemInstance,
   type HomeUpgradeContract,
+  type LockedPuzzleKind,
   type LootSourceType,
   type PersistedInventoryState,
   type SafeboxQuestRequirement,
@@ -152,6 +155,7 @@ const ALLOWED_SOURCE_TYPES = new Set<LootSourceType>([
   "chest_royal",
 ]);
 const ALLOWED_BIOMES = new Set<BiomeId>(["city", "plains", "countryside"]);
+const ALLOWED_PUZZLE_KINDS = new Set<LockedPuzzleKind>(LOCKED_PUZZLE_KINDS);
 
 class TamperError extends Error {
   constructor(message: string) {
@@ -950,6 +954,7 @@ export function validateSavePayload(
   }
 
   const validatedContainers: Record<string, ContainerLootState> = {};
+  const expiredContainerIds = new Set<string>();
   const rawContainers = rawInv.containers ?? {};
   if (!rawContainers || typeof rawContainers !== "object" || Array.isArray(rawContainers)) {
     throw new TamperError("Containers record invalid");
@@ -988,6 +993,7 @@ export function validateSavePayload(
     }
     if (now >= refAt) {
       // Automatically discard expired containers instead of reviving old loot
+      expiredContainerIds.add(key);
       continue;
     }
 
@@ -1002,6 +1008,42 @@ export function validateSavePayload(
       generatedAt: genAt,
       refreshAt: refAt,
     };
+  }
+
+  const validatedContainerPuzzles: Record<string, ContainerPuzzleLockState> = {};
+  if (rawInv.containerPuzzles !== undefined) {
+    if (
+      !rawInv.containerPuzzles ||
+      typeof rawInv.containerPuzzles !== "object" ||
+      Array.isArray(rawInv.containerPuzzles)
+    ) {
+      throw new TamperError("containerPuzzles record invalid");
+    }
+    for (const [cid, rawLock] of Object.entries(rawInv.containerPuzzles)) {
+      if (!cid || typeof rawLock !== "object" || rawLock === null || Array.isArray(rawLock)) {
+        if (strict) throw new TamperError("Malformed container puzzle lock");
+        continue;
+      }
+      const p = rawLock as Partial<ContainerPuzzleLockState>;
+      if (
+        typeof p.kind !== "string" ||
+        !ALLOWED_PUZZLE_KINDS.has(p.kind) ||
+        typeof p.seed !== "number" ||
+        !Number.isInteger(p.seed) ||
+        p.seed < 1 ||
+        p.seed > 0x7fffffff
+      ) {
+        if (strict) throw new TamperError("Invalid container puzzle lock fields");
+        continue;
+      }
+      if (expiredContainerIds.has(cid) || validatedContainers[cid]) {
+        continue;
+      }
+      validatedContainerPuzzles[cid] = {
+        kind: p.kind,
+        seed: p.seed,
+      };
+    }
   }
 
   const rawProfile = (obj.profile ?? {}) as Partial<SavedPlayerProfile>;
@@ -1321,6 +1363,7 @@ export function validateSavePayload(
       safeboxContract,
       collectionHall: validatedCollectionHall,
       containers: validatedContainers,
+      containerPuzzles: validatedContainerPuzzles,
       mythicPity,
       consecutiveJunk,
       nextUid,

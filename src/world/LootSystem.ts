@@ -8,6 +8,23 @@ import type { BiomeId, ItemRarity, MapId, SecurityZone } from "./types.ts";
 
 export type GridZone = "backpack" | "container" | "home" | "safebox";
 
+export const LOCKED_PUZZLE_KINDS = [
+  "wires",
+  "pipes",
+  "signal",
+  "code4",
+  "memory_cards",
+  "lockpick",
+  "timing_bar",
+] as const;
+
+export type LockedPuzzleKind = (typeof LOCKED_PUZZLE_KINDS)[number];
+
+export interface ContainerPuzzleLockState {
+  kind: LockedPuzzleKind;
+  seed: number;
+}
+
 export type LootSourceType =
   | "trash_bin"
   | "house_standard"
@@ -769,6 +786,107 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
     description: "Siêu phẩm Nhật Bản — Bảo vật thần thoại phản chiếu hào quang mặt trời.",
     iconSrc: "assets/world/items/s_jp_yata_mirror.png",
   },
+  // === 8 NEW DIVERSE COLLECTIBLE RESOURCES (VN / SHARED + JAPAN) ===
+  {
+    id: "c_copper_wire",
+    name: "Cuộn Dây Đồng Phế Liệu",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.45,
+    valueGold: 16,
+    homeBiome: "city",
+    description: "Cuộn dây đồng công trình cũ tháo gỡ từ khu phố thị.",
+    iconSrc: "assets/world/items/c_copper_wire.png",
+  },
+  {
+    id: "b_solar_powerbank",
+    name: "Sạc Dự Phòng Mặt Trời",
+    rarity: "B",
+    w: 1,
+    h: 2,
+    weightKg: 0.55,
+    valueGold: 85,
+    homeBiome: "city",
+    description: "Pin dự phòng kèm tấm thu năng lượng mặt trời nhỏ gọn.",
+    iconSrc: "assets/world/items/b_solar_powerbank.png",
+  },
+  {
+    id: "b_herbal_ginseng",
+    name: "Củ Nhân Sâm Núi Rừng",
+    rarity: "B",
+    w: 1,
+    h: 2,
+    weightKg: 0.35,
+    valueGold: 110,
+    homeBiome: "countryside",
+    description: "Dược liệu quý mọc dưới tán rừng sâu vùng nguy hiểm.",
+    iconSrc: "assets/world/items/b_herbal_ginseng.png",
+  },
+  {
+    id: "a_ancient_bronze_drum",
+    name: "Trống Đồng Cổ Đông Sơn",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 2.8,
+    valueGold: 340,
+    homeBiome: "plains",
+    description: "Cổ vật đồng thau chạm khắc hoa văn tinh xảo giá trị cao.",
+    iconSrc: "assets/world/items/a_ancient_bronze_drum.png",
+  },
+  {
+    id: "c_jp_omamori_charm",
+    name: "Bùa Bình An Omamori",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.1,
+    valueGold: 18,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Túi bùa may mắn thêu chỉ vàng nhặt ở cổng đền Kyoto.",
+    iconSrc: "assets/world/items/c_jp_omamori_charm.png",
+  },
+  {
+    id: "c_jp_origami_crane",
+    name: "Hạc Giấy Origami Dát Bạc",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.08,
+    valueGold: 22,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Hạc giấy gấp thủ công từ giấy ánh bạc truyền thống Nhật.",
+    iconSrc: "assets/world/items/c_jp_origami_crane.png",
+  },
+  {
+    id: "b_jp_daruma_doll",
+    name: "Búp Bê Cầu May Daruma Đỏ",
+    rarity: "B",
+    w: 1,
+    h: 2,
+    weightKg: 0.65,
+    valueGold: 105,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Tượng gỗ tròn Daruma tượng trưng cho ý chí kiên định.",
+    iconSrc: "assets/world/items/b_jp_daruma_doll.png",
+  },
+  {
+    id: "a_jp_katana_tsuba",
+    name: "Chắn Kiếm Tsuba Khảm Vàng",
+    rarity: "A",
+    w: 2,
+    h: 1,
+    weightKg: 0.75,
+    valueGold: 295,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Vòng chắn kiếm Samurai rèn từ sắt cổ khảm vàng thời Edo.",
+    iconSrc: "assets/world/items/a_jp_katana_tsuba.png",
+  },
   ...CONSUMABLE_CATALOG.map((c): CollectibleItemDef => ({
     id: c.inventoryItemId,
     name: c.name,
@@ -778,6 +896,7 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
     weightKg: c.weightKg,
     valueGold: Math.max(5, Math.round(c.priceGold * 0.6)),
     homeBiome: "city",
+    mapOrigin: c.mapOrigin,
     description: c.description,
     iconSrc: c.iconSrc,
     consumableId: c.id,
@@ -792,6 +911,7 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
     weightKg: g.weightKg,
     valueGold: g.valueGold !== undefined ? g.valueGold : Math.max(15, Math.round(g.priceGold * 0.5)),
     homeBiome: "city",
+    mapOrigin: g.mapOrigin,
     description: g.description,
     iconSrc: g.iconSrc,
     garmentId: g.id,
@@ -859,7 +979,8 @@ function pickRandomDistinctItems(rarity: ItemRarity, count: number): Collectible
       !it.excludeFromRandomLoot &&
       !it.backpackId &&
       !it.garmentId &&
-      !it.consumableId,
+      !it.consumableId &&
+      (!it.mapOrigin || it.mapOrigin === "vietnam"),
   );
   const copy = [...pool];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -998,12 +1119,12 @@ export function getNextTreadmillTier(curTreadmillId: string): SafeboxTierDef | n
 }
 
 const BASE_RARITY_TABLE: Record<LootSourceType, Record<ItemRarity, number>> = {
-  trash_bin: { C: 62, B: 28.75, A: 8.5, S: 0.75 },
-  house_standard: { C: 42, B: 38, A: 18, S: 2 },
-  house_landmark: { C: 20, B: 42, A: 33, S: 5 },
-  house_vault: { C: 0, B: 22, A: 70, S: 8 },
-  chest_wooden: { C: 10, B: 44, A: 40, S: 6 },
-  chest_royal: { C: 0, B: 20, A: 70, S: 10 },
+  trash_bin: { C: 64, B: 28, A: 7.8, S: 0.2 },
+  house_standard: { C: 44, B: 38, A: 17.3, S: 0.7 },
+  house_landmark: { C: 22, B: 44, A: 32.2, S: 1.8 },
+  house_vault: { C: 0, B: 28, A: 69.2, S: 2.8 },
+  chest_wooden: { C: 12, B: 46, A: 40.0, S: 2.0 },
+  chest_royal: { C: 0, B: 26, A: 70.5, S: 3.5 },
 };
 
 const COUNT_WEIGHT_TABLE: Record<LootSourceType, ReadonlyArray<{ count: number; w: number }>> = {
@@ -1165,6 +1286,7 @@ export interface PersistedInventoryState {
   safeboxContract: SafeboxUpgradeContract | null;
   collectionHall?: Record<string, CollectionSlotState>;
   containers: Record<string, ContainerLootState>;
+  containerPuzzles?: Record<string, ContainerPuzzleLockState>;
   mythicPity: number;
   consecutiveJunk: number;
   nextUid: number;
@@ -1174,15 +1296,16 @@ export const CONTAINER_COLS = 6;
 export const CONTAINER_ROWS = 6;
 export const DEFAULT_HOME_COLS = 4;
 export const DEFAULT_HOME_ROWS = 4;
-export const MYTHIC_HARD_PITY = 36;
+export const MYTHIC_HARD_PITY = 64;
 
 export const STARTER_HUNGER_CONSUMABLE_ID =
-  CONSUMABLE_CATALOG.filter((c) => c.hungerRestore > 0 && c.hpRestore === 0 && c.tempDeltaC === 0)
-    .sort((a, b) => a.priceGold - b.priceGold)[0]?.id ?? "food_energy_bar";
+  CONSUMABLE_CATALOG.filter(
+    (c) => (!c.mapOrigin || c.mapOrigin === "vietnam") && c.hungerRestore > 0 && c.hpRestore === 0 && c.tempDeltaC === 0,
+  ).sort((a, b) => a.priceGold - b.priceGold)[0]?.id ?? "food_energy_bar";
 
 export const STARTER_STAMINA_CONSUMABLE_ID =
   CONSUMABLE_CATALOG.filter(
-    (c) => c.staminaRestore > 0 && c.hungerRestore === 0 && c.hpRestore === 0 && !c.staminaBoostPct,
+    (c) => (!c.mapOrigin || c.mapOrigin === "vietnam") && c.staminaRestore > 0 && c.hungerRestore === 0 && c.hpRestore === 0 && !c.staminaBoostPct,
   ).sort((a, b) => a.priceGold - b.priceGold)[0]?.id ?? "food_electrolyte_water";
 
 export const STARTER_CONSUMABLE_IDS: readonly string[] = [
@@ -1221,6 +1344,7 @@ export function createDefaultInventoryState(): PersistedInventoryState {
     safeboxContract: generateSafeboxContract("safe_3x3"),
     collectionHall: {},
     containers: {},
+    containerPuzzles: {},
     mythicPity: 0,
     consecutiveJunk: 0,
     nextUid: starterItems.length + 1,
@@ -1332,6 +1456,12 @@ function cloneInventoryState(state: PersistedInventoryState): PersistedInventory
       Object.entries(state.containers).map(([k, c]) => [
         k,
         { ...c, items: c.items.map((it) => ({ ...it })) },
+      ]),
+    ),
+    containerPuzzles: Object.fromEntries(
+      Object.entries(state.containerPuzzles ?? {}).map(([k, p]) => [
+        k,
+        { kind: p.kind, seed: p.seed },
       ]),
     ),
     mythicPity: state.mythicPity,
@@ -1532,6 +1662,9 @@ export class InventoryManager {
     const rem = this.getContainerExpiresAt(c) - now;
     if (rem <= 0) {
       delete this.state.containers[containerId];
+      if (this.state.containerPuzzles) {
+        delete this.state.containerPuzzles[containerId];
+      }
       this.saveState();
       return null;
     }
@@ -1543,6 +1676,9 @@ export class InventoryManager {
     for (const [id, c] of Object.entries(this.state.containers)) {
       if (now >= this.getContainerExpiresAt(c)) {
         delete this.state.containers[id];
+        if (this.state.containerPuzzles) {
+          delete this.state.containerPuzzles[id];
+        }
         expiredIds.push(id);
       }
     }
@@ -1566,10 +1702,36 @@ export class InventoryManager {
     if (!c) return null;
     if (Date.now() >= this.getContainerExpiresAt(c)) {
       delete this.state.containers[containerId];
+      if (this.state.containerPuzzles) {
+        delete this.state.containerPuzzles[containerId];
+      }
       this.saveState();
       return null;
     }
     return c;
+  }
+
+  /**
+   * Returns a persistent puzzle assignment (kind + deterministic board seed) for a locked
+   * chest or vault building. Once assigned, it stays fixed even across modal closes, travel,
+   * or browser reloads until that container is unlocked and later resets on cooldown expiry.
+   */
+  public getOrAssignContainerPuzzle(containerId: string): ContainerPuzzleLockState {
+    // Ensure expired container clears any stale lock before checking
+    this.getContainer(containerId);
+    if (!this.state.containerPuzzles) {
+      this.state.containerPuzzles = {};
+    }
+    const existing = this.state.containerPuzzles[containerId];
+    if (existing) {
+      return { kind: existing.kind, seed: existing.seed };
+    }
+    const kind = LOCKED_PUZZLE_KINDS[Math.floor(Math.random() * LOCKED_PUZZLE_KINDS.length)];
+    const seed = 1 + Math.floor(Math.random() * 0x7ffffff0);
+    const created: ContainerPuzzleLockState = { kind, seed };
+    this.state.containerPuzzles[containerId] = created;
+    this.saveState();
+    return { ...created };
   }
 
   public markItemRevealed(containerId: string, uid: string): void {
@@ -1713,6 +1875,9 @@ export class InventoryManager {
     };
 
     this.state.containers[containerId] = container;
+    if (this.state.containerPuzzles) {
+      delete this.state.containerPuzzles[containerId];
+    }
     this.saveState();
     return container;
   }
@@ -2859,13 +3024,13 @@ export class InventoryManager {
 
     const base = { ...BASE_RARITY_TABLE[sourceType] };
     if (securityZone === "red") {
-      // Red zone boosts A (Gold) strongly and halves previous S (Red) bonus
+      // Red zone strongly boosts A (Gold) while keeping S (Red) rare even in deep high-risk zones
       const shiftedC = Math.round(base.C * 0.55);
       const shiftedB = Math.round(base.B * 0.3);
       base.C -= shiftedC;
       base.B -= shiftedB;
-      base.A += Math.round((shiftedC + shiftedB) * 0.81) + 12;
-      base.S += Math.round((shiftedC + shiftedB) * 0.19) + 4;
+      base.A += Math.round((shiftedC + shiftedB) * 0.96) + 12;
+      base.S += 0.8;
     }
 
     if (this.state.consecutiveJunk >= 3 && base.C > 0) {
@@ -2873,8 +3038,8 @@ export class InventoryManager {
       base.C = 0;
     }
 
-    if (this.state.mythicPity >= 26) {
-      const bonusS = (this.state.mythicPity - 25) * 7;
+    if (this.state.mythicPity >= 50) {
+      const bonusS = (this.state.mythicPity - 49) * 2.5;
       base.S += bonusS;
       base.C = Math.max(0, base.C - bonusS);
     }

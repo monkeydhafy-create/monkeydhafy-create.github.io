@@ -322,6 +322,10 @@ export class WeatherParticles {
 
     const frameTick = Math.floor(this.elapsed * 6);
 
+    const isJapaneseMap = env.mapId === "japan";
+    const vnTints = [0xffffff, 0x86efac, 0xfde68a, 0xa7f3d0];
+    const jpTints = [0xffb7d5, 0xfbcfe8, 0xfb7185, 0xfef08a];
+
     for (let i = 0; i < this.leaves.length; i++) {
       const leaf = this.leaves[i];
       if (i >= activeCount) {
@@ -334,6 +338,7 @@ export class WeatherParticles {
       leaf.p.y += (leaf.fallSpeed + Math.max(0, windVy * 0.45)) * dt;
       leaf.p.rotation += leaf.spin * (0.7 + env.windIntensity) * dt;
       leaf.p.texture = this.leafFrames[(frameTick + leaf.frameOffset) % this.leafFrames.length];
+      leaf.p.tint = isJapaneseMap ? jpTints[i % jpTints.length] : vnTints[i % vnTints.length];
       leaf.p.alpha = 0.86;
 
       this.wrapInWorldWindow(leaf.p, bounds, 80);
@@ -380,16 +385,19 @@ export class WeatherParticles {
     windVx: number,
     bounds: WorldViewBounds,
   ): void {
-    const activeCount = Math.floor(this.rainDrops.length * env.rainIntensity);
+    const snowIntensity = env.snowIntensity ?? 0;
+    const isSnow = snowIntensity > 0;
+    const intensity = isSnow ? snowIntensity : env.rainIntensity;
+    const activeCount = Math.floor(this.rainDrops.length * intensity);
     this.rainContainer.visible = activeCount > 0;
     if (activeCount === 0 && this.splashes.length === 0) {
       this.splashGraphics.visible = false;
       return;
     }
 
-    const fallVy = 620 + env.rainIntensity * 280;
-    const slantVx = windVx * 1.45;
-    const angle = Math.atan2(-slantVx, fallVy);
+    const fallVy = isSnow ? 95 + snowIntensity * 125 : 620 + env.rainIntensity * 280;
+    const slantVx = isSnow ? windVx * 0.9 : windVx * 1.45;
+    const angle = isSnow ? 0 : Math.atan2(-slantVx, fallVy);
     const winW = bounds.maxX - bounds.minX;
     const winH = bounds.maxY - bounds.minY;
 
@@ -400,19 +408,29 @@ export class WeatherParticles {
         continue;
       }
 
-      drop.p.x += slantVx * drop.speedMul * dt;
+      const snowSwayX = isSnow ? Math.sin(this.elapsed * 2.4 + i * 0.65) * 32 : 0;
+      drop.p.x += (slantVx * drop.speedMul + snowSwayX) * dt;
       drop.p.y += fallVy * drop.speedMul * dt;
       drop.p.rotation = angle;
-      drop.p.alpha = 0.35 + env.rainIntensity * 0.45;
+      if (isSnow) {
+        drop.p.scaleX = 2.0 + (i % 3) * 0.45;
+        drop.p.scaleY = 0.2 + (i % 2) * 0.08;
+        drop.p.tint = i % 3 === 0 ? 0xe0f2fe : 0xffffff;
+        drop.p.alpha = 0.62 + snowIntensity * 0.34;
+      } else {
+        drop.p.scaleX = 1;
+        drop.p.scaleY = 0.85 + (i % 4) * 0.14;
+        drop.p.tint = 0xffffff;
+        drop.p.alpha = 0.35 + env.rainIntensity * 0.45;
+      }
 
       if (drop.p.y > bounds.maxY + 30) {
-        // World-space ground rain splash stays planted at exact impact spot!
-        if (this.splashes.length < 48 && Math.random() < 0.32) {
+        if (this.splashes.length < 48 && Math.random() < (isSnow ? 0.16 : 0.32)) {
           this.splashes.push({
             x: bounds.minX + Math.random() * winW,
             y: bounds.minY + Math.random() * winH,
             age: 0,
-            duration: 0.24,
+            duration: isSnow ? 0.45 : 0.24,
           });
         }
         drop.p.y = bounds.minY - 24 - Math.random() * 40;
@@ -436,11 +454,18 @@ export class WeatherParticles {
         continue;
       }
       const p = s.age / s.duration;
-      sg.ellipse(s.x, s.y, 2 + p * 8, 1 + p * 3.5).stroke({
-        width: 1.2,
-        color: 0xbae6fd,
-        alpha: (1 - p) * 0.58,
-      });
+      if (isSnow) {
+        sg.circle(s.x, s.y, 2.5 - p * 1.4).fill({
+          color: 0xe0f2fe,
+          alpha: (1 - p) * 0.55,
+        });
+      } else {
+        sg.ellipse(s.x, s.y, 2 + p * 8, 1 + p * 3.5).stroke({
+          width: 1.2,
+          color: 0xbae6fd,
+          alpha: (1 - p) * 0.58,
+        });
+      }
     }
   }
 

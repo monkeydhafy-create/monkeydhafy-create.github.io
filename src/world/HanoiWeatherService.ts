@@ -7,7 +7,9 @@ export type WeatherCondition =
   | "fog"
   | "drizzle"
   | "rain"
-  | "storm";
+  | "storm"
+  | "snow"
+  | "blizzard";
 
 export type EnvironmentPreset =
   | "live"
@@ -19,10 +21,11 @@ export type EnvironmentPreset =
   | "windy";
 
 export interface EnvironmentState {
+  mapId?: MapId;
   preset: EnvironmentPreset;
   isLive: boolean;
   hanoiTimeText: string;
-  fractionalHour: number; // 0..24 in Asia/Ho_Chi_Minh
+  fractionalHour: number; // 0..24 in Asia/Ho_Chi_Minh or Asia/Tokyo
   temperatureC: number;
   humidityPct: number;
   cloudCoverPct: number;
@@ -33,6 +36,7 @@ export interface EnvironmentState {
   conditionLabel: string;
   sunIntensity: number; // 0..1
   rainIntensity: number; // 0..1
+  snowIntensity?: number; // 0..1
   windIntensity: number; // 0..1
   dustIntensity: number; // 0..1
   leafIntensity: number; // 0..1
@@ -174,11 +178,12 @@ export class HanoiWeatherService {
       }
       const { hour, minute, timeText } = this.getClock(this.tokyoTimeFormatter);
       const fractionalHour = hour + minute / 60;
-      // Smooth diurnal curve around Tokyo real time (15:00 peak ~24C, 03:00 cool ~16C) + random shift
+      // Japanese highland & winter-shifted temperature curve around real Tokyo clock
       const diurnalCurve = Math.sin(((fractionalHour - 9) / 24) * Math.PI * 2);
-      const temperatureC = Math.round(20 + diurnalCurve * 4 + this.jpTempOffsetC);
+      const temperatureC = Math.round(17 + diurnalCurve * 4 + this.jpTempOffsetC);
 
       return this.computeDerivedState({
+        mapId: "japan",
         preset: "live",
         isLive: true,
         hanoiTimeText: timeText,
@@ -199,6 +204,7 @@ export class HanoiWeatherService {
     const condition = this.mapWmoCondition(this.liveCode, this.liveRainMm, this.liveCloudCover);
 
     return this.computeDerivedState({
+      mapId: "vietnam",
       preset: "live",
       isLive: true,
       hanoiTimeText: timeText,
@@ -216,59 +222,66 @@ export class HanoiWeatherService {
 
   public rollJapanProceduralWeather(nowMs = Date.now()): void {
     const r = Math.random();
-    let cond: WeatherCondition = "clear";
-    if (r < 0.3) cond = "clear";
-    else if (r < 0.58) cond = "partly-cloudy";
-    else if (r < 0.73) cond = "cloudy";
-    else if (r < 0.8) cond = "fog";
-    else if (r < 0.89) cond = "drizzle";
-    else if (r < 0.97) cond = "rain";
-    else cond = "storm";
+    let cond: WeatherCondition = "snow";
+    if (r < 0.14) cond = "clear";
+    else if (r < 0.28) cond = "partly-cloudy";
+    else if (r < 0.36) cond = "cloudy";
+    else if (r < 0.44) cond = "fog";
+    else if (r < 0.5) cond = "drizzle";
+    else if (r < 0.54) cond = "rain";
+    else if (r < 0.82) cond = "snow";
+    else cond = "blizzard";
 
     this.jpCondition = cond;
     this.jpWindDeg = Math.floor(Math.random() * 360);
     if (cond === "clear") {
-      this.jpTempOffsetC = Math.round(Math.random() * 4);
-      this.jpHumidity = Math.round(48 + Math.random() * 18);
-      this.jpCloudCover = Math.round(Math.random() * 18);
-      this.jpWindSpeed = Math.round(6 + Math.random() * 10);
+      this.jpTempOffsetC = Math.round(-4 + Math.random() * 4);
+      this.jpHumidity = Math.round(45 + Math.random() * 18);
+      this.jpCloudCover = Math.round(Math.random() * 16);
+      this.jpWindSpeed = Math.round(8 + Math.random() * 10);
       this.jpRainMm = 0;
     } else if (cond === "partly-cloudy") {
-      this.jpTempOffsetC = Math.round(-1 + Math.random() * 4);
-      this.jpHumidity = Math.round(56 + Math.random() * 18);
-      this.jpCloudCover = Math.round(25 + Math.random() * 28);
-      this.jpWindSpeed = Math.round(9 + Math.random() * 14);
+      this.jpTempOffsetC = Math.round(-6 + Math.random() * 4);
+      this.jpHumidity = Math.round(54 + Math.random() * 16);
+      this.jpCloudCover = Math.round(25 + Math.random() * 26);
+      this.jpWindSpeed = Math.round(10 + Math.random() * 12);
       this.jpRainMm = 0;
     } else if (cond === "cloudy") {
-      this.jpTempOffsetC = Math.round(-2 + Math.random() * 3);
-      this.jpHumidity = Math.round(68 + Math.random() * 16);
-      this.jpCloudCover = Math.round(65 + Math.random() * 25);
-      this.jpWindSpeed = Math.round(11 + Math.random() * 14);
+      this.jpTempOffsetC = Math.round(-8 + Math.random() * 3);
+      this.jpHumidity = Math.round(66 + Math.random() * 16);
+      this.jpCloudCover = Math.round(66 + Math.random() * 24);
+      this.jpWindSpeed = Math.round(12 + Math.random() * 14);
       this.jpRainMm = 0;
     } else if (cond === "fog") {
-      this.jpTempOffsetC = Math.round(-3 + Math.random() * 2);
-      this.jpHumidity = Math.round(85 + Math.random() * 12);
-      this.jpCloudCover = Math.round(55 + Math.random() * 30);
-      this.jpWindSpeed = Math.round(3 + Math.random() * 6);
+      this.jpTempOffsetC = Math.round(-10 + Math.random() * 3);
+      this.jpHumidity = Math.round(86 + Math.random() * 10);
+      this.jpCloudCover = Math.round(60 + Math.random() * 26);
+      this.jpWindSpeed = Math.round(4 + Math.random() * 8);
       this.jpRainMm = 0;
     } else if (cond === "drizzle") {
-      this.jpTempOffsetC = Math.round(-3 + Math.random() * 2);
+      this.jpTempOffsetC = Math.round(-10 + Math.random() * 3);
       this.jpHumidity = Math.round(82 + Math.random() * 12);
       this.jpCloudCover = Math.round(74 + Math.random() * 18);
-      this.jpWindSpeed = Math.round(12 + Math.random() * 10);
+      this.jpWindSpeed = Math.round(14 + Math.random() * 10);
       this.jpRainMm = Number((0.4 + Math.random() * 0.7).toFixed(1));
     } else if (cond === "rain") {
-      this.jpTempOffsetC = Math.round(-4 + Math.random() * 2);
+      this.jpTempOffsetC = Math.round(-11 + Math.random() * 3);
       this.jpHumidity = Math.round(86 + Math.random() * 10);
       this.jpCloudCover = Math.round(82 + Math.random() * 15);
-      this.jpWindSpeed = Math.round(16 + Math.random() * 14);
-      this.jpRainMm = Number((2.2 + Math.random() * 5.0).toFixed(1));
+      this.jpWindSpeed = Math.round(18 + Math.random() * 12);
+      this.jpRainMm = Number((2.0 + Math.random() * 4.5).toFixed(1));
+    } else if (cond === "snow") {
+      this.jpTempOffsetC = Math.round(-16 + Math.random() * 4);
+      this.jpHumidity = Math.round(76 + Math.random() * 16);
+      this.jpCloudCover = Math.round(70 + Math.random() * 22);
+      this.jpWindSpeed = Math.round(14 + Math.random() * 12);
+      this.jpRainMm = 0;
     } else {
-      this.jpTempOffsetC = Math.round(-4 + Math.random() * 2);
-      this.jpHumidity = Math.round(90 + Math.random() * 8);
+      this.jpTempOffsetC = Math.round(-22 + Math.random() * 5);
+      this.jpHumidity = Math.round(85 + Math.random() * 12);
       this.jpCloudCover = 96;
-      this.jpWindSpeed = Math.round(24 + Math.random() * 16);
-      this.jpRainMm = Number((8.0 + Math.random() * 6.0).toFixed(1));
+      this.jpWindSpeed = Math.round(28 + Math.random() * 14);
+      this.jpRainMm = 0;
     }
 
     // Re-roll randomly every 3 to 5 minutes during exploration
@@ -411,6 +424,7 @@ export class HanoiWeatherService {
       | "conditionLabel"
       | "sunIntensity"
       | "rainIntensity"
+      | "snowIntensity"
       | "windIntensity"
       | "dustIntensity"
       | "leafIntensity"
@@ -434,20 +448,26 @@ export class HanoiWeatherService {
     else if (base.condition === "rain") rainIntensity = Math.max(0.68, Math.min(0.95, 0.55 + base.rainMm * 0.08));
     else if (base.condition === "storm") rainIntensity = 1.0;
 
+    let snowIntensity = 0;
+    if (base.condition === "snow") snowIntensity = 0.65;
+    else if (base.condition === "blizzard") snowIntensity = 1.0;
+
     const sunIntensity =
       Math.max(0, 1 - nightFactor) *
       Math.max(0.08, 1 - base.cloudCoverPct / 115) *
-      (1 - rainIntensity * 0.85);
+      (1 - Math.max(rainIntensity, snowIntensity * 0.85) * 0.85);
 
     const windIntensity = Math.max(0.15, Math.min(1, base.windSpeedKmh / 32));
-    const dustIntensity = Math.max(0.25, 0.4 + sunIntensity * 0.45 + windIntensity * 0.35) * (1 - rainIntensity * 0.7);
-    const leafIntensity = Math.max(0.25, 0.25 + windIntensity * 0.75);
+    const dustIntensity = Math.max(0.25, 0.4 + sunIntensity * 0.45 + windIntensity * 0.35) * (1 - Math.max(rainIntensity, snowIntensity * 0.5) * 0.7);
+    const leafIntensity = snowIntensity > 0 ? 0 : Math.max(0.25, 0.25 + windIntensity * 0.75);
 
     return {
       ...base,
+      mapId: base.mapId ?? this.activeMapId,
       conditionLabel: this.getConditionLabel(base.condition),
       sunIntensity,
       rainIntensity,
+      snowIntensity,
       windIntensity,
       dustIntensity,
       leafIntensity,
@@ -481,6 +501,10 @@ export class HanoiWeatherService {
         return "Mưa Rào";
       case "storm":
         return "Giông Bão";
+      case "snow":
+        return "Tuyết Rơi";
+      case "blizzard":
+        return "Bão Tuyết Lạnh Cóng";
     }
   }
 }

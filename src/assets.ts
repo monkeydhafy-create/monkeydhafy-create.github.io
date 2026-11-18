@@ -33,6 +33,12 @@ export const assets = [
   { alias: "bld-jp_shinto_shrine", src: "assets/world/buildings/jp_shinto_shrine.png" },
   { alias: "bld-jp_ninja_dojo", src: "assets/world/buildings/jp_ninja_dojo.png" },
   { alias: "bld-jp_ryokan_inn", src: "assets/world/buildings/jp_ryokan_inn.png" },
+  { alias: "bld-jp_tokyo_tower", src: "assets/world/buildings/jp_tokyo_tower.png" },
+  { alias: "bld-jp_shinkansen_station", src: "assets/world/buildings/jp_shinkansen_station.png" },
+  { alias: "bld-jp_akihabara_arcade", src: "assets/world/buildings/jp_akihabara_arcade.png" },
+  { alias: "bld-jp_samurai_manor", src: "assets/world/buildings/jp_samurai_manor.png" },
+  { alias: "bld-jp_village_machiya", src: "assets/world/buildings/jp_village_machiya.png" },
+  { alias: "bld-jp_snow_onsen_temple", src: "assets/world/buildings/jp_snow_onsen_temple.png" },
   { alias: "bld-plains_tea_house", src: "assets/world/buildings/plains_tea_house.png" },
   { alias: "bld-plains_garden_inn", src: "assets/world/buildings/plains_garden_inn.png" },
   { alias: "bld-plains_riverside_tavern", src: "assets/world/buildings/plains_riverside_tavern.png" },
@@ -48,6 +54,12 @@ export const assets = [
   // World-space interactive chests (item PNGs are lazy-loaded by HTML <img> inside UI modals)
   { alias: "chest-closed", src: "assets/world/chest_closed.png" },
   { alias: "chest-open", src: "assets/world/chest_open.png" },
+  { alias: "prop-jp_torii_gate", src: "assets/world/props/jp_torii_gate.png" },
+  { alias: "prop-jp_stone_lantern", src: "assets/world/props/jp_stone_lantern.png" },
+  { alias: "prop-jp_bamboo_cluster", src: "assets/world/props/jp_bamboo_cluster.png" },
+  { alias: "prop-jp_vending_machine", src: "assets/world/props/jp_vending_machine.png" },
+  { alias: "prop-jp_snow_pine", src: "assets/world/props/jp_snow_pine.png" },
+  { alias: "prop-jp_snowman_jizo", src: "assets/world/props/jp_snowman_jizo.png" },
 
   // Liberated Pixel Cup (LPC) 64x64 modular paper-doll character & clothing layers (see CREDITS_LPC.txt)
   { alias: "lpc-body_male", src: "assets/world/lpc/body_male.png" },

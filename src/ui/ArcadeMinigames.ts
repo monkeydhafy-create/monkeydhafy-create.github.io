@@ -1,6 +1,7 @@
 export type ArcadeMinigameKind = "memory_cards" | "lockpick" | "timing_bar";
 
 export type ArcadeMode = "free" | "police";
+export type ArcadeDifficulty = "normal" | "hard" | "nightmare";
 
 export const ARCADE_MINIGAME_META: Record<
   ArcadeMinigameKind,
@@ -9,38 +10,53 @@ export const ARCADE_MINIGAME_META: Record<
   memory_cards: {
     badge: "🃏 LẬT THẺ CẶP",
     title: "Lật Thẻ Ghép Cặp",
-    guideFree: "Tìm đủ 6 cặp biểu tượng giống nhau. Không giới hạn thời gian hay lượt thử!",
-    guidePolice: "Tìm đủ 6 cặp giống nhau. Chỉ được phép ghép nhầm tối đa 7 lần!",
+    guideFree: "Tìm đủ các cặp biểu tượng giống nhau. Sai quá lượt sẽ xáo lại bàn thẻ!",
+    guidePolice: "Tìm đủ các cặp giống nhau trước khi hết lượt sai cho phép!",
   },
   lockpick: {
     badge: "🔓 BẺ KHÓA CƠ HỌC",
-    title: "Căn Nhịp Bẻ Khóa 4 Chốt",
-    guideFree: "Chạm nút Đẩy Chốt (hoặc Space) đúng lúc vạch vào vùng xanh. Trượt thử lại thoải mái!",
-    guidePolice: "Đẩy trúng 4 chốt vào vùng xanh. Trượt quá 3 lần sẽ tính sai lượt kiểm tra!",
+    title: "Căn Nhịp Bẻ Khóa Chốt Thép",
+    guideFree: "Chạm Đẩy Chốt đúng lúc vào vùng xanh. Trượt tụt chốt, trượt 2 lần sập lẫy!",
+    guidePolice: "Đẩy trúng toàn bộ chốt vào vùng xanh. Trượt quá giới hạn sẽ bị bắt!",
   },
   timing_bar: {
     badge: "🎯 CHẶN THANH TRƯỢT",
     title: "Chặn Thanh Trượt Chính Xác",
-    guideFree: "Chạm nút Chặn Thanh (hoặc Space) 3 lần trúng vùng xanh mục tiêu. Sai không bị phạt!",
-    guidePolice: "Chặn trúng vùng xanh 3 lần. Trượt quá 3 lần sẽ tính sai lượt kiểm tra!",
+    guideFree: "Chạm Chặn Thanh trúng vùng xanh đủ số lần. Trượt bị tụt điểm!",
+    guidePolice: "Chặn trúng vùng xanh đủ số lần trước khi hết lượt sai!",
   },
 };
 
 export interface ArcadeSessionOptions {
   kind: ArcadeMinigameKind;
   mode: ArcadeMode;
+  difficulty?: ArcadeDifficulty;
+  seed?: number;
   boardEl: HTMLElement;
   statusEl: HTMLElement;
   onWin: () => void;
   onFail: () => void;
 }
 
-const CARD_SYMBOLS = ["💎", "🔑", "💰", "🛡️", "⚡", "🔥"];
+const ALL_CARD_SYMBOLS = ["💎", "🔑", "💰", "🛡️", "⚡", "🔥", "👑", "⚔️"];
 
-function shuffleCopy<T>(items: readonly T[]): T[] {
+function createArcadeRng(seed?: number): () => number {
+  if (typeof seed !== "number" || !Number.isFinite(seed)) {
+    return () => Math.random();
+  }
+  let s = (seed >>> 0) || 1;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffleCopy<T>(items: readonly T[], rng: () => number): T[] {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
@@ -48,6 +64,8 @@ function shuffleCopy<T>(items: readonly T[]): T[] {
 
 export class ArcadeMinigameController {
   private readonly opts: ArcadeSessionOptions;
+  private readonly difficulty: ArcadeDifficulty;
+  private readonly rng: () => number;
   private rafId: number | null = null;
   private timeoutIds: number[] = [];
   private finished = false;
@@ -56,6 +74,8 @@ export class ArcadeMinigameController {
 
   constructor(opts: ArcadeSessionOptions) {
     this.opts = opts;
+    this.difficulty = opts.difficulty ?? "normal";
+    this.rng = createArcadeRng(opts.seed);
     this.mount();
   }
 
@@ -117,10 +137,12 @@ export class ArcadeMinigameController {
     this.opts.onFail();
   }
 
-  // -------------------- 1. MEMORY CARDS (4x3 = 6 PAIRS) --------------------
+  // -------------------- 1. MEMORY CARDS (6 PAIRS NORMAL / 8 PAIRS HARD+) --------------------
 
   private mountMemoryCards(): void {
-    const cards = shuffleCopy([...CARD_SYMBOLS, ...CARD_SYMBOLS]).map((sym, idx) => ({
+    const pairCount = this.difficulty === "normal" ? 6 : 8;
+    const symbols = ALL_CARD_SYMBOLS.slice(0, pairCount);
+    let cards = shuffleCopy([...symbols, ...symbols], this.rng).map((sym, idx) => ({
       idx,
       sym,
       flipped: false,
@@ -130,16 +152,27 @@ export class ArcadeMinigameController {
     let compareLocked = false;
     let matchedPairs = 0;
     let misses = 0;
-    const maxMisses = 7;
+    const maxMisses =
+      this.opts.mode === "police"
+        ? this.difficulty === "nightmare"
+          ? 4
+          : this.difficulty === "hard"
+            ? 5
+            : 7
+        : this.difficulty === "nightmare"
+          ? 5
+          : this.difficulty === "hard"
+            ? 6
+            : 0;
 
     const grid = document.createElement("div");
     grid.className = "arc-cards-grid";
 
     const updateStatus = (extra = ""): void => {
-      if (this.opts.mode === "police") {
-        this.opts.statusEl.textContent = `🃏 Đã ghép: ${matchedPairs}/6 cặp • Sai: ${misses}/${maxMisses}${extra}`;
+      if (maxMisses > 0) {
+        this.opts.statusEl.textContent = `🃏 Đã ghép: ${matchedPairs}/${pairCount} cặp • Sai: ${misses}/${maxMisses}${extra}`;
       } else {
-        this.opts.statusEl.textContent = `🃏 Đã ghép: ${matchedPairs}/6 cặp • Không giới hạn thời gian${extra}`;
+        this.opts.statusEl.textContent = `🃏 Đã ghép: ${matchedPairs}/${pairCount} cặp • Không giới hạn thời gian${extra}`;
       }
     };
 
@@ -155,19 +188,20 @@ export class ArcadeMinigameController {
       });
     };
 
-    for (const card of cards) {
+    for (let i = 0; i < cards.length; i++) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "arc-card-btn";
       btn.textContent = "❓";
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (this.finished || compareLocked || card.flipped || card.matched) return;
+        const card = cards[i];
+        if (!card || this.finished || compareLocked || card.flipped || card.matched) return;
         card.flipped = true;
         syncButtons();
 
         if (firstIdx === null) {
-          firstIdx = card.idx;
+          firstIdx = i;
           return;
         }
 
@@ -179,7 +213,7 @@ export class ArcadeMinigameController {
           matchedPairs++;
           syncButtons();
           updateStatus(" • ✅ Khớp cặp!");
-          if (matchedPairs >= CARD_SYMBOLS.length) {
+          if (matchedPairs >= pairCount) {
             this.finishWin();
           }
           return;
@@ -188,21 +222,42 @@ export class ArcadeMinigameController {
         misses++;
         compareLocked = true;
         updateStatus(" • Chưa khớp");
-        if (this.opts.mode === "police" && misses >= maxMisses) {
+        if (maxMisses > 0 && misses >= maxMisses) {
+          if (this.opts.mode === "police") {
+            const tid = window.setTimeout(() => {
+              compareLocked = false;
+              this.finishFail();
+            }, 340);
+            this.timeoutIds.push(tid);
+            return;
+          }
+
+          // Chest / Vault hard lock: reset & reshuffle board when miss limit reached
           const tid = window.setTimeout(() => {
+            cards = shuffleCopy([...symbols, ...symbols], this.rng).map((sym, idx) => ({
+              idx,
+              sym,
+              flipped: false,
+              matched: false,
+            }));
+            firstIdx = null;
+            matchedPairs = 0;
+            misses = 0;
             compareLocked = false;
-            this.finishFail();
-          }, 360);
+            syncButtons();
+            updateStatus(" • ⚠️ Sai quá lượt — Đã xáo lại bàn thẻ!");
+          }, 480);
           this.timeoutIds.push(tid);
           return;
         }
 
+        const flipDelayMs = this.difficulty === "normal" ? 520 : 400;
         const tid = window.setTimeout(() => {
           prev.flipped = false;
           card.flipped = false;
           compareLocked = false;
           syncButtons();
-        }, 520);
+        }, flipDelayMs);
         this.timeoutIds.push(tid);
       });
       grid.appendChild(btn);
@@ -212,28 +267,35 @@ export class ArcadeMinigameController {
     this.opts.boardEl.appendChild(grid);
   }
 
-  // -------------------- 2. LOCKPICK (4 VERTICAL PIN TUMBLERS) --------------------
+  // -------------------- 2. LOCKPICK (4 PINS NORMAL / 5 PINS HARD+) --------------------
 
   private mountLockpick(): void {
-    const pinCount = 4;
-    const zoneHeightPct = 24;
+    const isHardPlus = this.difficulty !== "normal";
+    const pinCount = isHardPlus ? 5 : 4;
+    const zoneHeightPct =
+      this.difficulty === "nightmare" ? 13 : this.difficulty === "hard" ? 15 : 24;
     const pins = Array.from({ length: pinCount }, (_, i) => ({
-      targetTopPct: 14 + Math.floor(Math.random() * (86 - zoneHeightPct - 14)),
-      speed: 1.05 + i * 0.16,
+      targetTopPct: 12 + Math.floor(this.rng() * (88 - zoneHeightPct - 12)),
+      speed:
+        this.difficulty === "nightmare"
+          ? 1.52 + i * 0.28
+          : this.difficulty === "hard"
+            ? 1.38 + i * 0.25
+            : 1.05 + i * 0.16,
       locked: false,
       valuePct: 50,
     }));
     let activePin = 0;
     let misses = 0;
-    const maxMisses = 3;
-    let phase = Math.random() * Math.PI * 2;
+    const maxMisses = this.opts.mode === "police" ? (isHardPlus ? 2 : 3) : isHardPlus ? 2 : 0;
+    let phase = this.rng() * Math.PI * 2;
     let lastTs = performance.now();
 
     const wrap = document.createElement("div");
     wrap.className = "arc-lock-wrap";
 
     const chambersEl = document.createElement("div");
-    chambersEl.className = "arc-lock-chambers";
+    chambersEl.className = `arc-lock-chambers${pinCount === 5 ? " is-5-pins" : ""}`;
 
     const cursorEls: HTMLDivElement[] = [];
     const chamberEls: HTMLDivElement[] = [];
@@ -275,29 +337,36 @@ export class ArcadeMinigameController {
     this.actionBtn = actionBtn;
 
     const updateStatus = (note = ""): void => {
-      if (this.opts.mode === "police") {
+      if (maxMisses > 0) {
         this.opts.statusEl.textContent = `🔓 Đã mở: ${activePin}/${pinCount} chốt • Sai: ${misses}/${maxMisses}${note}`;
       } else {
         this.opts.statusEl.textContent = `🔓 Đã mở: ${activePin}/${pinCount} chốt • Trượt thử lại không bị phạt${note}`;
       }
     };
 
+    const syncPinStyles = (): void => {
+      for (let i = 0; i < pinCount; i++) {
+        chamberEls[i].classList.toggle("is-locked", pins[i].locked);
+        chamberEls[i].classList.toggle("is-active", i === activePin);
+        badgeEls[i].textContent = pins[i].locked ? "✓" : `#${i + 1}`;
+      }
+    };
+
     const attemptPin = (): void => {
       if (this.finished || activePin >= pinCount) return;
       const p = pins[activePin];
-      const hit = p.valuePct >= p.targetTopPct - 2 && p.valuePct <= p.targetTopPct + zoneHeightPct + 2;
+      const tol = isHardPlus ? 1 : 2;
+      const hit = p.valuePct >= p.targetTopPct - tol && p.valuePct <= p.targetTopPct + zoneHeightPct + tol;
       if (hit) {
         p.locked = true;
-        chamberEls[activePin].classList.remove("is-active");
-        chamberEls[activePin].classList.add("is-locked");
-        badgeEls[activePin].textContent = "✓";
         activePin++;
         if (activePin >= pinCount) {
+          syncPinStyles();
           updateStatus(" • ✅ Mở khóa hoàn tất!");
           this.finishWin();
           return;
         }
-        chamberEls[activePin].classList.add("is-active");
+        syncPinStyles();
         updateStatus(" • ✅ Vào khớp!");
         return;
       }
@@ -309,12 +378,28 @@ export class ArcadeMinigameController {
       }, 240);
       this.timeoutIds.push(tid);
 
+      if (isHardPlus && activePin > 0) {
+        activePin--;
+        pins[activePin].locked = false;
+        syncPinStyles();
+      }
+
       if (this.opts.mode === "police" && misses >= maxMisses) {
         updateStatus(" • ❌ Gãy thanh dò!");
         this.finishFail();
         return;
       }
-      updateStatus(" • Chưa trúng vùng xanh, căn lại!");
+
+      if (this.opts.mode === "free" && isHardPlus && misses >= maxMisses) {
+        for (const pin of pins) pin.locked = false;
+        activePin = 0;
+        misses = 0;
+        syncPinStyles();
+        updateStatus(" • 💥 Sập lẫy! Tụt về chốt #1!");
+        return;
+      }
+
+      updateStatus(isHardPlus ? " • Trượt chốt, bị tụt!" : " • Chưa trúng vùng xanh, căn lại!");
     };
 
     this.triggerActionFn = attemptPin;
@@ -347,13 +432,14 @@ export class ArcadeMinigameController {
     this.rafId = window.requestAnimationFrame(tick);
   }
 
-  // -------------------- 3. TIMING BAR (3 PRECISION STOPS) --------------------
+  // -------------------- 3. TIMING BAR (3 HITS NORMAL / 5 HITS HARD+) --------------------
 
   private mountTimingBar(): void {
-    const totalHits = 3;
+    const isHardPlus = this.difficulty !== "normal";
+    const totalHits = isHardPlus ? 5 : 3;
     let hits = 0;
     let misses = 0;
-    const maxMisses = 3;
+    const maxMisses = this.opts.mode === "police" ? (isHardPlus ? 2 : 3) : isHardPlus ? 3 : 0;
     let cursorPct = 10;
     let dir = 1;
     let targetLeftPct = 36;
@@ -392,14 +478,27 @@ export class ArcadeMinigameController {
     this.actionBtn = actionBtn;
 
     const rollZone = (): void => {
-      targetWidthPct = Math.max(16, 25 - hits * 3);
-      targetLeftPct = 12 + Math.floor(Math.random() * (88 - targetWidthPct - 12));
+      targetWidthPct =
+        this.difficulty === "nightmare"
+          ? Math.max(10, 18 - hits * 2)
+          : this.difficulty === "hard"
+            ? Math.max(12, 20 - hits * 2)
+            : Math.max(16, 25 - hits * 3);
+      targetLeftPct = 10 + Math.floor(this.rng() * (90 - targetWidthPct - 10));
       targetZone.style.left = `${targetLeftPct}%`;
       targetZone.style.width = `${targetWidthPct}%`;
     };
 
+    const syncPips = (): void => {
+      for (let i = 0; i < totalHits; i++) {
+        const hitDone = i < hits;
+        pipNodes[i].classList.toggle("is-hit", hitDone);
+        pipNodes[i].textContent = hitDone ? "✓" : `${i + 1}`;
+      }
+    };
+
     const updateStatus = (note = ""): void => {
-      if (this.opts.mode === "police") {
+      if (maxMisses > 0) {
         this.opts.statusEl.textContent = `🎯 Tiến độ: ${hits}/${totalHits} • Sai: ${misses}/${maxMisses}${note}`;
       } else {
         this.opts.statusEl.textContent = `🎯 Tiến độ: ${hits}/${totalHits} • Sai không bị phạt${note}`;
@@ -408,15 +507,18 @@ export class ArcadeMinigameController {
 
     const attemptStop = (): void => {
       if (this.finished) return;
-      const isHit = cursorPct >= targetLeftPct - 1.5 && cursorPct <= targetLeftPct + targetWidthPct + 1.5;
+      const tol = isHardPlus ? 0.8 : 1.5;
+      const isHit = cursorPct >= targetLeftPct - tol && cursorPct <= targetLeftPct + targetWidthPct + tol;
       if (isHit) {
-        pipNodes[hits].classList.add("is-hit");
-        pipNodes[hits].textContent = "✓";
         hits++;
+        syncPips();
         if (hits >= totalHits) {
           updateStatus(" • ✅ Chặn chuẩn xác!");
           this.finishWin();
           return;
+        }
+        if (isHardPlus) {
+          dir = dir === 1 ? -1 : 1;
         }
         rollZone();
         updateStatus(" • ✅ Trúng mục tiêu!");
@@ -428,12 +530,27 @@ export class ArcadeMinigameController {
       const tid = window.setTimeout(() => track.classList.remove("is-miss"), 240);
       this.timeoutIds.push(tid);
 
+      if (isHardPlus && hits > 0) {
+        hits--;
+        syncPips();
+      }
+
       if (this.opts.mode === "police" && misses >= maxMisses) {
         updateStatus(" • ❌ Trượt quá số lần!");
         this.finishFail();
         return;
       }
-      updateStatus(" • Chưa trúng vùng xanh, bấm lại!");
+
+      if (this.opts.mode === "free" && isHardPlus && misses >= maxMisses) {
+        hits = 0;
+        misses = 0;
+        syncPips();
+        rollZone();
+        updateStatus(" • 💥 Trượt 3 lần — Reset tiến độ về 0!");
+        return;
+      }
+
+      updateStatus(isHardPlus ? " • Trượt! Bị trừ 1 điểm!" : " • Chưa trúng vùng xanh, bấm lại!");
     };
 
     this.triggerActionFn = attemptStop;
@@ -451,7 +568,12 @@ export class ArcadeMinigameController {
       if (this.finished) return;
       const dt = Math.min(0.05, Math.max(0.001, (now - lastTs) / 1000));
       lastTs = now;
-      const speedPctPerSec = (95 + hits * 24) * 0.9;
+      const speedPctPerSec =
+        this.difficulty === "nightmare"
+          ? 136 + hits * 34
+          : this.difficulty === "hard"
+            ? 124 + hits * 30
+            : (95 + hits * 24) * 0.9;
       cursorPct += dir * speedPctPerSec * dt;
       if (cursorPct >= 97) {
         cursorPct = 97;
@@ -465,6 +587,7 @@ export class ArcadeMinigameController {
     };
 
     rollZone();
+    syncPips();
     updateStatus();
     wrap.append(pipsEl, track, actionBtn);
     this.opts.boardEl.appendChild(wrap);
