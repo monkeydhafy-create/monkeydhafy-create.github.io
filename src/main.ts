@@ -131,6 +131,9 @@ async function bootstrap(): Promise<void> {
       onOpenAirport: () => {
         hud?.openAirportModal();
       },
+      onOpenQuestBoard: () => {
+        hud?.openQuestBoardModal();
+      },
       onMapChanged: () => {
         hud?.handleMapChanged();
       },

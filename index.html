@@ -92,6 +92,9 @@
 
           <div class="hud-bottom hud-bottom-end">
             <div id="hud-controls" class="hud-controls">
+              <button id="btn-missions" class="hud-pill-btn hud-missions-btn" type="button" aria-label="Nhiệm vụ nâng cấp">
+                📋 Nhiệm vụ
+              </button>
               <button id="btn-quick-use" class="hud-pill-btn hud-quick-btn" type="button" aria-label="Dùng nhanh vật phẩm">
                 ⚡ Dùng nhanh
               </button>
@@ -139,6 +142,7 @@
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_clothing_shop">👔 Shop Áo</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_butcher_shop">🍜 Quán Ăn</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_pharmacy">💊 Thuốc</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_quest_guild">📜 Nhiệm Vụ</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_airport">✈️ Sân Bay</button>
             </div>
             <span class="fullmap-legend">🏠 Nhà • 🏛️ Sưu Tầm • 🏪 Balo • 👔 Áo • 💇 Tóc • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện • 🏯 Thành Cổ • ⛩️ Thần Xã</span>
@@ -531,6 +535,25 @@
           <div class="sb-footer">
             <button id="btn-sb-deliver-all" class="btn-card-primary" type="button">
               📦 Giao tất cả vật phẩm đang có
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Daily / 4-Hour Quest Guild Modal -->
+      <div id="quest-board-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="qb-title">
+        <div class="bag-card sb-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="qb-title" class="bag-title">📜 Hội Sở Nhiệm Vụ (Làm mới mỗi 4 giờ)</h2>
+              <div id="qb-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-qb-close" class="bag-close" type="button" aria-label="Đóng bảng nhiệm vụ">✕</button>
+          </div>
+          <div id="qb-list" class="sb-requirements-list"></div>
+          <div class="sb-footer">
+            <button id="btn-qb-reroll" class="btn-card-secondary" type="button">
+              🔄 Làm mới sớm (250 Vàng)
             </button>
           </div>
         </div>

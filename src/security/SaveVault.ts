@@ -51,6 +51,11 @@ import {
   type SafeboxUpgradeContract,
 } from "../world/LootSystem.ts";
 import { createDefaultSurvivalState, type StaminaBuffState, type SurvivalState } from "../world/SurvivalSystem.ts";
+import {
+  QUEST_REFRESH_INTERVAL_MS,
+  type DailyQuestBoardState,
+  type DailyQuestEntry,
+} from "../world/QuestSystem.ts";
 
 export interface SavedPlayerProfile {
   x: number;
@@ -81,6 +86,7 @@ export interface PlayerGameSaveV3 {
   ownedHairIds?: string[];
   savedOutfits?: SavedOutfitPreset[];
   policeState?: SavedPoliceState;
+  questBoard?: DailyQuestBoardState;
 }
 
 export interface SaveLoadResult {
@@ -1348,6 +1354,97 @@ export function validateSavePayload(
     };
   }
 
+  let questBoard: DailyQuestBoardState | undefined;
+  if (obj.questBoard !== undefined && obj.questBoard !== null) {
+    if (typeof obj.questBoard !== "object") {
+      throw new TamperError("Invalid questBoard object");
+    }
+    const qb = obj.questBoard as Partial<DailyQuestBoardState>;
+    if (
+      typeof qb.epochIndex !== "number" ||
+      !Number.isInteger(qb.epochIndex) ||
+      qb.epochIndex < 0 ||
+      typeof qb.nextRefreshAt !== "number" ||
+      qb.nextRefreshAt !== (qb.epochIndex + 1) * QUEST_REFRESH_INTERVAL_MS ||
+      typeof qb.rerollCount !== "number" ||
+      !Number.isInteger(qb.rerollCount) ||
+      qb.rerollCount < 0 ||
+      qb.rerollCount > 100 ||
+      (qb.mapId !== "vietnam" && qb.mapId !== "japan") ||
+      !Array.isArray(qb.quests) ||
+      qb.quests.length < 3 ||
+      qb.quests.length > 5
+    ) {
+      throw new TamperError("questBoard metadata invariant violated");
+    }
+    const validQuests: DailyQuestEntry[] = [];
+    for (const rawQ of qb.quests) {
+      if (!rawQ || typeof rawQ !== "object") {
+        throw new TamperError("Invalid quest entry");
+      }
+      const q = rawQ as Partial<DailyQuestEntry>;
+      if (
+        typeof q.id !== "string" ||
+        (q.kind !== "deliver" && q.kind !== "explore" && q.kind !== "minigame") ||
+        typeof q.title !== "string" ||
+        typeof q.description !== "string" ||
+        typeof q.difficultyScore !== "number" ||
+        !Number.isFinite(q.difficultyScore) ||
+        q.difficultyScore < 0 ||
+        q.difficultyScore > 15 ||
+        typeof q.targetCount !== "number" ||
+        !Number.isInteger(q.targetCount) ||
+        q.targetCount < 1 ||
+        q.targetCount > 10 ||
+        typeof q.progress !== "number" ||
+        !Number.isInteger(q.progress) ||
+        q.progress < 0 ||
+        q.progress > q.targetCount ||
+        typeof q.claimed !== "boolean" ||
+        !q.reward ||
+        typeof q.reward !== "object" ||
+        typeof q.reward.gold !== "number" ||
+        !Number.isInteger(q.reward.gold) ||
+        q.reward.gold < 0 ||
+        q.reward.gold > 3500 ||
+        typeof q.reward.itemQty !== "number" ||
+        !Number.isInteger(q.reward.itemQty) ||
+        q.reward.itemQty < 0 ||
+        q.reward.itemQty > 5 ||
+        (q.reward.itemId !== null && (typeof q.reward.itemId !== "string" || !ITEM_BY_ID[q.reward.itemId]))
+      ) {
+        throw new TamperError("questEntry invariant violated");
+      }
+      validQuests.push({
+        id: q.id,
+        kind: q.kind,
+        title: q.title,
+        description: q.description,
+        difficultyScore: q.difficultyScore,
+        ...(q.targetItemId ? { targetItemId: q.targetItemId } : {}),
+        ...(q.exploreTarget ? { exploreTarget: q.exploreTarget } : {}),
+        targetCount: q.targetCount,
+        progress: q.progress,
+        claimed: q.claimed,
+        reward: {
+          gold: q.reward.gold,
+          itemId: q.reward.itemId,
+          itemQty: q.reward.itemQty,
+          categoryLabel: q.reward.categoryLabel ?? "Tiền",
+        },
+      });
+    }
+    if (now < qb.nextRefreshAt) {
+      questBoard = {
+        epochIndex: qb.epochIndex,
+        nextRefreshAt: qb.nextRefreshAt,
+        rerollCount: qb.rerollCount,
+        mapId: qb.mapId,
+        quests: validQuests,
+      };
+    }
+  }
+
   return {
     schemaVersion: 3,
     inventory: {
@@ -1390,6 +1487,7 @@ export function validateSavePayload(
     ownedHairIds: Array.from(ownedHairSet),
     savedOutfits,
     policeState,
+    ...(questBoard ? { questBoard } : {}),
   };
 }
 

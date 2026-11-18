@@ -1,7 +1,7 @@
 import {
-  CONSUMABLE_BY_ID,
   AIRPORT_GENDER_CHANGE_COST,
   AIRPORT_JAPAN_FLIGHT_COST,
+  CONSUMABLE_BY_ID,
   CONSUMABLE_CATALOG,
   GARMENT_BY_ID,
   GARMENT_CATALOG,
@@ -59,6 +59,10 @@ import {
   setLoadingProgress,
   showMapTransitionOverlay,
 } from "../platform.ts";
+import {
+  QUEST_MANUAL_REROLL_COST_GOLD,
+  formatQuestCountdown,
+} from "../world/QuestSystem.ts";
 import type { PendingVaultTarget, ShopKind, WorldScene } from "../world/WorldScene.ts";
 import {
   ArcadeMinigameController,
@@ -139,6 +143,7 @@ export class Hud {
   private readonly toastTitleEl: HTMLElement;
   private readonly toastSubEl: HTMLElement;
   private readonly bagBtn: HTMLButtonElement;
+  private readonly missionsBtn: HTMLButtonElement;
   private readonly interactBarEl: HTMLElement;
   private readonly interactBtn: HTMLButtonElement;
 
@@ -201,6 +206,13 @@ export class Hud {
   private readonly safeboxTierBannerEl: HTMLElement;
   private readonly safeboxReqListEl: HTMLElement;
   private readonly safeboxDeliverAllBtn: HTMLButtonElement;
+
+  // 4-Hour Quest Board Modal
+  private readonly questBoardModalEl: HTMLElement;
+  private readonly questBoardStatsEl: HTMLElement;
+  private readonly questBoardListEl: HTMLElement;
+  private readonly questBoardCloseBtn: HTMLButtonElement;
+  private readonly questBoardRerollBtn: HTMLButtonElement;
 
   // Survival Telemetry + Blur Vignette + Hospital Overlay
   private readonly pixiContainerEl: HTMLElement;
@@ -323,6 +335,7 @@ export class Hud {
   private isShopOpen = false;
   private shopSellZone: "backpack" | "safebox" = "backpack";
   private isSafeboxModalOpen = false;
+  private isQuestBoardOpen = false;
   private safeboxOpenedFromHome = false;
   private upgradeModalMode: UpgradeKind = "safebox";
   private isWardrobeOpen = false;
@@ -392,6 +405,7 @@ export class Hud {
     this.toastTitleEl = document.getElementById("hud-toast-title")!;
     this.toastSubEl = document.getElementById("hud-toast-sub")!;
     this.bagBtn = document.getElementById("btn-bag") as HTMLButtonElement;
+    this.missionsBtn = document.getElementById("btn-missions") as HTMLButtonElement;
     this.wardrobeBtn = document.getElementById("btn-wardrobe") as HTMLButtonElement;
     this.interactBarEl = document.getElementById("interact-bar")!;
     this.interactBtn = document.getElementById("btn-interact") as HTMLButtonElement;
@@ -464,6 +478,12 @@ export class Hud {
     this.safeboxTierBannerEl = document.getElementById("sb-tier-banner")!;
     this.safeboxReqListEl = document.getElementById("sb-requirements-list")!;
     this.safeboxDeliverAllBtn = document.getElementById("btn-sb-deliver-all") as HTMLButtonElement;
+
+    this.questBoardModalEl = document.getElementById("quest-board-modal")!;
+    this.questBoardStatsEl = document.getElementById("qb-stats")!;
+    this.questBoardListEl = document.getElementById("qb-list")!;
+    this.questBoardCloseBtn = document.getElementById("btn-qb-close") as HTMLButtonElement;
+    this.questBoardRerollBtn = document.getElementById("btn-qb-reroll") as HTMLButtonElement;
 
     this.wardrobeModalEl = document.getElementById("wardrobe-modal")!;
     this.wardrobeCloseBtn = document.getElementById("btn-wardrobe-close") as HTMLButtonElement;
@@ -601,7 +621,8 @@ export class Hud {
       | "collection"
       | "fullmap"
       | "vaultpuzzle"
-      | "safebox",
+      | "safebox"
+      | "questboard",
   ): void {
     if (except !== "bag" && this.isBagOpen) {
       this.setBagOpen(false);
@@ -612,6 +633,10 @@ export class Hud {
     if (except !== "safebox" && this.isSafeboxModalOpen) {
       this.isSafeboxModalOpen = false;
       this.safeboxModalEl.classList.remove("is-open");
+    }
+    if (except !== "questboard" && this.isQuestBoardOpen) {
+      this.isQuestBoardOpen = false;
+      this.questBoardModalEl.classList.remove("is-open");
     }
     if (except !== "wardrobe" && this.isWardrobeOpen) {
       this.isWardrobeOpen = false;
@@ -908,6 +933,114 @@ export class Hud {
     this.airportTabGenderBtn.setAttribute("aria-selected", String(!isFlight));
     this.airportFlightPanelEl.classList.toggle("is-hidden", !isFlight);
     this.airportGenderPanelEl.classList.toggle("is-hidden", isFlight);
+  }
+
+  public openQuestBoardModal(): void {
+    this.closeAllModals("questboard");
+    this.isQuestBoardOpen = true;
+    this.questBoardModalEl.classList.add("is-open");
+    this.renderQuestBoardModal();
+  }
+
+  private renderQuestBoardModal(): void {
+    const board = this.scene.getDailyQuestBoard();
+    const inv = this.scene.inventory;
+    const remMs = Math.max(0, board.nextRefreshAt - Date.now());
+    const claimedCount = board.quests.filter((q) => q.claimed).length;
+
+    this.questBoardStatsEl.replaceChildren();
+    for (const txt of [
+      `⏳ Làm mới sau: ${formatQuestCountdown(remMs)}`,
+      `✅ Hoàn thành: ${claimedCount}/${board.quests.length}`,
+      `💰 ${inv.getGold().toLocaleString("vi-VN")} Vàng`,
+    ]) {
+      const pill = document.createElement("span");
+      pill.className = "bag-stat-pill";
+      pill.textContent = txt;
+      this.questBoardStatsEl.appendChild(pill);
+    }
+
+    this.questBoardRerollBtn.textContent = `🔄 Làm mới sớm (${QUEST_MANUAL_REROLL_COST_GOLD} Vàng)`;
+    this.questBoardRerollBtn.disabled = inv.getGold() < QUEST_MANUAL_REROLL_COST_GOLD;
+
+    this.questBoardListEl.replaceChildren();
+    for (const q of board.quests) {
+      const row = document.createElement("div");
+      const isReady = q.progress >= q.targetCount;
+      row.className = `sb-req-row${q.claimed || isReady ? " is-complete" : ""}`;
+
+      const meta = document.createElement("div");
+      meta.className = "sb-req-meta";
+
+      const title = document.createElement("div");
+      title.className = "sb-req-name";
+      title.textContent = `${q.title} • Độ khó ${q.difficultyScore.toFixed(1)}★`;
+
+      const desc = document.createElement("div");
+      desc.className = "qb-card-meta";
+      desc.textContent = q.description;
+
+      const rewardItemDef = q.reward.itemId ? ITEM_BY_ID[q.reward.itemId] : null;
+      const rewardPill = document.createElement("div");
+      rewardPill.className = `qb-reward-pill${q.reward.categoryLabel === "Đồ Đỏ (S)" ? " is-red" : ""}`;
+      rewardPill.textContent = rewardItemDef
+        ? `🎁 Thưởng [${q.reward.categoryLabel}]: +${q.reward.gold.toLocaleString("vi-VN")} Vàng & ${q.reward.itemQty}× ${rewardItemDef.name}`
+        : `🎁 Thưởng [Tiền]: +${q.reward.gold.toLocaleString("vi-VN")} Vàng`;
+
+      const sub = document.createElement("div");
+      sub.className = "sb-req-sub";
+      if (q.kind === "deliver" && q.targetItemId && !q.claimed) {
+        const owned = inv.countItemAcrossZones(q.targetItemId).total;
+        sub.textContent = `Tiến độ: ${q.progress}/${q.targetCount} • Đang giữ: ${owned}`;
+      } else {
+        sub.textContent = `Tiến độ: ${q.progress}/${q.targetCount}`;
+      }
+
+      const bar = document.createElement("div");
+      bar.className = "sb-req-bar";
+      const fill = document.createElement("div");
+      fill.className = "sb-req-bar-fill";
+      fill.style.width = `${Math.min(100, (q.progress / q.targetCount) * 100)}%`;
+      bar.appendChild(fill);
+
+      meta.append(title, desc, rewardPill, sub, bar);
+
+      const act = document.createElement("div");
+      act.className = "sb-req-actions";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      if (q.claimed) {
+        btn.className = "btn-card-secondary";
+        btn.textContent = "✅ Đã nhận";
+        btn.disabled = true;
+      } else if (isReady) {
+        btn.className = "btn-card-primary";
+        btn.textContent = "🎁 Nhận thưởng";
+      } else if (q.kind === "deliver" && q.targetItemId) {
+        const owned = inv.countItemAcrossZones(q.targetItemId).total;
+        btn.className = owned > 0 ? "btn-card-primary" : "btn-card-secondary";
+        btn.textContent = owned > 0 ? `📦 Giao đồ (${owned})` : "⏳ Thiếu đồ";
+        btn.disabled = owned <= 0;
+      } else {
+        btn.className = "btn-card-secondary";
+        btn.textContent = "⏳ Đang làm";
+        btn.disabled = true;
+      }
+
+      btn.addEventListener("click", () => {
+        const res = this.scene.deliverOrClaimDailyQuest(q.id);
+        this.showDiscoveryToast(
+          res.ok ? "📜 Nhiệm vụ 4 giờ" : "Chưa thể hoàn thành",
+          res.message,
+        );
+        this.refreshBagBadge();
+        this.renderQuestBoardModal();
+      });
+
+      act.appendChild(btn);
+      row.append(meta, act);
+      this.questBoardListEl.appendChild(row);
+    }
   }
 
   public openCollectionModal(): void {
@@ -1303,6 +1436,9 @@ export class Hud {
     } else if (target.type === "airport") {
       nextClass = "btn-interact is-building";
       nextText = `✈️ Check-in ${target.name} [E]`;
+    } else if (target.type === "quest") {
+      nextClass = "btn-interact is-shop";
+      nextText = `📜 Vào ${target.name} [E]`;
     } else if (target.type === "jail_minigame") {
       nextClass = "btn-interact is-jail";
       nextText = target.label;
@@ -1672,6 +1808,20 @@ export class Hud {
       if (e.target === this.safeboxModalEl) this.closeAllModals();
     });
 
+    this.questBoardCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+    });
+    this.questBoardModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.questBoardModalEl) this.closeAllModals();
+    });
+    this.questBoardRerollBtn.addEventListener("click", () => {
+      const res = this.scene.rerollDailyQuestBoard();
+      this.showDiscoveryToast(res.ok ? "🔄 Làm mới nhiệm vụ" : "Không đủ Vàng", res.message);
+      this.renderQuestBoardModal();
+    });
+
     this.safeboxDeliverAllBtn.addEventListener("click", () => {
       const atHome = this.safeboxOpenedFromHome || this.scene.isAtHome();
       const labelMap: Record<UpgradeKind, string> = {
@@ -1715,6 +1865,17 @@ export class Hud {
       this.selectedShopUid = null;
       this.refreshBagBadge();
       this.renderShopModal();
+    });
+
+    this.missionsBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.missionsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
+      if (this.isSafeboxModalOpen) {
+        this.closeAllModals();
+      } else {
+        this.openSafeboxModal(this.upgradeModalMode);
+      }
     });
 
     this.wardrobeBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -2102,6 +2263,7 @@ export class Hud {
       plains_garden_inn: { color: "#fb923c", label: isJapanMap ? "🍣 Omakase" : "🍜 Nhà Hàng", textColor: "#fed7aa" },
       plains_pagoda: { color: "#f59e0b", label: "⛩️ Chùa Cổ", textColor: "#fde68a" },
       city_airport: { color: "#38bdf8", label: isJapanMap ? "✈️ Narita" : "✈️ Sân Bay", textColor: "#bae6fd" },
+      city_quest_guild: { color: "#facc15", label: isJapanMap ? "📜 Ủy Thác" : "📜 Nhiệm Vụ", textColor: "#fef08a" },
       city_police_station: { color: "#2563eb", label: isJapanMap ? "🚓 Koban" : "🚓 Phường", textColor: "#93c5fd" },
       city_hospital: { color: "#f43f5e", label: "🏥 Bệnh Viện", textColor: "#fecdd3" },
       jp_ryokan_inn: { color: "#f97316", label: "🏮 Lữ Quán", textColor: "#fed7aa" },
@@ -3388,6 +3550,40 @@ export class Hud {
     this.upTabTreadmillBtn.classList.toggle("is-active", mode === "treadmill");
 
     const inv = this.scene.inventory;
+    const formatTabProgress = (
+      icon: string,
+      name: string,
+      reqs: ReadonlyArray<{ deliveredCount: number; requiredCount: number }> | null | undefined,
+      hasNext: boolean,
+    ): string => {
+      if (!hasNext || !reqs) return `${icon} ${name} (MAX)`;
+      const done = reqs.filter((r) => r.deliveredCount >= r.requiredCount).length;
+      return `${icon} ${name} (${done}/${reqs.length})`;
+    };
+    this.upTabSafeboxBtn.textContent = formatTabProgress(
+      "🔐",
+      "Safebox",
+      inv.getSafeboxContract()?.requirements,
+      Boolean(getNextSafeboxTier(inv.getSafeboxTier().id)),
+    );
+    this.upTabHomeBtn.textContent = formatTabProgress(
+      "🏠",
+      "Kho Nhà",
+      inv.getHomeContract()?.requirements,
+      Boolean(getNextHomeTier(inv.getHomeTier().id)),
+    );
+    this.upTabGymBtn.textContent = formatTabProgress(
+      "🏋️",
+      "Phòng Gym",
+      inv.getGymContract()?.requirements,
+      Boolean(getNextGymTier(inv.getGymTier().id)),
+    );
+    this.upTabTreadmillBtn.textContent = formatTabProgress(
+      "🏃",
+      "Máy Chạy Bộ",
+      inv.getTreadmillContract()?.requirements,
+      Boolean(getNextTreadmillTier(inv.getTreadmillTier().id)),
+    );
     const viewCfg =
       mode === "home"
         ? (() => {

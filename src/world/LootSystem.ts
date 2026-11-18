@@ -2514,6 +2514,24 @@ export class InventoryManager {
     return { total: backpack + safebox + home, backpack, safebox, home };
   }
 
+  public consumeItemsPreferred(itemId: string, count: number): number {
+    let removed = 0;
+    const goal = Math.max(0, Math.floor(count));
+    while (removed < goal) {
+      if (!this.removeOneItemByIdPreferred(itemId)) break;
+      removed += 1;
+    }
+    if (removed > 0) this.saveState();
+    return removed;
+  }
+
+  public addGold(amount: number): void {
+    const add = Math.max(0, Math.floor(amount));
+    if (add <= 0) return;
+    this.state.gold += add;
+    this.saveState();
+  }
+
   private removeOneItemByIdPreferred(itemId: string): "backpack" | "safebox" | "home" | null {
     for (const [zone, list] of [
       ["backpack", this.state.backpackItems],

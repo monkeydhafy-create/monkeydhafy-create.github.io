@@ -1890,6 +1890,11 @@ button {
   color: #e0f2fe !important;
 }
 
+.hud-missions-btn {
+  border-color: rgba(250, 204, 21, 0.58) !important;
+  color: #fef08a !important;
+}
+
 /* Quick-Use Radial 6-Slot Wheel */
 .quick-wheel-modal {
   position: fixed;
@@ -4113,4 +4118,29 @@ button {
     min-height: 68px;
     font-size: 20px;
   }
+}
+
+.qb-card-meta {
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.qb-reward-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  color: #fde68a;
+  margin-top: 4px;
+}
+
+.qb-reward-pill.is-red {
+  border-color: rgba(239, 68, 68, 0.65);
+  color: #fecaca;
 }

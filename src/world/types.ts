@@ -97,6 +97,7 @@ export const BUILDING_KEYS = [
   "city_home_house",
   "city_collection_hall",
   "city_airport",
+  "city_quest_guild",
   "jp_shogun_castle",
   "jp_shinto_shrine",
   "jp_ninja_dojo",
@@ -200,7 +201,7 @@ export const BUILDING_META: Record<
   BuildingKind,
   {
     name: string;
-    tier: "standard" | "landmark" | "shop" | "home" | "collection" | "airport" | "police";
+    tier: "standard" | "landmark" | "shop" | "home" | "collection" | "airport" | "police" | "quest";
     isVault?: boolean;
     shopKind?: "backpack" | "clothing" | "food" | "hair" | "pharmacy";
   }
@@ -225,6 +226,7 @@ export const BUILDING_META: Record<
   city_home_house: { name: "Nhà Riêng (Kho Vĩnh Viễn)", tier: "home" },
   city_collection_hall: { name: "Phòng Sưu Tầm Đồ Đỏ", tier: "collection" },
   city_airport: { name: "Sân Bay Quốc Tế", tier: "airport" },
+  city_quest_guild: { name: "Hội Sở Nhiệm Vụ (4 Giờ)", tier: "quest" },
   jp_shogun_castle: { name: "Lâu Đài Shogun Osaka", tier: "landmark", isVault: true },
   jp_shinto_shrine: { name: "Đền Thần Đạo Inari", tier: "landmark", isVault: true },
   jp_ninja_dojo: { name: "Võ Đường Ninja Iga", tier: "landmark", isVault: true },

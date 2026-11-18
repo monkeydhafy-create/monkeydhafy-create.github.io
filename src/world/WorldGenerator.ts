@@ -545,8 +545,9 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("city_airport", 19, 52, 5, 3);
     placeProp("city_hair_salon", 19, 60, 4, 2);
 
-    // East Safe Block (col 28..31) — Kanpo Apothecary, Tokyo Ramen & Ginza Omakase
+    // East Safe Block (col 28..31) — Kanpo Apothecary, Quest Guild, Tokyo Ramen & Ginza Omakase
     placeProp("city_pharmacy", 29, 13, 4, 2);
+    placeProp("city_quest_guild", 29, 23, 4, 2);
     placeProp("city_butcher_shop", 29, 36, 4, 2);
     placeProp("plains_garden_inn", 29, 60, 5, 2);
   } else {
@@ -565,6 +566,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("city_hair_salon", 19, 72, 4, 2);
 
     // East Safe Strip (col 28..31)
+    placeProp("city_quest_guild", 29, 13, 4, 2);
     placeProp("city_butcher_shop", 29, 36, 4, 2);
   }
 

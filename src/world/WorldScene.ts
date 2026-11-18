@@ -85,6 +85,12 @@ import {
 import { generateOpenWorld } from "./WorldGenerator.ts";
 import { JAIL_HEIGHT, JAIL_WIDTH, JailRoom } from "./JailRoom.ts";
 import { PoliceSystem, type PoliceOfficerMarker } from "./PoliceSystem.ts";
+import {
+  QUEST_MANUAL_REROLL_COST_GOLD,
+  generateDailyQuestBoard,
+  type DailyQuestBoardState,
+  type ExploreTargetKind,
+} from "./QuestSystem.ts";
 import { WeatherParticles } from "./WeatherParticles.ts";
 
 interface RippleEffect {
@@ -170,6 +176,10 @@ export type NearbyInteraction =
       name: string;
     }
   | {
+      type: "quest";
+      name: string;
+    }
+  | {
       type: "jail_minigame";
       stationId: string;
       kind: ArcadeMinigameKind;
@@ -199,6 +209,7 @@ export interface WorldCallbacks {
   onOpenHomeStorage?: () => void;
   onOpenCollectionHall?: () => void;
   onOpenAirport?: () => void;
+  onOpenQuestBoard?: () => void;
   onMapChanged?: (activeMapId: MapId) => void;
   onConsumeCompleted?: (title: string, message: string) => void;
   onPoliceChallenge?: (officer: { id: string; name: string; biome: BiomeId; zone: SecurityZone }) => void;
@@ -292,6 +303,7 @@ export class WorldScene {
   private isSceneReady = false;
 
   private survival: SurvivalState;
+  private questBoard: DailyQuestBoardState;
   private equipment: EquippedGear;
   private savedOutfits: SavedOutfitPreset[];
   private hairId: string;
@@ -337,6 +349,13 @@ export class WorldScene {
     this.survival = initialSave?.survival
       ? { ...initialSave.survival }
       : createDefaultSurvivalState();
+    this.questBoard =
+      initialSave?.questBoard && Date.now() < initialSave.questBoard.nextRefreshAt
+        ? {
+            ...initialSave.questBoard,
+            quests: initialSave.questBoard.quests.map((q) => ({ ...q, reward: { ...q.reward } })),
+          }
+        : generateDailyQuestBoard(this.activeMapId);
     this.equipment = initialSave?.equipment
       ? { ...initialSave.equipment }
       : createDefaultEquippedGear();
@@ -541,6 +560,7 @@ export class WorldScene {
         globalIgnoreUntil: this.globalPoliceIgnoreUntil,
         pendingArrestOfficerId: this.activePoliceChallengeOfficerId,
       },
+      questBoard: this.questBoard,
     };
   }
 
@@ -1644,6 +1664,7 @@ export class WorldScene {
       city_butcher_shop: "🍜 Quán Ramen Ichiraku",
       city_pharmacy: "💊 Dược Đường Kanpo",
       city_airport: "✈️ Sân Bay Narita",
+      city_quest_guild: "📜 Bảng Ủy Thác Tokyo",
     };
     const label = (this.activeMapId === "japan" ? jpNames[kind] : undefined) ?? BUILDING_META[kind].name;
     const prop = this.data.props.find((p) => p.kind === kind);
@@ -1698,6 +1719,116 @@ export class WorldScene {
     );
   }
 
+  public getDailyQuestBoard(): DailyQuestBoardState {
+    if (Date.now() >= this.questBoard.nextRefreshAt) {
+      this.questBoard = generateDailyQuestBoard(this.activeMapId);
+      this.callbacks.onRequestSave?.(true);
+    }
+    return this.questBoard;
+  }
+
+  public rerollDailyQuestBoard(): { ok: boolean; message: string } {
+    this.getDailyQuestBoard();
+    if (!this.inventory.trySpendGold(QUEST_MANUAL_REROLL_COST_GOLD)) {
+      return {
+        ok: false,
+        message: `Cần ${QUEST_MANUAL_REROLL_COST_GOLD} Vàng để làm mới bảng nhiệm vụ sớm.`,
+      };
+    }
+    this.questBoard = generateDailyQuestBoard(
+      this.activeMapId,
+      Date.now(),
+      this.questBoard.rerollCount + 1,
+    );
+    this.callbacks.onRequestSave?.(true);
+    return { ok: true, message: "🔄 Đã làm mới danh sách nhiệm vụ 4 giờ!" };
+  }
+
+  public deliverOrClaimDailyQuest(questId: string): { ok: boolean; message: string } {
+    const board = this.getDailyQuestBoard();
+    const q = board.quests.find((entry) => entry.id === questId);
+    if (!q) return { ok: false, message: "Không tìm thấy nhiệm vụ." };
+    if (q.claimed) return { ok: false, message: "Nhiệm vụ này đã nhận thưởng rồi." };
+
+    if (q.kind === "deliver" && q.progress < q.targetCount) {
+      if (!q.targetItemId) return { ok: false, message: "Vật phẩm nhiệm vụ không hợp lệ." };
+      const counts = this.inventory.countItemAcrossZones(q.targetItemId);
+      if (counts.total <= 0) {
+        return { ok: false, message: "Bạn chưa có vật phẩm cần giao trong Balo, Safebox hay Kho Nhà." };
+      }
+      const needed = q.targetCount - q.progress;
+      const delivered = this.inventory.consumeItemsPreferred(q.targetItemId, Math.min(needed, counts.total));
+      q.progress = Math.min(q.targetCount, q.progress + delivered);
+      if (q.progress < q.targetCount) {
+        this.callbacks.onRequestSave?.(true);
+        return {
+          ok: true,
+          message: `📦 Đã giao ${delivered} món (${q.progress}/${q.targetCount}). Cần thêm ${q.targetCount - q.progress}!`,
+        };
+      }
+    }
+
+    if (q.progress < q.targetCount) {
+      return { ok: false, message: `Chưa hoàn thành tiến độ (${q.progress}/${q.targetCount}).` };
+    }
+
+    q.claimed = true;
+    if (q.reward.gold > 0) {
+      this.inventory.addGold(q.reward.gold);
+    }
+
+    let itemNote = "";
+    if (q.reward.itemId && q.reward.itemQty > 0) {
+      const def = ITEM_BY_ID[q.reward.itemId];
+      let storedHome = 0;
+      let storedBag = 0;
+      for (let i = 0; i < q.reward.itemQty; i++) {
+        const bagRes = this.inventory.addItemToZone("backpack", q.reward.itemId, "city");
+        if (bagRes.ok) {
+          storedBag += 1;
+        } else {
+          const homeRes = this.inventory.addItemToZone("home", q.reward.itemId, "city");
+          if (homeRes.ok) storedHome += 1;
+        }
+      }
+      if (def) {
+        const where = storedHome > 0 && storedBag === 0 ? " (gửi Kho Nhà)" : storedHome > 0 ? " (1 phần gửi Kho Nhà)" : "";
+        itemNote = ` + ${q.reward.itemQty}× ${def.name}${where}`;
+      }
+    }
+
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+    return {
+      ok: true,
+      message: `🎉 Nhận thưởng +${q.reward.gold.toLocaleString("vi-VN")} Vàng${itemNote}!`,
+    };
+  }
+
+  private advanceMinigameQuests(amount = 1): void {
+    const board = this.getDailyQuestBoard();
+    let changed = false;
+    for (const q of board.quests) {
+      if (q.kind === "minigame" && !q.claimed && q.progress < q.targetCount) {
+        q.progress = Math.min(q.targetCount, q.progress + amount);
+        changed = true;
+      }
+    }
+    if (changed) this.callbacks.onRequestSave?.(false);
+  }
+
+  private advanceExploreQuests(target: ExploreTargetKind, amount = 1): void {
+    const board = this.getDailyQuestBoard();
+    let changed = false;
+    for (const q of board.quests) {
+      if (q.kind === "explore" && q.exploreTarget === target && !q.claimed && q.progress < q.targetCount) {
+        q.progress = Math.min(q.targetCount, q.progress + amount);
+        changed = true;
+      }
+    }
+    if (changed) this.callbacks.onRequestSave?.(false);
+  }
+
   public completeVaultPuzzle(): void {
     const v = this.activeVaultPuzzle;
     this.activeVaultPuzzle = null;
@@ -1725,6 +1856,10 @@ export class WorldScene {
     }
 
     this.playPressSfx();
+    this.advanceMinigameQuests(1);
+    if (zone !== "green") {
+      this.advanceExploreQuests("loot_containers", 1);
+    }
     this.callbacks.onRequestSave?.(true);
     this.callbacks.onOpenContainer?.(container);
   }
@@ -1740,6 +1875,7 @@ export class WorldScene {
     }
 
     this.jailRoom.relocateStation(stationId);
+    this.advanceMinigameQuests(1);
     const prev = this.detainedUntil;
     this.detainedUntil = Math.max(Date.now(), prev - 60_000);
     if (this.detainedUntil <= Date.now()) {
@@ -1824,6 +1960,7 @@ export class WorldScene {
       const ignoreMs = this.activeMapId === "japan" ? 70_000 : 96_000;
       this.globalPoliceIgnoreUntil = Date.now() + ignoreMs;
       this.ignoreUntilByOfficer = {};
+      this.advanceMinigameQuests(1);
       this.callbacks.onRequestSave?.(true);
       return { won: true, lostItemCount: 0, lostBackpack: false, officerId };
     }
@@ -1980,6 +2117,12 @@ export class WorldScene {
           name: meta.name,
         };
       }
+      if (meta.tier === "quest") {
+        return {
+          type: "quest",
+          name: meta.name,
+        };
+      }
       if (meta.tier === "police") {
         return null;
       }
@@ -2049,6 +2192,12 @@ export class WorldScene {
       return true;
     }
 
+    if (target.type === "quest") {
+      this.playPressSfx();
+      this.callbacks.onOpenQuestBoard?.();
+      return true;
+    }
+
     if (target.type === "chest") {
       const cv = this.chestVisuals.find((c) => c.chest.id === target.chest.id);
       if (!cv) return false;
@@ -2080,14 +2229,19 @@ export class WorldScene {
         return true;
       }
 
+      const wasLooted = this.inventory.isContainerSearched(cv.chest.id);
+      const chestZone = this.getSecurityZoneAt(cv.chest.x, cv.chest.y);
       const container = this.inventory.openOrGenerateContainer(
         cv.chest.id,
         cv.chest.name,
         sourceType,
         cv.chest.biome,
-        this.getSecurityZoneAt(cv.chest.x, cv.chest.y),
+        chestZone,
         this.activeMapId,
       );
+      if (!wasLooted && chestZone !== "green" && sourceType !== "trash_bin") {
+        this.advanceExploreQuests("loot_containers", 1);
+      }
 
       cv.chest.opened = true;
       if (cv.chest.kind !== "trash") {
@@ -2127,14 +2281,19 @@ export class WorldScene {
       return true;
     }
 
+    const wasLooted = this.inventory.isContainerSearched(containerId);
+    const bldZone = this.getSecurityZoneAt(target.x, target.y);
     const container = this.inventory.openOrGenerateContainer(
       containerId,
       target.name,
       sourceType,
       target.biome,
-      this.getSecurityZoneAt(target.x, target.y),
+      bldZone,
       this.activeMapId,
     );
+    if (!wasLooted && bldZone !== "green") {
+      this.advanceExploreQuests("loot_containers", 1);
+    }
     this.playPressSfx();
     this.callbacks.onOpenContainer?.(container);
     return true;
@@ -2209,6 +2368,11 @@ export class WorldScene {
 
     const env = this.weatherService.getEnvironmentState();
     const playerZone = this.getCurrentSecurityZone();
+    if (!this.isInJail) {
+      if (playerZone === "yellow") this.advanceExploreQuests("visit_yellow", 1);
+      else if (playerZone === "red") this.advanceExploreQuests("visit_red", 1);
+      if (this.isInSnowZoneAt(this.player.x)) this.advanceExploreQuests("visit_snow", 1);
+    }
     let caughtOfficer = this.police.step(dt, {
       playerX: this.player.x,
       playerY: this.player.y,
@@ -2918,6 +3082,7 @@ export class WorldScene {
       plains_garden_inn: "jp_snow_onsen_temple",
       city_pharmacy: "plains_archway",
       city_police_station: "jp_ninja_dojo",
+      city_quest_guild: "jp_shinkansen_station",
     };
     const overrideKind = isJapan ? JP_GREEN_BLD_TEXTURE_OVERRIDE[prop.kind] : undefined;
     const tex = overrideKind ? this.atlas.buildings[overrideKind] : this.atlas.props[prop.kind];
@@ -2966,6 +3131,7 @@ export class WorldScene {
       city_home_house: { text: "🏠 NHÀ RIÊNG", color: 0xa7f3d0 },
       city_collection_hall: { text: "🏛️ PHÒNG SƯU TẦM", color: 0xfde047 },
       city_airport: { text: "✈️ SÂN BAY QUỐC TẾ", color: 0x7dd3fc },
+      city_quest_guild: { text: "📜 HỘI SỞ NHIỆM VỤ", color: 0xfde047 },
       city_hospital: { text: "🏥 BỆNH VIỆN", color: 0xfecdd3 },
       city_police_station: { text: "🚓 CÔNG AN PHƯỜNG", color: 0x93c5fd },
     };
@@ -2980,6 +3146,7 @@ export class WorldScene {
       city_home_house: { text: "🏯 DINH THỰ RIÊNG TOKYO", color: 0xa7f3d0 },
       city_collection_hall: { text: "🗼 THÁP BẢO TÀNG TOKYO", color: 0xfde047 },
       city_airport: { text: "✈️ SÂN BAY NARITA (5.000🪙)", color: 0x7dd3fc },
+      city_quest_guild: { text: "📜 BẢNG ỦY THÁC TOKYO", color: 0xfde047 },
       city_hospital: { text: "🏥 BỆNH VIỆN TOKYO", color: 0xfecdd3 },
       city_police_station: { text: "🚓 ĐỒN CẢNH SÁT KOBAN", color: 0x93c5fd },
     };
@@ -3265,17 +3432,18 @@ export class WorldScene {
   }
 
   private checkLandmarks(): void {
-    let newlyDiscovered = false;
+    let discoveredCount = 0;
     for (const lm of this.data.landmarks) {
       if (lm.discovered) continue;
       if (Math.hypot(this.player.x - lm.x, this.player.y - lm.y) <= lm.radius) {
         lm.discovered = true;
         this.discoveredLandmarkIds.add(lm.id);
-        newlyDiscovered = true;
+        discoveredCount += 1;
         this.callbacks.onLandmarkDiscovered?.(lm);
       }
     }
-    if (newlyDiscovered) {
+    if (discoveredCount > 0) {
+      this.advanceExploreQuests("discover_landmarks", discoveredCount);
       this.callbacks.onRequestSave?.(true);
     }
   }
