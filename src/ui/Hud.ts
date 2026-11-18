@@ -1,6 +1,7 @@
 import {
   CONSUMABLE_BY_ID,
   AIRPORT_GENDER_CHANGE_COST,
+  AIRPORT_JAPAN_FLIGHT_COST,
   CONSUMABLE_CATALOG,
   GARMENT_BY_ID,
   GARMENT_CATALOG,
@@ -40,6 +41,7 @@ import {
 import {
   BIOME_LABELS,
   GREEN_END_COL,
+  MAP_LABELS,
   isBuildingProp,
   SECURITY_ZONE_META,
   TILE_SIZE,
@@ -47,6 +49,7 @@ import {
   WORLD_WIDTH,
   YELLOW_END_COL,
   type CharacterGender,
+  type MapId,
   type SecurityZone,
   type TileType,
 } from "../world/types.ts";
@@ -98,7 +101,7 @@ export class Hud {
   private readonly minimapBtn: HTMLButtonElement;
   private readonly minimapCanvas: HTMLCanvasElement;
   private readonly minimapCtx: CanvasRenderingContext2D;
-  private readonly terrainSnapshot: HTMLCanvasElement;
+  private terrainSnapshot: HTMLCanvasElement;
   private readonly toastEl: HTMLElement;
   private readonly toastTitleEl: HTMLElement;
   private readonly toastSubEl: HTMLElement;
@@ -108,6 +111,7 @@ export class Hud {
 
   // Full World Map Modal
   private readonly fullmapModalEl: HTMLElement;
+  private readonly fullmapTitleEl: HTMLElement;
   private readonly fullmapCloseBtn: HTMLButtonElement;
   private readonly fullmapMetaEl: HTMLElement;
   private readonly fullmapCanvas: HTMLCanvasElement;
@@ -239,12 +243,22 @@ export class Hud {
   private readonly airportModalEl: HTMLElement;
   private readonly airportCloseBtn: HTMLButtonElement;
   private readonly airportStatsEl: HTMLElement;
+  private readonly airportTabFlightBtn: HTMLButtonElement;
+  private readonly airportTabGenderBtn: HTMLButtonElement;
+  private readonly airportFlightPanelEl: HTMLElement;
+  private readonly airportGenderPanelEl: HTMLElement;
+  private readonly airportFlightRouteEl: HTMLElement;
+  private readonly airportFlightInfoEl: HTMLElement;
+  private readonly airportFlightNoteEl: HTMLElement;
+  private readonly airportFlyMapBtn: HTMLButtonElement;
+  private readonly airportThailandOriginEl: HTMLElement;
   private readonly airportCurLabelEl: HTMLElement;
   private readonly airportNextLabelEl: HTMLElement;
   private readonly airportCurCanvas: HTMLCanvasElement;
   private readonly airportNextCanvas: HTMLCanvasElement;
   private readonly airportNoteEl: HTMLElement;
   private readonly airportFlyBtn: HTMLButtonElement;
+  private activeAirportTab: "flight" | "gender" = "flight";
 
   private readonly collectionModalEl: HTMLElement;
   private readonly collectionCloseBtn: HTMLButtonElement;
@@ -359,6 +373,7 @@ export class Hud {
     this.thermalTextEl = document.getElementById("sv-thermal-text")!;
 
     this.fullmapModalEl = document.getElementById("fullmap-modal")!;
+    this.fullmapTitleEl = document.getElementById("fullmap-title")!;
     this.fullmapCloseBtn = document.getElementById("btn-fullmap-close") as HTMLButtonElement;
     this.fullmapMetaEl = document.getElementById("fullmap-meta")!;
     this.fullmapCanvas = document.getElementById("fullmap-canvas") as HTMLCanvasElement;
@@ -471,6 +486,15 @@ export class Hud {
     this.airportModalEl = document.getElementById("airport-modal")!;
     this.airportCloseBtn = document.getElementById("btn-airport-close") as HTMLButtonElement;
     this.airportStatsEl = document.getElementById("airport-stats")!;
+    this.airportTabFlightBtn = document.getElementById("btn-airport-tab-flight") as HTMLButtonElement;
+    this.airportTabGenderBtn = document.getElementById("btn-airport-tab-gender") as HTMLButtonElement;
+    this.airportFlightPanelEl = document.getElementById("airport-flight-panel")!;
+    this.airportGenderPanelEl = document.getElementById("airport-gender-panel")!;
+    this.airportFlightRouteEl = document.getElementById("airport-flight-route")!;
+    this.airportFlightInfoEl = document.getElementById("airport-flight-info")!;
+    this.airportFlightNoteEl = document.getElementById("airport-flight-note")!;
+    this.airportFlyMapBtn = document.getElementById("btn-airport-fly-map") as HTMLButtonElement;
+    this.airportThailandOriginEl = document.getElementById("airport-thailand-origin")!;
     this.airportCurLabelEl = document.getElementById("airport-cur-label")!;
     this.airportNextLabelEl = document.getElementById("airport-next-label")!;
     this.airportCurCanvas = document.getElementById("airport-cur-canvas") as HTMLCanvasElement;
@@ -505,6 +529,7 @@ export class Hud {
     this.fullmapCanvas.width = this.scene.data.cols * 5;
     this.fullmapCanvas.height = this.scene.data.rows * 5;
     this.terrainSnapshot = this.bakeTerrainSnapshot();
+    this.updateMapTitles();
     this.vaultPuzzle = new PuzzleMinigameModal();
     this.refreshBagBadge();
     this.updateSurvivalHud();
@@ -808,7 +833,39 @@ export class Hud {
     this.closeAllModals("airport");
     this.isAirportOpen = true;
     this.airportModalEl.classList.add("is-open");
+    this.setAirportTab(this.activeAirportTab);
     this.renderAirportModal();
+  }
+
+  public handleMapChanged(): void {
+    this.terrainSnapshot = this.bakeTerrainSnapshot();
+    this.updateMapTitles();
+    this.drawMinimap();
+    if (this.isFullmapOpen) {
+      this.drawFullMap();
+    }
+    this.refreshBagBadge();
+    this.updateSurvivalHud();
+    this.updateInteractPrompt();
+    if (this.isAirportOpen) {
+      this.renderAirportModal();
+    }
+  }
+
+  private updateMapTitles(): void {
+    const mapId = this.scene.getActiveMapId();
+    this.fullmapTitleEl.textContent = `🗺️ Bản Đồ: ${MAP_LABELS[mapId]}`;
+  }
+
+  private setAirportTab(tab: "flight" | "gender"): void {
+    this.activeAirportTab = tab;
+    const isFlight = tab === "flight";
+    this.airportTabFlightBtn.classList.toggle("is-active", isFlight);
+    this.airportTabGenderBtn.classList.toggle("is-active", !isFlight);
+    this.airportTabFlightBtn.setAttribute("aria-selected", String(isFlight));
+    this.airportTabGenderBtn.setAttribute("aria-selected", String(!isFlight));
+    this.airportFlightPanelEl.classList.toggle("is-hidden", !isFlight);
+    this.airportGenderPanelEl.classList.toggle("is-hidden", isFlight);
   }
 
   public openCollectionModal(): void {
@@ -1562,6 +1619,38 @@ export class Hud {
       e.stopPropagation();
       if (e.target === this.airportModalEl) this.closeAllModals();
     });
+    this.airportTabFlightBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.setAirportTab("flight");
+    });
+    this.airportTabGenderBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.setAirportTab("gender");
+    });
+    this.airportFlyMapBtn.addEventListener("click", () => {
+      const currentMap = this.scene.getActiveMapId();
+      const targetMap: MapId = currentMap === "vietnam" ? "japan" : "vietnam";
+      const isToJapan = targetMap === "japan";
+      this.openPurchaseConfirm({
+        subtitle: "✈️ Sân Bay Quốc Tế — Vé Máy Bay Quốc Tế",
+        itemTitle: isToJapan
+          ? "🛫 Bay sang Nhật Bản (Tokyo – Kyoto – Thành Shogun)"
+          : "🛫 Bay về Việt Nam (Hà Nội – Đồng Bằng – Hoàng Thành)",
+        itemDesc:
+          "Giữ nguyên balo, trang bị, ví vàng, đồ sưu tầm và đồng bộ thời gian thực tại điểm đến.",
+        priceGold: AIRPORT_JAPAN_FLIGHT_COST,
+        onConfirm: () => {
+          const res = this.scene.flyToMap(targetMap);
+          this.showDiscoveryToast(
+            res.ok ? `✈️ Đã hạ cánh tại ${MAP_LABELS[res.activeMapId]}!` : "Không thể xuất cảnh",
+            res.message,
+          );
+          if (res.ok) {
+            this.closeAllModals();
+          }
+        },
+      });
+    });
     this.airportFlyBtn.addEventListener("click", () => {
       this.openPurchaseConfirm({
         subtitle: "✈️ Sân Bay Quốc Tế — Vé Bangkok",
@@ -1779,9 +1868,14 @@ export class Hud {
       city_pharmacy: { color: "#14b8a6", label: "💊 Nhà Thuốc", textColor: "#99f6e4" },
       city_butcher_shop: { color: "#fb923c", label: "🍜 Quán Ăn", textColor: "#fed7aa" },
       plains_garden_inn: { color: "#fb923c", label: "🍜 Nhà Hàng", textColor: "#fed7aa" },
+      plains_pagoda: { color: "#f59e0b", label: "⛩️ Chùa Cổ", textColor: "#fde68a" },
       city_airport: { color: "#38bdf8", label: "✈️ Sân Bay", textColor: "#bae6fd" },
       city_police_station: { color: "#2563eb", label: "🚓 Phường", textColor: "#93c5fd" },
       city_hospital: { color: "#f43f5e", label: "🏥 Bệnh Viện", textColor: "#fecdd3" },
+      jp_ryokan_inn: { color: "#f97316", label: "🏮 Lữ Quán", textColor: "#fed7aa" },
+      jp_shinto_shrine: { color: "#f43f5e", label: "⛩️ Thần Xã", textColor: "#fecdd3" },
+      jp_ninja_dojo: { color: "#a855f7", label: "🥷 Võ Đường", textColor: "#e9d5ff" },
+      jp_shogun_castle: { color: "#ef4444", label: "🏯 Thành Shogun", textColor: "#fecaca" },
     };
 
     for (const prop of this.scene.data.props) {
@@ -1841,10 +1935,11 @@ export class Hud {
     const secZone = this.scene.getCurrentSecurityZone();
     const secMeta = SECURITY_ZONE_META[secZone];
     const env = this.scene.weatherService.getEnvironmentState();
+    const clockCity = this.scene.getActiveMapId() === "japan" ? "Tokyo" : "Hà Nội";
     this.fullmapMetaEl.replaceChildren();
     for (const txt of [
       `${secMeta.emoji} ${secMeta.label} • ${BIOME_LABELS[biome]} (X:${tx} Y:${ty})`,
-      `🕒 ${env.hanoiTimeText} • ${env.temperatureC}°C • ${env.conditionLabel}`,
+      `🕒 ${clockCity} ${env.hanoiTimeText} • ${env.temperatureC}°C • ${env.conditionLabel}`,
     ]) {
       const pill = document.createElement("span");
       pill.className = "bag-stat-pill";
@@ -3294,9 +3389,10 @@ export class Hud {
       nameEl.className = "coll-item-name";
       nameEl.textContent = def.name;
 
+      const originTag = def.mapOrigin === "japan" ? "🇯🇵 Nhật Bản" : "🇻🇳 Việt Nam";
       const subEl = document.createElement("div");
       subEl.className = "coll-item-sub";
-      subEl.textContent = `${def.w}×${def.h} ô • ${def.valueGold.toLocaleString("vi-VN")} Vàng • Đang giữ: ${counts.total}`;
+      subEl.textContent = `${def.w}×${def.h} ô • ${def.valueGold.toLocaleString("vi-VN")} Vàng • Đang giữ: ${counts.total} • ${originTag}`;
 
       const stateEl = document.createElement("div");
       stateEl.className = "coll-item-sub";
@@ -3428,10 +3524,11 @@ export class Hud {
 
     const zone = this.scene.getCurrentSecurityZone();
     const zoneMeta = SECURITY_ZONE_META[zone];
+    const mapBadge = this.scene.getActiveMapId() === "japan" ? "🇯🇵" : "🇻🇳";
     const ignoreMs = this.scene.getGlobalPoliceIgnoreRemainingMs();
     const ignoreSuffix = ignoreMs > 0 ? ` • 🛡️ Miễn kiểm: ${Math.ceil(ignoreMs / 1000)}s` : "";
 
-    const thermalText = `${zoneMeta.emoji} ${zoneMeta.label} • 🌡️ ${state.bodyTempC.toFixed(1)}°C • ⚖️ ${totalWeightKg.toFixed(1)}kg • ${result.thermal.statusLabel}${buffSuffix}${ignoreSuffix}`;
+    const thermalText = `${mapBadge} ${zoneMeta.emoji} ${zoneMeta.label} • 🌡️ ${state.bodyTempC.toFixed(1)}°C • ⚖️ ${totalWeightKg.toFixed(1)}kg • ${result.thermal.statusLabel}${buffSuffix}${ignoreSuffix}`;
     const staminaPct = Math.min(100, (state.stamina / maxStamina) * 100).toFixed(1);
     const blurPx = (result.blurIntensity * 4.2).toFixed(2);
     const blurFilter = result.blurIntensity > 0.01 ? `blur(${blurPx}px)` : "none";
@@ -4269,19 +4366,94 @@ export class Hud {
 
   private renderAirportModal(): void {
     const sum = this.scene.inventory.getSummary();
+    const activeMap = this.scene.getActiveMapId();
+    const targetMap: MapId = activeMap === "vietnam" ? "japan" : "vietnam";
     const curGender = this.scene.getGender();
     const nextGender: CharacterGender = curGender === "male" ? "female" : "male";
+    const env = this.scene.weatherService.getEnvironmentState();
 
     this.airportStatsEl.replaceChildren();
     for (const txt of [
+      `🗺️ Đang ở: ${MAP_LABELS[activeMap]}`,
       `🪙 Ví: ${sum.walletGold.toLocaleString("vi-VN")} Vàng`,
-      `🎫 Phí bay & đổi giới tính: ${AIRPORT_GENDER_CHANGE_COST.toLocaleString("vi-VN")} Vàng`,
+      `🛫 Vé VN⇄Nhật: ${AIRPORT_JAPAN_FLIGHT_COST.toLocaleString("vi-VN")} Vàng`,
+      `🇹🇭 Vé Thái Lan: ${AIRPORT_GENDER_CHANGE_COST.toLocaleString("vi-VN")} Vàng`,
     ]) {
       const s = document.createElement("span");
       s.className = "bag-stat-pill";
       s.textContent = txt;
       this.airportStatsEl.appendChild(s);
     }
+
+    // Tab 1: Vietnam <-> Japan Map Flight
+    this.airportFlightRouteEl.replaceChildren();
+    const fromSpan = document.createElement("span");
+    fromSpan.textContent = activeMap === "vietnam" ? "🛫 Hà Nội (HAN)" : "🛫 Tokyo Narita (NRT)";
+    const arrowSpan = document.createElement("span");
+    arrowSpan.className = "airport-route-arrow";
+    arrowSpan.textContent = "────── ✈️ ──────▶";
+    const toSpan = document.createElement("span");
+    toSpan.textContent = targetMap === "japan" ? "🛬 Tokyo, Nhật Bản (NRT)" : "🛬 Hà Nội, Việt Nam (HAN)";
+    this.airportFlightRouteEl.append(fromSpan, arrowSpan, toSpan);
+
+    this.airportFlightInfoEl.replaceChildren();
+    const makeMapCard = (label: string, title: string, desc: string, isTarget: boolean) => {
+      const card = document.createElement("div");
+      card.className = `airport-map-card${isTarget ? " is-target" : ""}`;
+      const lblEl = document.createElement("div");
+      lblEl.className = "airport-map-card-label";
+      lblEl.textContent = label;
+      const ttlEl = document.createElement("div");
+      ttlEl.className = "airport-map-card-title";
+      ttlEl.textContent = title;
+      const dscEl = document.createElement("div");
+      dscEl.className = "airport-map-card-desc";
+      dscEl.textContent = desc;
+      card.append(lblEl, ttlEl, dscEl);
+      return card;
+    };
+
+    if (activeMap === "vietnam") {
+      this.airportFlightInfoEl.append(
+        makeMapCard(
+          "Vị trí hiện tại",
+          "🇻🇳 Việt Nam",
+          `Giờ Hà Nội ${env.hanoiTimeText} • ${env.temperatureC}°C (${env.conditionLabel}). Có Nhà riêng, Phòng Sưu Tầm & Hoàng Thành.`,
+          false,
+        ),
+        makeMapCard(
+          "Điểm đến tiếp theo",
+          "🇯🇵 Nhật Bản",
+          "Tokyo an toàn • Cố đô Kyoto (hoa Anh Đào, Thần Xã, Lữ Quán) • Thành Shogun & Làng Ninja Iga (12 cổ vật + 3 Đồ Đỏ mới). Thời tiết ngẫu nhiên, đồng hồ thực Tokyo.",
+          true,
+        ),
+      );
+      this.airportFlightNoteEl.textContent =
+        "Chuyến bay sang Nhật Bản mở ra khu vực Tokyo – Kyoto – Thành Cổ Shogun với thời tiết ngẫu nhiên theo giờ thực Tokyo (UTC+9), cùng Onigiri, Ramen và Khay Sushi Nhật. Balo, Safebox và Phòng Sưu Tầm được đồng bộ xuyên bản đồ.";
+      this.airportFlyMapBtn.textContent = `🛫 Bay sang Nhật Bản (🪙 ${AIRPORT_JAPAN_FLIGHT_COST})`;
+    } else {
+      this.airportFlightInfoEl.append(
+        makeMapCard(
+          "Vị trí hiện tại",
+          "🇯🇵 Nhật Bản",
+          `Giờ thực Tokyo ${env.hanoiTimeText} • ${env.temperatureC}°C (${env.conditionLabel}). Có Lữ Quán, Thần Xã, Võ Đường & Thành Cổ Shogun.`,
+          false,
+        ),
+        makeMapCard(
+          "Điểm đến tiếp theo",
+          "🇻🇳 Việt Nam",
+          "Quay về Khu Phố An Toàn, Đồng Bằng Trù Phú & Khu Vực Hoang Dã / Hoàng Thành Cổ với thời tiết trực tiếp Hà Nội.",
+          true,
+        ),
+      );
+      this.airportFlightNoteEl.textContent =
+        "Chuyến bay khứ hồi đưa bạn từ sân bay Tokyo Narita trở về Việt Nam. Toàn bộ báu vật Nhật Bản vừa săn được (bao gồm 3 Đồ Đỏ Nhật Bản) vẫn nằm an toàn trong balo và Phòng Sưu Tầm.";
+      this.airportFlyMapBtn.textContent = `🛫 Bay về Việt Nam (🪙 ${AIRPORT_JAPAN_FLIGHT_COST})`;
+    }
+
+    // Tab 2: Preserved Thailand Gender Switch
+    this.airportThailandOriginEl.textContent =
+      activeMap === "japan" ? "🛫 Narita, Tokyo (NRT)" : "🛫 Nội Bài, Hà Nội (HAN)";
 
     this.airportCurLabelEl.textContent =
       curGender === "female" ? "Hiện tại: 👩 Nữ" : "Hiện tại: 👨 Nam";
@@ -4292,7 +4464,7 @@ export class Hud {
     void this.drawDollPreviewCanvas(this.airportNextCanvas, { gender: nextGender });
 
     this.airportNoteEl.textContent =
-      `Chuyến bay tượng trưng Hà Nội ✈️ Bangkok (Thái Lan). Sau khi đổi sang nhân vật ${nextGender === "female" ? "Nữ" : "Nam"}, toàn bộ trang bị, balo, cân nặng và nhà riêng vẫn giữ nguyên vẹn.`;
+      `Chuyến bay chuyên biệt sang Bangkok (Thái Lan). Sau khi đổi sang nhân vật ${nextGender === "female" ? "Nữ" : "Nam"}, toàn bộ trang bị, balo, cân nặng, đồ sưu tầm và vị trí bản đồ vẫn giữ nguyên vẹn.`;
 
     this.airportFlyBtn.textContent =
       nextGender === "female"

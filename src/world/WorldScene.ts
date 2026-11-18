@@ -6,6 +6,7 @@ import type { ArcadeMinigameKind } from "../ui/ArcadeMinigames.ts";
 import { AtmosphereSystem } from "./AtmosphereSystem.ts";
 import {
   AIRPORT_GENDER_CHANGE_COST,
+  AIRPORT_JAPAN_FLIGHT_COST,
   CONSUMABLE_BY_ID,
   DEFAULT_OWNED_HAIR_IDS,
   GARMENT_BY_ID,
@@ -58,6 +59,7 @@ import {
   BUILDING_PIXEL_SCALE,
   CHUNK_TILES,
   GREEN_END_COL,
+  MAP_LABELS,
   isBuildingProp,
   PIXEL_SCALE,
   TILE_SIZE,
@@ -68,6 +70,7 @@ import {
   type BuildingKind,
   type CharacterGender,
   type CharacterSkinId,
+  type MapId,
   type Point,
   type PropKind,
   type SecurityZone,
@@ -78,6 +81,7 @@ import {
   type WorldLandmark,
   type WorldProp,
 } from "./types.ts";
+import { generateOpenWorld } from "./WorldGenerator.ts";
 import { JAIL_HEIGHT, JAIL_WIDTH, JailRoom } from "./JailRoom.ts";
 import { PoliceSystem, type PoliceOfficerMarker } from "./PoliceSystem.ts";
 import { WeatherParticles } from "./WeatherParticles.ts";
@@ -191,6 +195,7 @@ export interface WorldCallbacks {
   onOpenHomeStorage?: () => void;
   onOpenCollectionHall?: () => void;
   onOpenAirport?: () => void;
+  onMapChanged?: (activeMapId: MapId) => void;
   onConsumeCompleted?: (title: string, message: string) => void;
   onPoliceChallenge?: (officer: { id: string; name: string; biome: BiomeId; zone: SecurityZone }) => void;
   onPoliceBlendIgnored?: (officerName: string, chancePct: number) => void;
@@ -212,9 +217,9 @@ export class WorldScene {
   public readonly stageLayer: Container;
   public readonly worldContainer: Container;
   public readonly worldLightsContainer: Container;
-  public readonly data: WorldData;
+  public data: WorldData;
   public readonly atlas: WorldAtlas;
-  public readonly pathfinder: Pathfinder;
+  public pathfinder: Pathfinder;
   public readonly player: Player;
   public readonly weatherService: HanoiWeatherService;
   public readonly inventory: InventoryManager;
@@ -229,8 +234,11 @@ export class WorldScene {
   private readonly entityLayer: Container;
   private readonly atmosphere: AtmosphereSystem;
   private readonly weatherParticles: WeatherParticles;
-  private readonly police: PoliceSystem;
+  private police: PoliceSystem;
   private readonly jailRoom: JailRoom;
+
+  private activeMapId: MapId;
+  private readonly discoveredLandmarkIds = new Set<string>();
 
   private readonly lilypadSprites: Array<{ sprite: Sprite; x: number; y: number; phase: number }> = [];
   private readonly propNodes: Array<{ node: Container; x: number; y: number }> = [];
@@ -301,6 +309,7 @@ export class WorldScene {
   ) {
     this.app = app;
     this.data = data;
+    this.activeMapId = data.mapId;
     this.callbacks = callbacks;
     this.inventory = new InventoryManager(initialSave?.inventory, () => {
       if (this.isSceneReady) {
@@ -352,9 +361,11 @@ export class WorldScene {
       if (!savedProfile.soundEnabled) {
         sound.muteAll();
       }
-      const discoveredSet = new Set(savedProfile.discoveredLandmarkIds);
+      for (const id of savedProfile.discoveredLandmarkIds) {
+        this.discoveredLandmarkIds.add(id);
+      }
       for (const lm of this.data.landmarks) {
-        if (discoveredSet.has(lm.id)) {
+        if (this.discoveredLandmarkIds.has(lm.id)) {
           lm.discovered = true;
         }
       }
@@ -365,6 +376,7 @@ export class WorldScene {
     this.lastSavedPlayerY = startY;
 
     this.weatherService = new HanoiWeatherService();
+    this.weatherService.setActiveMap(this.activeMapId);
     this.weatherService.start();
     const initialEnv = this.weatherService.getEnvironmentState();
     this.lastSurvivalTick = {
@@ -475,10 +487,9 @@ export class WorldScene {
         facing: this.player.getFacing(),
         skinId: this.player.getSkin(),
         gender: this.gender,
+        activeMapId: this.activeMapId,
         onboardingDone: this.onboardingDone,
-        discoveredLandmarkIds: this.data.landmarks
-          .filter((lm) => lm.discovered)
-          .map((lm) => lm.id),
+        discoveredLandmarkIds: Array.from(this.discoveredLandmarkIds),
         soundEnabled: this.soundEnabled,
       },
       survival: {
@@ -597,6 +608,119 @@ export class WorldScene {
         nextGender === "female"
           ? "✈️ Đã bay sang Thái Lan (Bangkok) & chuyển sang Nhân Vật Nữ thành công!"
           : "✈️ Đã bay sang Thái Lan (Bangkok) & chuyển sang Nhân Vật Nam thành công!",
+    };
+  }
+
+  public getActiveMapId(): MapId {
+    return this.activeMapId;
+  }
+
+  public flyToMap(targetMapId: MapId): { ok: boolean; activeMapId: MapId; message: string } {
+    if (this.activeMapId === targetMapId) {
+      return {
+        ok: false,
+        activeMapId: this.activeMapId,
+        message: `Bạn đang ở ${MAP_LABELS[targetMapId]} rồi.`,
+      };
+    }
+    if (this.isMovementLocked()) {
+      return {
+        ok: false,
+        activeMapId: this.activeMapId,
+        message: "Không thể khởi hành chuyến bay lúc này.",
+      };
+    }
+    if (!this.inventory.trySpendGold(AIRPORT_JAPAN_FLIGHT_COST)) {
+      return {
+        ok: false,
+        activeMapId: this.activeMapId,
+        message: `Cần ${AIRPORT_JAPAN_FLIGHT_COST.toLocaleString("vi-VN")} Vàng để mua vé máy bay đến ${MAP_LABELS[targetMapId]}.`,
+      };
+    }
+
+    const nextWorld = generateOpenWorld(202611, targetMapId);
+    for (const lm of nextWorld.landmarks) {
+      if (this.discoveredLandmarkIds.has(lm.id)) {
+        lm.discovered = true;
+      }
+    }
+
+    this.activeMapId = targetMapId;
+    this.data = nextWorld;
+    this.pathfinder = new Pathfinder(nextWorld.cols, nextWorld.rows, nextWorld.tileSize, nextWorld.collision);
+
+    const oldGround = this.groundLayer.removeChildren();
+    for (const child of oldGround) {
+      child.destroy({ children: true });
+    }
+    this.terrainChunks.length = 0;
+
+    const oldWaterAnim = this.waterAnimLayer.removeChildren();
+    for (const child of oldWaterAnim) {
+      child.destroy({ children: true });
+    }
+    this.lilypadSprites.length = 0;
+
+    this.police.destroy();
+    this.entityLayer.removeChild(this.player);
+    const oldEntities = this.entityLayer.removeChildren();
+    for (const child of oldEntities) {
+      child.destroy({ children: true });
+    }
+    this.propNodes.length = 0;
+    this.foodCartProps.length = 0;
+    this.occludableProps.length = 0;
+    this.buildingOccludables.length = 0;
+    this.chestVisuals.length = 0;
+    this.ripples.length = 0;
+    this.waterWakes.length = 0;
+    this.waterDroplets.length = 0;
+
+    this.buildTerrainChunks();
+    this.buildZoneBoundaryMarkers();
+    this.buildLilypads();
+    this.buildPropsAndBuildings();
+    this.buildChests();
+    this.entityLayer.addChild(this.player);
+    this.police = new PoliceSystem(nextWorld, this.atlas, this.entityLayer);
+    this.atmosphere.rebuildForWorld(nextWorld);
+
+    const landingCandidates: Array<[number, number]> = [
+      [19.5 * TILE_SIZE, 53.2 * TILE_SIZE],
+      [19.5 * TILE_SIZE, 54.0 * TILE_SIZE],
+      [19.5 * TILE_SIZE, 55.2 * TILE_SIZE],
+      [nextWorld.spawn.x, nextWorld.spawn.y],
+    ];
+    let landX = nextWorld.spawn.x;
+    let landY = nextWorld.spawn.y;
+    for (const [cx, cy] of landingCandidates) {
+      if (this.pathfinder.isWalkableWorld(cx, cy)) {
+        landX = cx;
+        landY = cy;
+        break;
+      }
+    }
+
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.player.position.set(landX, landY);
+    this.player.zIndex = landY;
+    this.player.setFacing("down");
+    this.camX = landX;
+    this.camY = landY;
+    this.lastSavedPlayerX = landX;
+    this.lastSavedPlayerY = landY;
+    this.syncCameraTransform();
+
+    this.weatherService.setActiveMap(targetMapId);
+    this.playPressSfx();
+    this.callbacks.onMapChanged?.(targetMapId);
+    this.callbacks.onRequestSave?.(true);
+
+    return {
+      ok: true,
+      activeMapId: targetMapId,
+      message: `✈️ Đã hạ cánh xuống ${MAP_LABELS[targetMapId]} thành công!`,
     };
   }
 
@@ -1760,7 +1884,8 @@ export class WorldScene {
         return null;
       }
 
-      const containerId = `bld-${closestBuilding.prop.id}`;
+      const prefix = this.activeMapId === "japan" ? "jp_bld-" : "bld-";
+      const containerId = `${prefix}${closestBuilding.prop.id}`;
       const existing = this.inventory.getContainer(containerId);
       const remainingMs = existing ? this.inventory.getContainerRemainingMs(containerId) : null;
       const col = Math.max(0, Math.min(this.data.cols - 1, Math.floor(closestBuilding.x / TILE_SIZE)));
@@ -1856,6 +1981,7 @@ export class WorldScene {
         sourceType,
         cv.chest.biome,
         this.getSecurityZoneAt(cv.chest.x, cv.chest.y),
+        this.activeMapId,
       );
 
       cv.chest.opened = true;
@@ -1869,7 +1995,8 @@ export class WorldScene {
       return true;
     }
 
-    const containerId = `bld-${target.propId}`;
+    const prefix = this.activeMapId === "japan" ? "jp_bld-" : "bld-";
+    const containerId = `${prefix}${target.propId}`;
     const sourceType: LootSourceType = target.isVault
       ? "house_vault"
       : target.tier === "landmark"
@@ -1896,6 +2023,7 @@ export class WorldScene {
       sourceType,
       target.biome,
       this.getSecurityZoneAt(target.x, target.y),
+      this.activeMapId,
     );
     this.playPressSfx();
     this.callbacks.onOpenContainer?.(container);
@@ -2539,6 +2667,11 @@ export class WorldScene {
           ? BUILDING_PIXEL_SCALE
           : PIXEL_SCALE,
     );
+    if (prop.kind === "sakura_tree" || prop.kind === "sakura_small") {
+      sprite.tint = 0xffb7d5;
+    } else if (prop.kind === "momiji_tree" || prop.kind === "momiji_small") {
+      sprite.tint = 0xff784f;
+    }
 
     // Buildings include a flat oval courtyard at the bottom ~22% of the sprite;
     // lift zIndex to the actual wall line so player stands cleanly on top of the front lawn!
@@ -2564,7 +2697,7 @@ export class WorldScene {
       plains_garden_inn: { text: "🍽️ NHÀ HÀNG", color: 0xfed7aa },
       city_home_house: { text: "🏠 NHÀ RIÊNG", color: 0xa7f3d0 },
       city_collection_hall: { text: "🏛️ PHÒNG SƯU TẦM", color: 0xfde047 },
-      city_airport: { text: "✈️ SÂN BAY (THÁI LAN)", color: 0x7dd3fc },
+      city_airport: { text: "✈️ SÂN BAY QUỐC TẾ", color: 0x7dd3fc },
       city_hospital: { text: "🏥 BỆNH VIỆN", color: 0xfecdd3 },
       city_police_station: { text: "🚓 CÔNG AN PHƯỜNG", color: 0x93c5fd },
     };
@@ -2594,6 +2727,10 @@ export class WorldScene {
       prop.kind === "tree_small_moss" ||
       prop.kind === "city_tree" ||
       prop.kind === "city_tree_warm" ||
+      prop.kind === "sakura_tree" ||
+      prop.kind === "sakura_small" ||
+      prop.kind === "momiji_tree" ||
+      prop.kind === "momiji_small" ||
       prop.kind === "lodge" ||
       prop.kind === "hut" ||
       prop.kind === "watchtower" ||
@@ -2848,6 +2985,7 @@ export class WorldScene {
       if (lm.discovered) continue;
       if (Math.hypot(this.player.x - lm.x, this.player.y - lm.y) <= lm.radius) {
         lm.discovered = true;
+        this.discoveredLandmarkIds.add(lm.id);
         newlyDiscovered = true;
         this.callbacks.onLandmarkDiscovered?.(lm);
       }

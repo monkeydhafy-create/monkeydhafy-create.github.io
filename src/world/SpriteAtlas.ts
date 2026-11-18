@@ -76,7 +76,6 @@ const BUILDING_ASSET_ALIAS: Partial<Record<BuildingKind, string>> = {
   city_police_station: "bld-city_fire_station",
   city_home_house: "bld-city_terrace_houses",
   city_collection_hall: "bld-city_museum",
-  city_airport: "bld-city_museum",
 };
 
 const LPC_WALK_KEYS = [
@@ -195,6 +194,10 @@ export function createWorldAtlas(): WorldAtlas {
     stone_small: sliceCell(villageTex, 3, 5, 1, 1),
     city_tree: sliceCell(urbanTex, 16, 8, 1, 2),
     city_tree_warm: sliceCell(villageTex, 4, 6, 2, 2),
+    sakura_tree: sliceCell(villageTex, 0, 6, 4, 3),
+    sakura_small: sliceCell(villageTex, 4, 6, 2, 2),
+    momiji_tree: sliceCell(villageTex, 0, 6, 4, 3),
+    momiji_small: sliceCell(villageTex, 4, 6, 2, 2),
     park_lantern: sliceCell(urbanTex, 7, 6, 1, 2),
     street_lamp: sliceCell(urbanTex, 3, 6, 1, 2),
     traffic_light: sliceCell(urbanTex, 3, 15, 1, 1),

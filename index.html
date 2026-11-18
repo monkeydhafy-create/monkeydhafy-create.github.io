@@ -110,7 +110,7 @@
             <canvas id="fullmap-canvas" width="730" height="420"></canvas>
           </div>
           <div class="bag-footer">
-            <span class="fullmap-legend">🏠 Nhà • 🏛️ Sưu Tầm • 🏪 Shop Balo • 👔 Shop Áo • 💇 Tiệm Tóc • 🍜 Quán Ăn • 💊 Nhà Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện</span>
+            <span class="fullmap-legend">🏠 Nhà • 🏛️ Sưu Tầm • 🏪 Balo • 👔 Áo • 💇 Tóc • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện • 🏯 Thành Cổ • ⛩️ Thần Xã</span>
           </div>
         </div>
       </div>
@@ -339,42 +339,62 @@
         </div>
       </div>
 
-      <!-- International Airport -> Thailand Gender Switch Modal -->
+      <!-- International Airport -> VN <-> Japan Flight & Thailand Gender Switch Modal -->
       <div id="airport-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="airport-title">
         <div class="bag-card airport-card">
           <div class="bag-header">
             <div>
-              <h2 id="airport-title" class="bag-title">✈️ Sân Bay Quốc Tế — Quầy Bay Thái Lan</h2>
+              <h2 id="airport-title" class="bag-title">✈️ Sân Bay Quốc Tế — Quầy Vé &amp; Chuyển Giới</h2>
               <div id="airport-stats" class="bag-stats"></div>
             </div>
             <button id="btn-airport-close" class="bag-close" type="button" aria-label="Đóng quầy sân bay">✕</button>
           </div>
+          <div class="airport-tabs" role="tablist" aria-label="Dịch vụ sân bay">
+            <button id="btn-airport-tab-flight" class="btn-sell-zone is-active" type="button" role="tab" aria-selected="true">
+              🛫 Chuyến Bay VN ⇄ Nhật Bản
+            </button>
+            <button id="btn-airport-tab-gender" class="btn-sell-zone" type="button" role="tab" aria-selected="false">
+              🇹🇭 Bay Thái Lan (Đổi Giới Tính)
+            </button>
+          </div>
           <div class="airport-body">
-            <div class="airport-route-banner">
-              <span>🛫 Hà Nội (HAN)</span>
-              <span class="airport-route-arrow">────── ✈️ ──────▶</span>
-              <span>🛬 Bangkok, Thái Lan (BKK)</span>
-            </div>
-            <div class="airport-compare">
-              <div class="airport-preview-box">
-                <div class="airport-preview-label" id="airport-cur-label">Hiện tại: Nam</div>
-                <div class="doll-preview-box">
-                  <canvas id="airport-cur-canvas" width="128" height="128"></canvas>
-                </div>
-              </div>
-              <div class="airport-swap-arrow">⇄</div>
-              <div class="airport-preview-box is-target">
-                <div class="airport-preview-label" id="airport-next-label">Sau chuyến bay: Nữ</div>
-                <div class="doll-preview-box">
-                  <canvas id="airport-next-canvas" width="128" height="128"></canvas>
-                </div>
+            <div id="airport-flight-panel" class="airport-panel">
+              <div id="airport-flight-route" class="airport-route-banner"></div>
+              <div id="airport-flight-info" class="airport-flight-info"></div>
+              <div id="airport-flight-note" class="thermal-summary-box"></div>
+              <div class="airport-actions">
+                <button id="btn-airport-fly-map" class="btn-card-primary airport-fly-btn" type="button">
+                  🛫 Mua Vé &amp; Khởi Hành Ngay
+                </button>
               </div>
             </div>
-            <div id="airport-note" class="thermal-summary-box"></div>
-            <div class="airport-actions">
-              <button id="btn-airport-fly" class="btn-card-primary airport-fly-btn" type="button">
-                ✈️ Bay sang Thái Lan & Đổi Giới Tính
-              </button>
+            <div id="airport-gender-panel" class="airport-panel is-hidden">
+              <div class="airport-route-banner">
+                <span id="airport-thailand-origin">🛫 Nội Bài (HAN)</span>
+                <span class="airport-route-arrow">────── ✈️ ──────▶</span>
+                <span>🛬 Bangkok, Thái Lan (BKK)</span>
+              </div>
+              <div class="airport-compare">
+                <div class="airport-preview-box">
+                  <div class="airport-preview-label" id="airport-cur-label">Hiện tại: Nam</div>
+                  <div class="doll-preview-box">
+                    <canvas id="airport-cur-canvas" width="128" height="128"></canvas>
+                  </div>
+                </div>
+                <div class="airport-swap-arrow">⇄</div>
+                <div class="airport-preview-box is-target">
+                  <div class="airport-preview-label" id="airport-next-label">Sau chuyến bay: Nữ</div>
+                  <div class="doll-preview-box">
+                    <canvas id="airport-next-canvas" width="128" height="128"></canvas>
+                  </div>
+                </div>
+              </div>
+              <div id="airport-note" class="thermal-summary-box"></div>
+              <div class="airport-actions">
+                <button id="btn-airport-fly" class="btn-card-primary airport-fly-btn" type="button">
+                  ✈️ Bay sang Thái Lan &amp; Đổi Giới Tính
+                </button>
+              </div>
             </div>
           </div>
         </div>

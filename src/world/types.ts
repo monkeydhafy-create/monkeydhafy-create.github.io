@@ -27,6 +27,13 @@ export type TileType =
 
 export type SurfaceState = "dry" | "wade" | "swim";
 
+export type MapId = "vietnam" | "japan";
+
+export const MAP_LABELS: Record<MapId, string> = {
+  vietnam: "🇻🇳 Việt Nam",
+  japan: "🇯🇵 Nhật Bản",
+};
+
 export type BiomeId = "city" | "plains" | "countryside";
 
 export type SecurityZone = "green" | "yellow" | "red";
@@ -90,6 +97,10 @@ export const BUILDING_KEYS = [
   "city_home_house",
   "city_collection_hall",
   "city_airport",
+  "jp_shogun_castle",
+  "jp_shinto_shrine",
+  "jp_ninja_dojo",
+  "jp_ryokan_inn",
   "plains_tea_house",
   "plains_garden_inn",
   "plains_riverside_tavern",
@@ -124,6 +135,10 @@ export type PropKind =
   | "stone_small"
   | "city_tree"
   | "city_tree_warm"
+  | "sakura_tree"
+  | "sakura_small"
+  | "momiji_tree"
+  | "momiji_small"
   | "park_lantern"
   | "street_lamp"
   | "traffic_light"
@@ -197,7 +212,11 @@ export const BUILDING_META: Record<
   city_police_station: { name: "Công An Phường", tier: "police" },
   city_home_house: { name: "Nhà Riêng (Kho Vĩnh Viễn)", tier: "home" },
   city_collection_hall: { name: "Phòng Sưu Tầm Đồ Đỏ", tier: "collection" },
-  city_airport: { name: "Sân Bay Quốc Tế (Bay Thái Lan)", tier: "airport" },
+  city_airport: { name: "Sân Bay Quốc Tế", tier: "airport" },
+  jp_shogun_castle: { name: "Lâu Đài Shogun Osaka", tier: "landmark", isVault: true },
+  jp_shinto_shrine: { name: "Đền Thần Đạo Inari", tier: "landmark", isVault: true },
+  jp_ninja_dojo: { name: "Võ Đường Ninja Iga", tier: "landmark", isVault: true },
+  jp_ryokan_inn: { name: "Lữ Quán Suối Khoáng Ryokan", tier: "standard" },
   plains_tea_house: { name: "Quán Trà Ven Hồ", tier: "standard" },
   plains_garden_inn: { name: "Nhà Hàng Sân Vườn", tier: "shop", shopKind: "food" },
   plains_riverside_tavern: { name: "Quán Thủy Tạ Ven Sông", tier: "standard" },
@@ -219,6 +238,7 @@ export interface RoadNetworkMeta {
 }
 
 export interface WorldData {
+  mapId: MapId;
   cols: number;
   rows: number;
   tileSize: number;

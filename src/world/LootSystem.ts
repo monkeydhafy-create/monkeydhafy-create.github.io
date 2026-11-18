@@ -4,7 +4,7 @@ import {
   GARMENT_CATALOG,
   type ConsumableDef,
 } from "./EquipmentCatalog.ts";
-import type { BiomeId, ItemRarity, SecurityZone } from "./types.ts";
+import type { BiomeId, ItemRarity, MapId, SecurityZone } from "./types.ts";
 
 export type GridZone = "backpack" | "container" | "home" | "safebox";
 
@@ -25,6 +25,7 @@ export interface CollectibleItemDef {
   weightKg: number;
   valueGold: number;
   homeBiome: BiomeId;
+  mapOrigin?: MapId;
   description: string;
   iconSrc: string;
   consumableId?: string;
@@ -610,6 +611,163 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
     homeBiome: "countryside",
     description: "Bảo kiếm khổng lồ (3×4 ô) sắc bén vô song rèn từ vàng cổ.",
     iconSrc: "assets/world/items/s_golden_sword.png",
+  },
+  // === JAPAN MAP EXCLUSIVE ITEMS (C, B, A & 3 New Collection S-Tier Items) ===
+  {
+    id: "c_jp_geta",
+    name: "Guốc Gỗ Geta Cũ",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.5,
+    valueGold: 15,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Đôi guốc gỗ truyền thống bị mòn quai nhặt gần phố cổ Tokyo.",
+    iconSrc: "assets/world/items/c_jp_geta.png",
+  },
+  {
+    id: "c_jp_wagasa",
+    name: "Ô Giấy Wagasa Rách",
+    rarity: "C",
+    w: 2,
+    h: 1,
+    weightKg: 0.7,
+    valueGold: 20,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Chiếc ô giấy dầu tre bị gió tốc rách ngoài hiên đền Kyoto.",
+    iconSrc: "assets/world/items/c_jp_wagasa.png",
+  },
+  {
+    id: "c_jp_sake_bottle",
+    name: "Bình Sake Gốm Rỗng",
+    rarity: "C",
+    w: 1,
+    h: 2,
+    weightKg: 0.6,
+    valueGold: 24,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Bình gốm đựng rượu Sake đã cạn sạch sau đêm lễ hội mùa thu.",
+    iconSrc: "assets/world/items/c_jp_sake_bottle.png",
+  },
+  {
+    id: "b_jp_sensu_fan",
+    name: "Quạt Xếp Hoa Anh Đào",
+    rarity: "B",
+    w: 1,
+    h: 1,
+    weightKg: 0.25,
+    valueGold: 65,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Quạt lụa vẽ tay họa tiết Sakura tinh xảo của nghệ nhân Kyoto.",
+    iconSrc: "assets/world/items/b_jp_sensu_fan.png",
+  },
+  {
+    id: "b_jp_maneki_neko",
+    name: "Mèo Thần Tài Maneki-Neko",
+    rarity: "B",
+    w: 1,
+    h: 2,
+    weightKg: 0.9,
+    valueGold: 95,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Tượng mèo sứ vẫy tay chiêu tài lộc đặt trong các cửa hiệu Tokyo.",
+    iconSrc: "assets/world/items/b_jp_maneki_neko.png",
+  },
+  {
+    id: "b_jp_bonsai",
+    name: "Chậu Tùng Bonsai Cổ",
+    rarity: "B",
+    w: 2,
+    h: 2,
+    weightKg: 1.8,
+    valueGold: 135,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Thế cây tùng uốn lượn trăm năm được chăm sóc tỉ mỉ ở cố đô.",
+    iconSrc: "assets/world/items/b_jp_bonsai.png",
+  },
+  {
+    id: "a_jp_hannya_mask",
+    name: "Mặt Nạ Hannya Sơn Mài",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 1.1,
+    valueGold: 245,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Mặt nạ kịch Noh chạm khắc thủ công phủ sơn mài thếp vàng.",
+    iconSrc: "assets/world/items/a_jp_hannya_mask.png",
+  },
+  {
+    id: "a_jp_jade_netsuke",
+    name: "Ấn Ngọc Bích Hoàng Gia",
+    rarity: "A",
+    w: 1,
+    h: 2,
+    weightKg: 0.45,
+    valueGold: 280,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Khối ngọc bích chạm trổ tinh vi của quý tộc Kyoto.",
+    iconSrc: "assets/world/items/a_jp_jade_netsuke.png",
+  },
+  {
+    id: "a_jp_shogun_scroll",
+    name: "Mật Chỉ Tướng Quân",
+    rarity: "A",
+    w: 2,
+    h: 3,
+    weightKg: 1.6,
+    valueGold: 360,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Cuộn mật thư đóng ấn đỏ của Mạc phủ cất giữ bí thuật Ninja.",
+    iconSrc: "assets/world/items/a_jp_shogun_scroll.png",
+  },
+  {
+    id: "s_jp_muramasa",
+    name: "Yêu Đao Muramasa",
+    rarity: "S",
+    w: 2,
+    h: 3,
+    weightKg: 3.6,
+    valueGold: 1450,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Thanh danh đao rèn từ thép Tamahagane ánh đỏ rực.",
+    iconSrc: "assets/world/items/s_jp_muramasa.png",
+  },
+  {
+    id: "s_jp_shogun_kabuto",
+    name: "Mũ Giáp Vàng Đại Tướng Quân",
+    rarity: "S",
+    w: 3,
+    h: 3,
+    weightKg: 4.5,
+    valueGold: 1950,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Mũ chiến Kabuto sừng trăng khuyết dát vàng ròng.",
+    iconSrc: "assets/world/items/s_jp_shogun_kabuto.png",
+  },
+  {
+    id: "s_jp_yata_mirror",
+    name: "Thần Kính Bát Chỉ Hoàng Gia",
+    rarity: "S",
+    w: 3,
+    h: 3,
+    weightKg: 3.8,
+    valueGold: 2800,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Bảo vật thần thoại phản chiếu hào quang mặt trời.",
+    iconSrc: "assets/world/items/s_jp_yata_mirror.png",
   },
   ...CONSUMABLE_CATALOG.map((c): CollectibleItemDef => ({
     id: c.inventoryItemId,
@@ -1436,12 +1594,14 @@ export class InventoryManager {
     sourceType: LootSourceType,
     biome: BiomeId,
     securityZone: SecurityZone = "yellow",
+    mapId?: MapId,
   ): ContainerLootState {
     const existing = this.getContainer(containerId);
     if (existing) {
       return existing;
     }
 
+    const activeMapId: MapId = mapId ?? (containerId.startsWith("jp_") ? "japan" : "vietnam");
     const desiredCount = this.rollItemCount(sourceType, securityZone);
     const generatedDefs: CollectibleItemDef[] = [];
 
@@ -1449,7 +1609,7 @@ export class InventoryManager {
     for (let i = 0; i < desiredCount; i++) {
       const rarity = this.rollRarity(sourceType, securityZone);
       const allowBackpack = sourceType !== "trash_bin" && !hasBackpack;
-      const def = this.pickItemByZoneAffinity(rarity, biome, allowBackpack);
+      const def = this.pickItemByZoneAffinity(rarity, biome, allowBackpack, activeMapId);
       if (def.backpackId) hasBackpack = true;
       generatedDefs.push(def);
 
@@ -1509,6 +1669,7 @@ export class InventoryManager {
                 c.rarity === def.rarity &&
                 !c.excludeFromRandomLoot &&
                 !c.backpackId &&
+                (activeMapId === "vietnam" ? !c.mapOrigin || c.mapOrigin === "vietnam" : true) &&
                 c.w * c.h < def.w * def.h,
             ),
           );
@@ -2731,21 +2892,35 @@ export class InventoryManager {
     rarity: ItemRarity,
     biome: BiomeId,
     allowBackpack = true,
+    mapId: MapId = "vietnam",
   ): CollectibleItemDef {
-    const pool = ITEM_CATALOG.filter(
+    const basePool = ITEM_CATALOG.filter(
       (item) =>
         item.rarity === rarity &&
         !item.excludeFromRandomLoot &&
-        (allowBackpack || !item.backpackId),
+        (allowBackpack || !item.backpackId) &&
+        (mapId === "vietnam" ? !item.mapOrigin || item.mapOrigin === "vietnam" : true),
     );
+    let pool = basePool;
+    if (mapId === "japan" && rarity === "S") {
+      const jpRed = basePool.filter((item) => item.mapOrigin === "japan");
+      if (jpRed.length > 0 && Math.random() < 0.8) {
+        pool = jpRed;
+      }
+    }
     const weighted = pool.map((item) => {
       if (item.backpackId) {
         // Keep physical backpacks rare in random loot (at most ~1-2% per item, never boosted by city biome)
         return { item, weight: 0.08 };
       }
       let weight = 0.85;
-      if (item.homeBiome === biome) weight = 2.4;
-      else if (item.homeBiome === "plains") weight = 1.15;
+      if (mapId === "japan" && item.mapOrigin === "japan") {
+        weight = item.homeBiome === biome ? 4.2 : 3.2;
+      } else if (item.homeBiome === biome) {
+        weight = 2.4;
+      } else if (item.homeBiome === "plains") {
+        weight = 1.15;
+      }
       return { item, weight };
     });
 

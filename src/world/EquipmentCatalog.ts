@@ -109,6 +109,7 @@ function makeEmojiIconDataUrl(emoji: string, bgHex: string, borderHex: string): 
 }
 
 export const AIRPORT_GENDER_CHANGE_COST = 500;
+export const AIRPORT_JAPAN_FLIGHT_COST = 250;
 
 export const HAIR_OPTIONS: readonly HairOptionDef[] = [
   {
@@ -1424,6 +1425,64 @@ export const CONSUMABLE_CATALOG: readonly ConsumableDef[] = [
     emoji: "🍱",
     description: "Khẩu phần dã chiến hộp lớn dùng 5 lần (+78 Đói, +58 Thể lực mỗi lần).",
     iconSrc: makeEmojiIconDataUrl("🍱", "#7c2d12", "#fb923c"),
+  },
+  // === JAPANESE SPECIALTY MULTI-USE FOODS ===
+  {
+    id: "food_jp_onigiri",
+    inventoryItemId: "food_jp_onigiri",
+    name: "Cơm Nắm Onigiri Cá Hồi",
+    shopCategory: "food",
+    priceGold: 90,
+    weightKg: 0.35,
+    gridW: 1,
+    gridH: 1,
+    maxUses: 3,
+    hungerRestore: 42,
+    staminaRestore: 26,
+    hpRestore: 6,
+    tempDeltaC: 0.1,
+    useDurationMs: 1400,
+    emoji: "🍙",
+    description: "Hộp 3 cơm nắm cá hồi rong biển chuẩn Tokyo, gọn nhẹ dùng 3 lần.",
+    iconSrc: makeEmojiIconDataUrl("🍙", "#065f46", "#34d399"),
+  },
+  {
+    id: "food_jp_ramen",
+    inventoryItemId: "food_jp_ramen",
+    name: "Mì Ramen Tonkotsu Đặc Biệt",
+    shopCategory: "food",
+    priceGold: 275,
+    weightKg: 1.0,
+    gridW: 2,
+    gridH: 2,
+    maxUses: 5,
+    hungerRestore: 74,
+    staminaRestore: 40,
+    hpRestore: 26,
+    tempDeltaC: 0.9,
+    useDurationMs: 2600,
+    emoji: "🍜",
+    description: "Cặp lồng Ramen hầm xương dùng 5 lần, hồi Đói mạnh, hồi Máu & làm ấm cơ thể.",
+    iconSrc: makeEmojiIconDataUrl("🍜", "#991b1b", "#facc15"),
+  },
+  {
+    id: "food_jp_sushi_platter",
+    inventoryItemId: "food_jp_sushi_platter",
+    name: "Khay Sushi Hoàng Gia Omakase",
+    shopCategory: "food",
+    priceGold: 360,
+    weightKg: 1.2,
+    gridW: 2,
+    gridH: 3,
+    maxUses: 6,
+    hungerRestore: 95,
+    staminaRestore: 52,
+    hpRestore: 25,
+    tempDeltaC: 0,
+    useDurationMs: 3000,
+    emoji: "🍣",
+    description: "Khay Sushi thượng hạng 6 phần ăn no gần tối đa (+95 Đói, +52 Thể lực/lần).",
+    iconSrc: makeEmojiIconDataUrl("🍣", "#1e1b4b", "#f472b6"),
   },
 ];
 

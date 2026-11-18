@@ -88,11 +88,13 @@ document.getElementById("pixi-container")!.appendChild(app.canvas);
 
 await Assets.load(assets, setLoadingProgress);
 
-const worldData = generateOpenWorld(202611);
+const baseWorld = generateOpenWorld(202611, "vietnam");
 const { vault: saveVault, initial: saveLoadResult } = await SaveVault.open({
-  spawnX: worldData.spawn.x,
-  spawnY: worldData.spawn.y,
+  spawnX: baseWorld.spawn.x,
+  spawnY: baseWorld.spawn.y,
 });
+const savedMapId = saveLoadResult.save.profile.activeMapId === "japan" ? "japan" : "vietnam";
+const worldData = savedMapId === "vietnam" ? baseWorld : generateOpenWorld(202611, savedMapId);
 
 let hud: Hud | null = null;
 
@@ -123,6 +125,9 @@ const worldScene = new WorldScene(
     },
     onOpenAirport: () => {
       hud?.openAirportModal();
+    },
+    onMapChanged: () => {
+      hud?.handleMapChanged();
     },
     onConsumeCompleted: (title, message) => {
       hud?.handleConsumeCompleted(title, message);

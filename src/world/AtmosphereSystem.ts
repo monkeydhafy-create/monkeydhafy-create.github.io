@@ -87,7 +87,7 @@ export class AtmosphereSystem {
 
   private readonly playerLanternLight: Sprite;
   private readonly playerWispLight: Sprite;
-  private readonly staticLights: StaticLight[] = [];
+  private staticLights: StaticLight[] = [];
   private readonly clouds: CloudShadow[] = [];
   private readonly sunbeams: Sprite[] = [];
   private readonly mistOverlay: Graphics;
@@ -120,6 +120,46 @@ export class AtmosphereSystem {
     this.playerWispLight.scale.set(1.25);
 
     this.worldLightLayer.addChild(this.playerLanternLight, this.playerWispLight);
+
+    this.rebuildForWorld(worldData);
+
+    // Soft drifting cloud shadows over open world
+    for (let i = 0; i < 14; i++) {
+      const cloud = new Sprite(this.glowTexture);
+      cloud.anchor.set(0.5);
+      cloud.tint = 0x09131c;
+      cloud.alpha = 0;
+      const scaleFactor = 4.5 + (i % 4) * 1.6;
+      cloud.scale.set(scaleFactor);
+      cloud.position.set((i * 743) % WORLD_WIDTH, (i * 577) % WORLD_HEIGHT);
+      this.cloudShadowLayer.addChild(cloud);
+      this.clouds.push({ sprite: cloud, scaleFactor });
+    }
+
+    // Screen-space daytime angled sunbeams (God-rays)
+    for (let i = 0; i < 4; i++) {
+      const beam = new Sprite(this.beamTexture);
+      beam.anchor.set(0.5, 0);
+      beam.blendMode = "add";
+      beam.rotation = -0.28;
+      beam.scale.set(1.2 + i * 0.25, 2.2);
+      beam.position.set(180 + i * 320, -40);
+      beam.alpha = 0;
+      this.screenOverlayLayer.addChild(beam);
+      this.sunbeams.push(beam);
+    }
+
+    this.mistOverlay = new Graphics();
+    this.lightningFlash = new Graphics();
+    this.screenOverlayLayer.addChild(this.mistOverlay, this.lightningFlash);
+  }
+
+  public rebuildForWorld(worldData: WorldData): void {
+    for (const old of this.staticLights) {
+      old.sprite.removeFromParent();
+      old.sprite.destroy();
+    }
+    this.staticLights = [];
 
     // Static lights on landmarks & cottages
     for (let i = 0; i < worldData.landmarks.length; i++) {
@@ -178,36 +218,6 @@ export class AtmosphereSystem {
         });
       }
     }
-
-    // Soft drifting cloud shadows over open world
-    for (let i = 0; i < 14; i++) {
-      const cloud = new Sprite(this.glowTexture);
-      cloud.anchor.set(0.5);
-      cloud.tint = 0x09131c;
-      cloud.alpha = 0;
-      const scaleFactor = 4.5 + (i % 4) * 1.6;
-      cloud.scale.set(scaleFactor);
-      cloud.position.set((i * 743) % WORLD_WIDTH, (i * 577) % WORLD_HEIGHT);
-      this.cloudShadowLayer.addChild(cloud);
-      this.clouds.push({ sprite: cloud, scaleFactor });
-    }
-
-    // Screen-space daytime angled sunbeams (God-rays)
-    for (let i = 0; i < 4; i++) {
-      const beam = new Sprite(this.beamTexture);
-      beam.anchor.set(0.5, 0);
-      beam.blendMode = "add";
-      beam.rotation = -0.28;
-      beam.scale.set(1.2 + i * 0.25, 2.2);
-      beam.position.set(180 + i * 320, -40);
-      beam.alpha = 0;
-      this.screenOverlayLayer.addChild(beam);
-      this.sunbeams.push(beam);
-    }
-
-    this.mistOverlay = new Graphics();
-    this.lightningFlash = new Graphics();
-    this.screenOverlayLayer.addChild(this.mistOverlay, this.lightningFlash);
   }
 
   public getGlowTexture(): Texture {

@@ -9,7 +9,7 @@ import {
   type EquippedGear,
   type SavedOutfitPreset,
 } from "../world/EquipmentCatalog.ts";
-import type { BiomeId, CharacterGender, CharacterSkinId, FacingDir } from "../world/types.ts";
+import type { BiomeId, CharacterGender, CharacterSkinId, FacingDir, MapId } from "../world/types.ts";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../world/types.ts";
 import {
   BACKPACK_BY_ID,
@@ -55,6 +55,7 @@ export interface SavedPlayerProfile {
   facing: FacingDir;
   skinId: CharacterSkinId;
   gender?: CharacterGender;
+  activeMapId?: MapId;
   onboardingDone?: boolean;
   discoveredLandmarkIds: string[];
   soundEnabled: boolean;
@@ -169,6 +170,7 @@ export function createDefaultGameSave(spawnX: number, spawnY: number): PlayerGam
       facing: "down",
       skinId: "samurai_blue",
       gender: "male",
+      activeMapId: "vietnam",
       onboardingDone: false,
       discoveredLandmarkIds: [],
       soundEnabled: true,
@@ -1038,6 +1040,17 @@ export function validateSavePayload(
           })()
         : "down";
 
+  const activeMapId: MapId =
+    rawProfile.activeMapId === undefined
+      ? "vietnam"
+      : rawProfile.activeMapId === "vietnam" || rawProfile.activeMapId === "japan"
+        ? rawProfile.activeMapId
+        : strict
+          ? (() => {
+              throw new TamperError("Invalid activeMapId");
+            })()
+          : "vietnam";
+
   const discoveredLandmarkIds = Array.isArray(rawProfile.discoveredLandmarkIds)
     ? Array.from(
         new Set(rawProfile.discoveredLandmarkIds.filter((id): id is string => typeof id === "string" && id.length > 0)),
@@ -1318,6 +1331,7 @@ export function validateSavePayload(
       facing,
       skinId,
       gender,
+      activeMapId,
       onboardingDone:
         typeof rawProfile.onboardingDone === "boolean" ? rawProfile.onboardingDone : true,
       discoveredLandmarkIds,

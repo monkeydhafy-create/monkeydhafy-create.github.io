@@ -139,21 +139,22 @@ interface PoliceOfficerAgent {
 const OFFICER_SPECS: ReadonlyArray<{
   id: string;
   name: string;
+  japanName: string;
   biome: BiomeId;
   patrolZone: "yellow" | "red";
   sectorMinCol: number;
   sectorMaxCol: number;
 }> = [
-  { id: "pol_yellow_1", name: "Cảnh Sát Phố Đông", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56 },
-  { id: "pol_yellow_2", name: "Cảnh Sát Khu Nam Phố", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56 },
-  { id: "pol_yellow_3", name: "Cảnh Sát Đại Lộ Tây", biome: "plains", patrolZone: "yellow", sectorMinCol: 52, sectorMaxCol: 82 },
-  { id: "pol_yellow_4", name: "Cảnh Sát Chợ Đồng Bằng", biome: "plains", patrolZone: "yellow", sectorMinCol: 56, sectorMaxCol: 86 },
-  { id: "pol_yellow_5", name: "Cảnh Sát Bờ Bắc Vàng", biome: "plains", patrolZone: "yellow", sectorMinCol: 74, sectorMaxCol: 104 },
-  { id: "pol_yellow_6", name: "Cảnh Sát Biên Giới Đông", biome: "plains", patrolZone: "yellow", sectorMinCol: 82, sectorMaxCol: 104 },
-  { id: "pol_red_1", name: "Đặc Nhiệm Cổng Đỏ", biome: "countryside", patrolZone: "red", sectorMinCol: 105, sectorMaxCol: 124 },
-  { id: "pol_red_2", name: "Đặc Nhiệm Khu Đỏ Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 108, sectorMaxCol: 134 },
-  { id: "pol_red_3", name: "Đặc Nhiệm Khu Đỏ Nam", biome: "countryside", patrolZone: "red", sectorMinCol: 112, sectorMaxCol: 138 },
-  { id: "pol_red_4", name: "Đặc Nhiệm Rừng Sâu Đông", biome: "countryside", patrolZone: "red", sectorMinCol: 124, sectorMaxCol: 145 },
+  { id: "pol_yellow_1", name: "Cảnh Sát Phố Đông", japanName: "Cảnh Sát Tokyo Đông", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56 },
+  { id: "pol_yellow_2", name: "Cảnh Sát Khu Nam Phố", japanName: "Tuần Tra Shibuya Nam", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56 },
+  { id: "pol_yellow_3", name: "Cảnh Sát Đại Lộ Tây", japanName: "Cảnh Sát Kyoto Tây", biome: "plains", patrolZone: "yellow", sectorMinCol: 52, sectorMaxCol: 82 },
+  { id: "pol_yellow_4", name: "Cảnh Sát Chợ Đồng Bằng", japanName: "Cảnh Sát Đền Inari", biome: "plains", patrolZone: "yellow", sectorMinCol: 56, sectorMaxCol: 86 },
+  { id: "pol_yellow_5", name: "Cảnh Sát Bờ Bắc Vàng", japanName: "Tuần Tra Rừng Trúc", biome: "plains", patrolZone: "yellow", sectorMinCol: 74, sectorMaxCol: 104 },
+  { id: "pol_yellow_6", name: "Cảnh Sát Biên Giới Đông", japanName: "Cảnh Sát Biên Giới Kyoto", biome: "plains", patrolZone: "yellow", sectorMinCol: 82, sectorMaxCol: 104 },
+  { id: "pol_red_1", name: "Đặc Nhiệm Cổng Đỏ", japanName: "Đặc Nhiệm Làng Iga", biome: "countryside", patrolZone: "red", sectorMinCol: 105, sectorMaxCol: 124 },
+  { id: "pol_red_2", name: "Đặc Nhiệm Khu Đỏ Bắc", japanName: "Đặc Nhiệm Thành Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 108, sectorMaxCol: 134 },
+  { id: "pol_red_3", name: "Đặc Nhiệm Khu Đỏ Nam", japanName: "Đặc Nhiệm Thành Nam", biome: "countryside", patrolZone: "red", sectorMinCol: 112, sectorMaxCol: 138 },
+  { id: "pol_red_4", name: "Đặc Nhiệm Rừng Sâu Đông", japanName: "Đặc Nhiệm Shogun Osaka", biome: "countryside", patrolZone: "red", sectorMinCol: 124, sectorMaxCol: 145 },
 ];
 
 const PATROL_SPEED = 58;
@@ -288,9 +289,10 @@ export class PoliceSystem {
       const headSprite = makeLayer();
       const hatSprite = makeLayer();
 
-      legsSprite.tint = 0x1e293b;
-      torsoSprite.tint = 0xdbeafe;
-      hatSprite.tint = 0x1d4ed8;
+      const isJapan = this.world.mapId === "japan";
+      legsSprite.tint = isJapan ? 0x0f172a : 0x1e293b;
+      torsoSprite.tint = isJapan ? 0x94a3b8 : 0xdbeafe;
+      hatSprite.tint = isJapan ? 0x0f172a : 0x1d4ed8;
       feetSprite.tint = 0x334155;
 
       const sirenGfx = new Graphics();
@@ -321,7 +323,7 @@ export class PoliceSystem {
 
       const agent: PoliceOfficerAgent = {
         id: spec.id,
-        name: spec.name,
+        name: this.world.mapId === "japan" ? spec.japanName : spec.name,
         homeBiome: spec.biome,
         patrolZone: spec.patrolZone,
         sectorMinCol: spec.sectorMinCol,
@@ -710,6 +712,14 @@ export class PoliceSystem {
       }
     }
     return best;
+  }
+
+  public destroy(): void {
+    for (const o of this.officers) {
+      o.container.removeFromParent();
+      o.container.destroy({ children: true });
+    }
+    this.officers.length = 0;
   }
 
   public getMarkers(
