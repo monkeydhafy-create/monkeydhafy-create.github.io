@@ -580,6 +580,7 @@ export class Hud {
   private scanQueue: string[] = [];
   private activeScanUid: string | null = null;
   private containerSyncPending = false;
+  private readonly containerMutationChains = new Map<string, Promise<void>>();
   private scanElapsedMs = 0;
   private scanDurationMs = 0;
   private activeScanFillEl: HTMLDivElement | null = null;
@@ -4513,6 +4514,7 @@ export class Hud {
     if (d.isDragging) {
       if (d.hoverZone && d.hoverValid) {
         const containerId = this.activeContainer ? this.activeContainer.containerId : null;
+        const rollbackSnapshot = { ...d.item };
         const moved = this.scene.inventory.placeMovedItem(
           d.fromZone,
           d.hoverZone,
@@ -4522,50 +4524,8 @@ export class Hud {
           d.hoverRow,
           d.rotated,
         );
-        if (moved && containerId && this.cloudSync?.isAuthenticated()) {
-          const mapId = this.scene.getActiveMapId();
-          const key = `${mapId}:${containerId}`;
-          const expectedVer = this.sharedContainerVersions.get(key) ?? 0;
-          if (d.fromZone === "container" && d.hoverZone === "backpack") {
-            const movedUid = d.item.uid;
-            void this.cloudSync
-              .takeWorldContainerItem(mapId, containerId, movedUid, expectedVer)
-              .then((res) => {
-                if (!res) return;
-                this.sharedContainerVersions.set(key, res.newVersion);
-                if (!res.ok) {
-                  this.scene.inventory.removeItemFromBackpackByUid(movedUid);
-                  if (this.activeContainer?.containerId === containerId) {
-                    const updated = this.scene.inventory.applySharedContainerSnapshot(
-                      containerId,
-                      this.activeContainer.title,
-                      this.activeContainer.sourceType,
-                      this.activeContainer.biome,
-                      this.activeContainer.cols,
-                      this.activeContainer.rows,
-                      res.items,
-                      this.activeContainer.generatedAt,
-                      this.activeContainer.refreshAt,
-                    );
-                    this.activeContainer = updated;
-                    this.renderLootAndBagModal();
-                  }
-                  this.refreshBagBadge();
-                  this.showDiscoveryToast(
-                    "⚠️ Vật phẩm vừa bị nhặt mất!",
-                    "Người chơi khác đã lấy món đồ này trước bạn.",
-                  );
-                }
-              });
-          } else if (d.fromZone === "backpack" && d.hoverZone === "container") {
-            void this.cloudSync
-              .depositWorldContainerItem(mapId, containerId, d.item, expectedVer)
-              .then((res) => {
-                if (res?.ok) {
-                  this.sharedContainerVersions.set(key, res.newVersion);
-                }
-              });
-          }
+        if (moved && containerId && (d.fromZone === "container" || d.hoverZone === "container")) {
+          this.syncContainerMutation(d.fromZone, d.hoverZone, containerId, d.item.uid, rollbackSnapshot);
         }
         this.selectedItem = { uid: d.item.uid, zone: d.hoverZone };
       } else {
@@ -4886,9 +4846,14 @@ export class Hud {
           ? this.scene.inventory.getSafeboxItems()
           : this.selectedItem.zone === "home"
             ? this.scene.inventory.getHomeItems()
-            : this.activeContainer?.items ?? [];
+            : this.selectedItem.zone === "torso"
+              ? this.scene.inventory.getPocketItems("torso")
+              : this.selectedItem.zone === "legs"
+                ? this.scene.inventory.getPocketItems("legs")
+                : this.activeContainer?.items ?? [];
     const inst = list.find((i) => i.uid === this.selectedItem!.uid);
     if (!inst) return;
+    const rollbackSnapshot = { ...inst };
     const containerId = this.activeContainer ? this.activeContainer.containerId : null;
     const ok = this.scene.inventory.placeMovedItem(
       this.selectedItem.zone,
@@ -4900,6 +4865,9 @@ export class Hud {
       !inst.rotated,
     );
     if (ok) {
+      if (this.selectedItem.zone === "container" && containerId) {
+        this.syncContainerMutation("container", "container", containerId, inst.uid, rollbackSnapshot);
+      }
       this.renderLootAndBagModal();
     } else {
       this.showDiscoveryToast("Không đủ chỗ xoay", "Cần chừa khoảng trống xung quanh để xoay 90°.");
@@ -5109,12 +5077,28 @@ export class Hud {
       moveBtn.textContent = target.label;
       moveBtn.addEventListener("click", () => {
         if (!this.selectedItem) return;
+        const fromZone = this.selectedItem.zone;
+        const uid = this.selectedItem.uid;
         const containerId = this.activeContainer ? this.activeContainer.containerId : null;
+        const srcList =
+          fromZone === "backpack"
+            ? this.scene.inventory.getBackpackItems()
+            : fromZone === "safebox"
+              ? this.scene.inventory.getSafeboxItems()
+              : fromZone === "home"
+                ? this.scene.inventory.getHomeItems()
+                : fromZone === "torso"
+                  ? this.scene.inventory.getPocketItems("torso")
+                  : fromZone === "legs"
+                    ? this.scene.inventory.getPocketItems("legs")
+                    : this.activeContainer?.items ?? [];
+        const srcInst = srcList.find((i) => i.uid === uid);
+        const rollbackSnapshot = srcInst ? { ...srcInst } : undefined;
         const ok = this.scene.inventory.quickTransfer(
-          this.selectedItem.zone,
+          fromZone,
           target.toZone,
           containerId,
-          this.selectedItem.uid,
+          uid,
         );
         if (!ok) {
           this.showDiscoveryToast(
@@ -5122,6 +5106,9 @@ export class Hud {
             `Item cần ${w}×${h} ô trống.`,
           );
         } else {
+          if (containerId && (fromZone === "container" || target.toZone === "container")) {
+            this.syncContainerMutation(fromZone, target.toZone, containerId, uid, rollbackSnapshot);
+          }
           this.selectedItem = null;
           this.renderLootAndBagModal();
           this.refreshBagBadge();
@@ -7139,6 +7126,134 @@ export class Hud {
     if (this.isPetModalOpen) this.renderPetGachaModal();
     this.lastSurvivalSignature = "";
     this.update(0.016);
+  }
+
+  private syncContainerMutation(
+    fromZone: GridZone,
+    toZone: GridZone,
+    containerId: string,
+    uid: string,
+    rollbackItem?: GridItemInstance,
+  ): void {
+    if (!this.cloudSync?.isAuthenticated()) return;
+    const mapId = this.scene.getActiveMapId();
+    const key = `${mapId}:${containerId}`;
+    const prevChain = this.containerMutationChains.get(key) ?? Promise.resolve();
+
+    const nextChain = prevChain.then(async () => {
+      if (!this.cloudSync?.isAuthenticated()) return;
+      const expectedVer = this.sharedContainerVersions.get(key) ?? 0;
+
+      const applyServerItems = (items: GridItemInstance[]): void => {
+        const target =
+          this.activeContainer?.containerId === containerId
+            ? this.activeContainer
+            : this.scene.inventory.getContainer(containerId);
+        if (!target) return;
+        const prevRevealed = new Map<string, boolean>();
+        for (const it of target.items) {
+          if (it.revealed !== undefined) prevRevealed.set(it.uid, it.revealed);
+        }
+        const merged = items.map((it) =>
+          prevRevealed.has(it.uid) ? { ...it, revealed: prevRevealed.get(it.uid) } : { ...it },
+        );
+        const updated = this.scene.inventory.applySharedContainerSnapshot(
+          containerId,
+          target.title,
+          target.sourceType,
+          target.biome,
+          target.cols,
+          target.rows,
+          merged,
+          target.generatedAt,
+          target.refreshAt,
+        );
+        if (this.isBagOpen && this.activeContainer?.containerId === containerId) {
+          this.activeContainer = updated;
+          this.renderLootAndBagModal();
+        }
+        this.refreshBagBadge();
+      };
+
+      if (fromZone === "container" && toZone !== "container") {
+        const res = await this.cloudSync.takeWorldContainerItem(mapId, containerId, uid, expectedVer);
+        if (res) {
+          this.sharedContainerVersions.set(key, res.newVersion);
+        }
+        if (!res || !res.ok) {
+          this.scene.inventory.removeItemFromZone(toZone, uid, containerId);
+          if (res?.items) {
+            applyServerItems(res.items);
+          } else {
+            this.renderLootAndBagModal();
+            this.refreshBagBadge();
+          }
+          this.showDiscoveryToast(
+            "⚠️ Vật phẩm vừa bị thay đổi!",
+            "Người chơi khác vừa thao tác trên kho đồ này trước bạn.",
+          );
+        }
+        return;
+      }
+
+      const containerState = this.scene.inventory.getContainer(containerId);
+      const placedItem = containerState?.items.find((it) => it.uid === uid);
+
+      if (fromZone !== "container" && toZone === "container" && placedItem) {
+        const res = await this.cloudSync.depositWorldContainerItem(
+          mapId,
+          containerId,
+          { ...placedItem, revealed: true },
+          expectedVer,
+        );
+        if (res) {
+          this.sharedContainerVersions.set(key, res.newVersion);
+        }
+        if (!res || !res.ok) {
+          this.scene.inventory.removeItemFromZone("container", uid, containerId);
+          if (rollbackItem) {
+            if (!this.scene.inventory.restoreItemToZone(fromZone, rollbackItem, containerId)) {
+              this.scene.inventory.receiveAuctionItemToStorage(rollbackItem);
+            }
+          }
+          if (res?.items) {
+            applyServerItems(res.items);
+          } else {
+            this.renderLootAndBagModal();
+            this.refreshBagBadge();
+          }
+          this.showDiscoveryToast(
+            "⚠️ Không thể cất vào kho!",
+            "Kho đồ vừa có người khác thao tác, đã hoàn trả vật phẩm.",
+          );
+        }
+        return;
+      }
+
+      if (fromZone === "container" && toZone === "container" && placedItem) {
+        const res = await this.cloudSync.moveWorldContainerItem(
+          mapId,
+          containerId,
+          uid,
+          placedItem.x,
+          placedItem.y,
+          Boolean(placedItem.rotated),
+          expectedVer,
+        );
+        if (res) {
+          this.sharedContainerVersions.set(key, res.newVersion);
+        }
+        if (res && !res.ok) {
+          applyServerItems(res.items);
+          this.showDiscoveryToast(
+            "⚠️ Vị trí đã thay đổi",
+            "Người chơi khác vừa di chuyển hoặc lấy vật phẩm trong kho.",
+          );
+        }
+      }
+    });
+
+    this.containerMutationChains.set(key, nextChain.catch(() => {}));
   }
 
   public handleSharedContainerUpdated(

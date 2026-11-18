@@ -275,6 +275,15 @@ BEGIN
     RETURN;
   END IF;
 
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(v_row.items) AS elem
+    WHERE elem->>'uid' = p_item->>'uid'
+  ) THEN
+    RETURN QUERY SELECT false, v_row.state_version, v_row.items, v_row.opened_at, v_row.refresh_at;
+    RETURN;
+  END IF;
+
   v_next_items := v_row.items || jsonb_build_array(p_item);
 
   UPDATE public.world_containers
@@ -290,7 +299,80 @@ BEGIN
 END;
 $$;
 
--- 8b. RPC đồng bộ toàn bộ điểm loot còn hạn reset theo bản đồ
+-- 8b. RPC di chuyển / xoay vị trí 1 món đồ bên trong rương chung
+DROP FUNCTION IF EXISTS public.move_world_container_item(text, text, text, integer, integer, boolean, bigint);
+CREATE OR REPLACE FUNCTION public.move_world_container_item(
+  p_map_id text,
+  p_container_id text,
+  p_item_uid text,
+  p_x integer,
+  p_y integer,
+  p_rotated boolean,
+  p_expected_version bigint
+)
+RETURNS TABLE(ok boolean, new_version bigint, items jsonb, opened_at timestamptz, refresh_at timestamptz)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.world_containers;
+  v_next_items jsonb;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.world_containers
+  WHERE map_id = p_map_id AND container_id = p_container_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT false, 0::bigint, '[]'::jsonb, clock_timestamp(), clock_timestamp();
+    RETURN;
+  END IF;
+
+  IF p_expected_version > 0 AND v_row.state_version <> p_expected_version THEN
+    RETURN QUERY SELECT false, v_row.state_version, v_row.items, v_row.opened_at, v_row.refresh_at;
+    RETURN;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(v_row.items) AS elem
+    WHERE elem->>'uid' = p_item_uid
+  ) THEN
+    RETURN QUERY SELECT false, v_row.state_version, v_row.items, v_row.opened_at, v_row.refresh_at;
+    RETURN;
+  END IF;
+
+  SELECT COALESCE(
+    jsonb_agg(
+      CASE
+        WHEN elem->>'uid' = p_item_uid THEN
+          elem || jsonb_build_object('x', p_x, 'y', p_y, 'rotated', p_rotated, 'revealed', true)
+        ELSE elem
+      END
+    ),
+    '[]'::jsonb
+  ) INTO v_next_items
+  FROM jsonb_array_elements(v_row.items) AS elem;
+
+  UPDATE public.world_containers
+  SET
+    items = v_next_items,
+    state_version = v_row.state_version + 1,
+    updated_by = auth.uid(),
+    updated_at = clock_timestamp()
+  WHERE map_id = p_map_id AND container_id = p_container_id
+  RETURNING * INTO v_row;
+
+  RETURN QUERY SELECT true, v_row.state_version, v_row.items, v_row.opened_at, v_row.refresh_at;
+END;
+$$;
+
+-- 8c. RPC đồng bộ toàn bộ điểm loot còn hạn reset theo bản đồ
 CREATE OR REPLACE FUNCTION public.sync_active_world_containers(p_map_id text)
 RETURNS SETOF public.world_containers
 LANGUAGE sql
@@ -308,6 +390,7 @@ GRANT EXECUTE ON FUNCTION public.get_server_time_ms() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_or_open_world_container(text, text, text, text, text, text, jsonb, bigint) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.take_world_container_item(text, text, text, bigint) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.deposit_world_container_item(text, text, jsonb, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.move_world_container_item(text, text, text, integer, integer, boolean, bigint) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_active_world_containers(text) TO authenticated;
 
 -- 9. Bật Supabase Realtime cho đồng bộ đa thiết bị & thế giới chung

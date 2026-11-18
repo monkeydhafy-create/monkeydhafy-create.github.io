@@ -740,6 +740,13 @@ export class SupabaseSync {
       const openedAt = Date.parse(data.opened_at) || Date.now();
       const refreshAt = Date.parse(data.refresh_at) || Date.now() + params.refreshMs;
       const version = Number(data.state_version) || 1;
+      if (this.worldChannel) {
+        void this.worldChannel.send({
+          type: "broadcast",
+          event: "w_chest",
+          payload: { mapId: params.mapId, cid: params.containerId, items, ver: version, openedAt, refreshAt },
+        });
+      }
       return { items, openedAt, refreshAt, version };
     } catch {
       return null;
@@ -805,6 +812,53 @@ export class SupabaseSync {
         p_map_id: mapId,
         p_container_id: containerId,
         p_item: item,
+        p_expected_version: expectedVersion,
+      });
+      if (error || !Array.isArray(data) || data.length === 0) return null;
+      const row = data[0];
+      const items = Array.isArray(row.items) ? (row.items as GridItemInstance[]) : [];
+      const newVersion = Number(row.new_version) || expectedVersion;
+      const openedAt = row.opened_at ? Date.parse(row.opened_at) : Date.now();
+      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 926_100;
+      if (row.ok && this.worldChannel) {
+        void this.worldChannel.send({
+          type: "broadcast",
+          event: "w_chest",
+          payload: { mapId, cid: containerId, items, ver: newVersion, openedAt, refreshAt },
+        });
+      }
+      return {
+        ok: Boolean(row.ok),
+        newVersion,
+        items,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  public async moveWorldContainerItem(
+    mapId: MapId,
+    containerId: string,
+    itemUid: string,
+    x: number,
+    y: number,
+    rotated: boolean,
+    expectedVersion: number,
+  ): Promise<{
+    ok: boolean;
+    newVersion: number;
+    items: GridItemInstance[];
+  } | null> {
+    if (!this.user) return null;
+    try {
+      const { data, error } = await this.client.rpc("move_world_container_item", {
+        p_map_id: mapId,
+        p_container_id: containerId,
+        p_item_uid: itemUid,
+        p_x: x,
+        p_y: y,
+        p_rotated: rotated,
         p_expected_version: expectedVersion,
       });
       if (error || !Array.isArray(data) || data.length === 0) return null;

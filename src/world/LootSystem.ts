@@ -2722,18 +2722,39 @@ export class InventoryManager {
     return this.addItemToZone("backpack", itemId, originBiome);
   }
 
-  public removeItemFromZone(zone: "backpack" | "home" | "safebox", uid: string): GridItemInstance | null {
-    const list =
-      zone === "home"
-        ? this.state.homeItems
-        : zone === "safebox"
-          ? this.state.safeboxItems
-          : this.state.backpackItems;
-    const idx = list.findIndex((i) => i.uid === uid);
+  public removeItemFromZone(
+    zone: GridZone,
+    uid: string,
+    containerId: string | null = null,
+  ): GridItemInstance | null {
+    const grid = this.resolveZoneGrid(zone, containerId);
+    if (!grid) return null;
+    const idx = grid.items.findIndex((i) => i.uid === uid);
     if (idx === -1) return null;
-    const [removed] = list.splice(idx, 1);
+    const [removed] = grid.items.splice(idx, 1);
     this.saveState();
     return removed;
+  }
+
+  public restoreItemToZone(
+    zone: GridZone,
+    item: GridItemInstance,
+    containerId: string | null = null,
+  ): boolean {
+    const grid = this.resolveZoneGrid(zone, containerId);
+    const def = ITEM_BY_ID[item.itemId];
+    if (!grid || !def) return false;
+    const { w, h } = getEffectiveSize(def, Boolean(item.rotated));
+    if (canPlaceOnGrid(grid.cols, grid.rows, grid.items, item.x, item.y, w, h)) {
+      grid.items.push({ ...item });
+      this.saveState();
+      return true;
+    }
+    const fit = findFirstFitOnGrid(grid.cols, grid.rows, grid.items, def, Boolean(item.rotated));
+    if (!fit) return false;
+    grid.items.push({ ...item, x: fit.x, y: fit.y, rotated: fit.rotated });
+    this.saveState();
+    return true;
   }
 
   /** Confiscates every carried item in backpack AND the worn backpack itself on arrest; Safebox & Home Storage remain untouched. */
