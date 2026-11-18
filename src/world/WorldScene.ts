@@ -16,6 +16,7 @@ import {
   computeEquipmentStats,
   createDefaultEquippedGear,
   createPrisonerEquippedGear,
+  getConsumableSingleUsePrice,
   type ConsumableDef,
   type EquipmentSlot,
   type EquipmentStats,
@@ -41,6 +42,7 @@ import {
   InventoryManager,
   ITEM_BY_ID,
   findFirstFitOnGrid,
+  getItemRemainingUses,
   type CollectibleItemDef,
   type ContainerLootState,
   type GridItemInstance,
@@ -1129,13 +1131,14 @@ export class WorldScene {
       const itemDef = ITEM_BY_ID[inst.itemId];
       const consumable = itemDef?.consumableId ? CONSUMABLE_BY_ID[itemDef.consumableId] : null;
       if (!itemDef || !consumable) continue;
+      const remUses = getItemRemainingUses(inst, itemDef);
       const existing = byId.get(consumable.id);
       if (existing) {
-        existing.count += 1;
+        existing.count += remUses;
         continue;
       }
       if (results.length >= limit) continue;
-      const entry = { uid: inst.uid, itemDef, consumable, count: 1 };
+      const entry = { uid: inst.uid, itemDef, consumable, count: remUses };
       byId.set(consumable.id, entry);
       results.push(entry);
     }
@@ -1178,7 +1181,10 @@ export class WorldScene {
       if (!addRes.ok) return addRes;
       this.inventory.trySpendGold(def.priceGold);
       this.callbacks.onRequestSave?.(true);
-      return { ok: true, message: `Đã mua & cất ${def.name} vào Balo!` };
+      return {
+        ok: true,
+        message: `Đã mua & cất ${def.name} (${def.maxUses} lần dùng) vào Balo!`,
+      };
     }
 
     if (this.pendingConsume) {
@@ -1188,17 +1194,18 @@ export class WorldScene {
       };
     }
 
-    if (this.inventory.getSummary().walletGold < def.priceGold) {
+    const singlePrice = getConsumableSingleUsePrice(def);
+    if (this.inventory.getSummary().walletGold < singlePrice) {
       return {
         ok: false,
-        message: `Cần ${def.priceGold.toLocaleString("vi-VN")} Vàng để dùng ${def.name}.`,
+        message: `Cần ${singlePrice.toLocaleString("vi-VN")} Vàng để dùng 1 phần ${def.name}.`,
       };
     }
 
     this.pendingConsume = {
       consumable: def,
       backpackUid: null,
-      priceGold: def.priceGold,
+      priceGold: singlePrice,
       elapsedMs: 0,
       durationMs: def.useDurationMs,
     };
@@ -1283,11 +1290,17 @@ export class WorldScene {
       const consumed = this.inventory.consumeBackpackItem(job.backpackUid);
       if (!consumed) return;
       this.applyConsumableEffect(consumed);
+      const remainingInst = this.inventory.getBackpackItems().find((i) => i.uid === job.backpackUid);
+      const usesTitle = remainingInst
+        ? `Còn ${getItemRemainingUses(remainingInst)}/${consumed.maxUses} lần`
+        : `0/${consumed.maxUses} lần`;
       const buffNote = consumed.staminaBoostPct
         ? ` +${consumed.staminaBoostPct}% Thể lực (${Math.round((consumed.staminaBoostDurationMs ?? 0) / 60_000)} phút)`
         : "";
       this.callbacks.onConsumeCompleted?.(
-        `${consumed.emoji} Đã dùng ${consumed.name}`,
+        remainingInst
+          ? `${consumed.emoji} Đã dùng ${consumed.name} (${usesTitle})`
+          : `${consumed.emoji} Đã dùng hết ${consumed.name} (${usesTitle})`,
         consumed.isFullRestore
           ? "Hồi phục 100% Máu, Đói, Thể lực & Thân nhiệt!"
           : `+${consumed.hungerRestore} Đói, +${consumed.staminaRestore} Thể lực, +${consumed.hpRestore} Máu.${buffNote}`,
@@ -2155,7 +2168,8 @@ export class WorldScene {
               const waterTex = this.pickTileVariant(this.atlas.tiles.water, col, row);
               const wSprite = new Sprite(waterTex);
               wSprite.position.set(px, py);
-              wSprite.scale.set(PIXEL_SCALE);
+              wSprite.width = TILE_SIZE + 0.5;
+              wSprite.height = TILE_SIZE + 0.5;
               wSprite.tint = 0x38bdf8;
               chunk.addChild(wSprite);
 
@@ -2180,7 +2194,8 @@ export class WorldScene {
               const baseTex = this.resolveTileTexture(baseTile, col, row);
               const baseSprite = new Sprite(baseTex);
               baseSprite.position.set(px, py);
-              baseSprite.scale.set(PIXEL_SCALE);
+              baseSprite.width = TILE_SIZE + 0.5;
+              baseSprite.height = TILE_SIZE + 0.5;
               chunk.addChild(baseSprite);
               this.drawPuddleOverlay(decorGfx, tiles, cols, rows, col, row, px, py);
               continue;
@@ -2189,7 +2204,8 @@ export class WorldScene {
             const tex = this.resolveTileTexture(tile, col, row);
             const sprite = new Sprite(tex);
             sprite.position.set(px, py);
-            sprite.scale.set(PIXEL_SCALE);
+            sprite.width = TILE_SIZE + 0.5;
+            sprite.height = TILE_SIZE + 0.5;
 
             if (tile === "water") {
               // Deeper azure pond/lake center (swim zone)
@@ -2866,8 +2882,9 @@ export class WorldScene {
     this.camX = clampedCamX;
     this.camY = clampedCamY;
 
-    const posX = viewW / 2 - this.camX * this.zoom;
-    const posY = viewH / 2 - this.camY * this.zoom;
+    const res = this.app.renderer.resolution || 1;
+    const posX = Math.round((viewW / 2 - this.camX * this.zoom) * res) / res;
+    const posY = Math.round((viewH / 2 - this.camY * this.zoom) * res) / res;
 
     this.worldContainer.scale.set(this.zoom);
     this.worldContainer.position.set(posX, posY);
@@ -2916,7 +2933,7 @@ export class WorldScene {
 
   private updateResponsiveBaseZoom(width: number, height: number, immediate = false): void {
     const minDim = Math.min(width, height);
-    const defaultZoom = minDim < 500 ? 0.9 : minDim < 900 ? 1.0 : 1.08;
+    const defaultZoom = minDim < 500 ? 45 / 48 : 1.0;
     this.targetZoom = defaultZoom;
     if (immediate) {
       this.zoom = defaultZoom;

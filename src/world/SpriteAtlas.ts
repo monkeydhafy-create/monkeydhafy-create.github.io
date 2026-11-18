@@ -41,10 +41,24 @@ export interface WorldAtlas {
   lpcLayers: Record<string, CharacterFrames>;
 }
 
+const TILE_UV_INSET = 0.12;
+
 function sliceCell(base: Texture, col: number, row: number, cols = 1, rows = 1): Texture {
   return new Texture({
     source: base.source,
     frame: new Rectangle(col * 16, row * 16, cols * 16, rows * 16),
+  });
+}
+
+function sliceGroundTile(base: Texture, col: number, row: number, stride = 16): Texture {
+  return new Texture({
+    source: base.source,
+    frame: new Rectangle(
+      col * stride + TILE_UV_INSET,
+      row * stride + TILE_UV_INSET,
+      16 - TILE_UV_INSET * 2,
+      16 - TILE_UV_INSET * 2,
+    ),
   });
 }
 
@@ -204,75 +218,75 @@ export function createWorldAtlas(): WorldAtlas {
   return {
     tiles: {
       grass: [
-        sliceCell(floorTex, 11, 12),
-        sliceCell(floorTex, 11, 12),
-        sliceCell(floorTex, 11, 12),
-        sliceCell(floorTex, 12, 12),
-        sliceCell(floorTex, 13, 12),
-        sliceCell(floorTex, 14, 12),
-        sliceCell(floorTex, 15, 12),
+        sliceGroundTile(floorTex, 11, 12, 16),
+        sliceGroundTile(floorTex, 11, 12, 16),
+        sliceGroundTile(floorTex, 11, 12, 16),
+        sliceGroundTile(floorTex, 12, 12, 16),
+        sliceGroundTile(floorTex, 13, 12, 16),
+        sliceGroundTile(floorTex, 14, 12, 16),
+        sliceGroundTile(floorTex, 15, 12, 16),
       ],
       meadow: [
-        sliceCell(floorTex, 0, 12),
-        sliceCell(floorTex, 0, 12),
-        sliceCell(floorTex, 0, 12),
-        sliceCell(floorTex, 1, 12),
-        sliceCell(floorTex, 2, 12),
-        sliceCell(floorTex, 3, 12),
-        sliceCell(floorTex, 4, 12),
+        sliceGroundTile(floorTex, 0, 12, 16),
+        sliceGroundTile(floorTex, 0, 12, 16),
+        sliceGroundTile(floorTex, 0, 12, 16),
+        sliceGroundTile(floorTex, 1, 12, 16),
+        sliceGroundTile(floorTex, 2, 12, 16),
+        sliceGroundTile(floorTex, 3, 12, 16),
+        sliceGroundTile(floorTex, 4, 12, 16),
       ],
       forest: [
-        sliceCell(floorTex, 11, 12),
-        sliceCell(floorTex, 12, 12),
-        sliceCell(floorTex, 13, 12),
+        sliceGroundTile(floorTex, 11, 12, 16),
+        sliceGroundTile(floorTex, 12, 12, 16),
+        sliceGroundTile(floorTex, 13, 12, 16),
       ],
       sand: [
-        sliceCell(floorTex, 1, 1),
-        sliceCell(floorTex, 1, 1),
-        sliceCell(floorTex, 0, 5),
-        sliceCell(floorTex, 1, 5),
-        sliceCell(floorTex, 2, 5),
-        sliceCell(floorTex, 3, 5),
+        sliceGroundTile(floorTex, 1, 1, 16),
+        sliceGroundTile(floorTex, 1, 1, 16),
+        sliceGroundTile(floorTex, 0, 5, 16),
+        sliceGroundTile(floorTex, 1, 5, 16),
+        sliceGroundTile(floorTex, 2, 5, 16),
+        sliceGroundTile(floorTex, 3, 5, 16),
       ],
       dirt: [
-        sliceCell(floorTex, 12, 8),
-        sliceCell(floorTex, 16, 8),
-        sliceCell(floorTex, 11, 11),
+        sliceGroundTile(floorTex, 12, 8, 16),
+        sliceGroundTile(floorTex, 16, 8, 16),
+        sliceGroundTile(floorTex, 11, 11, 16),
       ],
       dirtEdges: {
-        tl: sliceCell(floorTex, 11, 7),
-        t: sliceCell(floorTex, 12, 7),
-        tr: sliceCell(floorTex, 13, 7),
-        l: sliceCell(floorTex, 11, 8),
-        c: sliceCell(floorTex, 12, 8),
-        r: sliceCell(floorTex, 13, 8),
-        bl: sliceCell(floorTex, 11, 9),
-        b: sliceCell(floorTex, 12, 9),
-        br: sliceCell(floorTex, 13, 9),
+        tl: sliceGroundTile(floorTex, 11, 7, 16),
+        t: sliceGroundTile(floorTex, 12, 7, 16),
+        tr: sliceGroundTile(floorTex, 13, 7, 16),
+        l: sliceGroundTile(floorTex, 11, 8, 16),
+        c: sliceGroundTile(floorTex, 12, 8, 16),
+        r: sliceGroundTile(floorTex, 13, 8, 16),
+        bl: sliceGroundTile(floorTex, 11, 9, 16),
+        b: sliceGroundTile(floorTex, 12, 9, 16),
+        br: sliceGroundTile(floorTex, 13, 9, 16),
       },
       stone: [
-        sliceCell(plazaTex, 12, 7),
-        sliceCell(plazaTex, 12, 7),
-        sliceCell(plazaTex, 12, 7),
-        sliceCell(plazaTex, 12, 7),
-        sliceCell(plazaTex, 11, 10),
-        sliceCell(plazaTex, 14, 11),
+        sliceGroundTile(plazaTex, 12, 7, 16),
+        sliceGroundTile(plazaTex, 12, 7, 16),
+        sliceGroundTile(plazaTex, 12, 7, 16),
+        sliceGroundTile(plazaTex, 12, 7, 16),
+        sliceGroundTile(plazaTex, 11, 10, 16),
+        sliceGroundTile(plazaTex, 14, 11, 16),
       ],
       water: [
-        sliceCell(floorTex, 1, 22),
-        sliceCell(floorTex, 1, 22),
-        sliceCell(floorTex, 5, 22),
-        sliceCell(floorTex, 6, 22),
+        sliceGroundTile(floorTex, 1, 22, 16),
+        sliceGroundTile(floorTex, 1, 22, 16),
+        sliceGroundTile(floorTex, 5, 22, 16),
+        sliceGroundTile(floorTex, 6, 22, 16),
       ],
       road: [
-        sliceCityCell(cityTex, 11, 19),
-        sliceCityCell(cityTex, 10, 24),
+        sliceGroundTile(cityTex, 11, 19, 17),
+        sliceGroundTile(cityTex, 10, 24, 17),
       ],
       sidewalk: [
-        sliceCityCell(cityTex, 6, 20),
-        sliceCityCell(cityTex, 7, 20),
-        sliceCityCell(cityTex, 6, 21),
-        sliceCityCell(cityTex, 7, 21),
+        sliceGroundTile(cityTex, 7, 20, 17),
+        sliceGroundTile(cityTex, 7, 20, 17),
+        sliceGroundTile(cityTex, 6, 21, 17),
+        sliceGroundTile(cityTex, 7, 21, 17),
       ],
     },
     props: {

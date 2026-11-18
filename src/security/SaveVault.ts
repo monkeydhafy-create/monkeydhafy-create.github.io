@@ -30,6 +30,7 @@ import {
   generateSafeboxContract,
   generateTreadmillContract,
   getEffectiveSize,
+  getItemMaxUses,
   getNextGymTier,
   getNextHomeTier,
   getNextSafeboxTier,
@@ -582,6 +583,25 @@ function validatePlacedItems(
       continue;
     }
 
+    const maxUses = getItemMaxUses(def);
+    if (
+      def.consumableId &&
+      it.usesLeft !== undefined &&
+      (typeof it.usesLeft !== "number" ||
+        !Number.isInteger(it.usesLeft) ||
+        it.usesLeft < 1 ||
+        it.usesLeft > maxUses)
+    ) {
+      if (strict) throw new TamperError("Invalid item usesLeft");
+      continue;
+    }
+
+    const usesLeft = def.consumableId
+      ? typeof it.usesLeft === "number" && Number.isInteger(it.usesLeft)
+        ? Math.max(1, Math.min(maxUses, it.usesLeft))
+        : maxUses
+      : undefined;
+
     const biome: BiomeId =
       typeof it.originBiome === "string" && ALLOWED_BIOMES.has(it.originBiome)
         ? it.originBiome
@@ -596,6 +616,7 @@ function validatePlacedItems(
       rotated: it.rotated,
       originBiome: biome,
       revealed: it.revealed !== false ? true : false,
+      ...(usesLeft !== undefined ? { usesLeft } : {}),
     });
   }
 

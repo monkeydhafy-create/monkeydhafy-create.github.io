@@ -48,19 +48,19 @@ export function createDefaultSurvivalState(): SurvivalState {
 }
 
 /**
- * Smart tiered stamina recovery rate:
- * - 0..10: very slow (0.42/s)
- * - 10..25: slow (0.95/s)
- * - 25..50: normal (1.90/s)
- * - 50..80: moderate (3.30/s)
- * - 80+: fast (5.60/s)
+ * Smart tiered stamina recovery rate (+10% baseline):
+ * - 0..10: very slow (0.462/s)
+ * - 10..25: slow (1.045/s)
+ * - 25..50: normal (2.09/s)
+ * - 50..80: moderate (3.63/s)
+ * - 80+: fast (6.16/s)
  */
 export function getSmartStaminaRecoveryBaseRate(stamina: number): number {
-  if (stamina >= 80) return 5.6;
-  if (stamina >= 50) return 3.3;
-  if (stamina >= 25) return 1.9;
-  if (stamina >= 10) return 0.95;
-  return 0.42;
+  if (stamina >= 80) return 6.16;
+  if (stamina >= 50) return 3.63;
+  if (stamina >= 25) return 2.09;
+  if (stamina >= 10) return 1.045;
+  return 0.462;
 }
 
 export function getActiveStaminaMax(
@@ -208,7 +208,7 @@ export function stepSurvivalState(
   );
 
   // Hunger decay: faster when moving/swimming, carrying heavy load, sweating from heat, or shivering
-  const baseHungerLoss = isMoving ? (surface === "swim" ? 0.62 : 0.38) : 0.14;
+  const baseHungerLoss = isMoving ? (surface === "swim" ? 0.434 : 0.266) : 0.098;
   const thermalHungerMul = 1 + thermal.heatStress * 0.42 + thermal.coldStress * 0.5;
   const weightHungerMul = isMoving ? 1 + Math.max(0, totalWeightKg - 3) * 0.02 : 1;
   state.hunger = clamp(state.hunger - baseHungerLoss * thermalHungerMul * weightHungerMul * dt, 0, 100);
@@ -236,7 +236,7 @@ export function stepSurvivalState(
   const buffDrainRelief = 1 / buffMultiplier;
 
   if (isMoving) {
-    const moveDrain = surface === "swim" ? 6.8 : surface === "wade" ? 4.6 : 3.4;
+    const moveDrain = surface === "swim" ? 3.808 : surface === "wade" ? 2.576 : 1.904;
     state.stamina = clamp(
       state.stamina -
         moveDrain *

@@ -9,6 +9,7 @@ import {
   computeEquipmentStats,
   createDefaultEquippedGear,
   getCharacterBodyScale,
+  getConsumableSingleUsePrice,
   resolveGarmentLayerKey,
   type EquipmentSlot,
   type EquippedGear,
@@ -20,6 +21,9 @@ import {
   canPlaceOnGrid,
   COLLECTION_RED_ITEMS,
   getEffectiveSize,
+  getItemEffectiveValueGold,
+  getItemMaxUses,
+  getItemRemainingUses,
   getItemSearchDurationMs,
   getNextGymTier,
   getNextHomeTier,
@@ -504,6 +508,8 @@ export class Hud {
     this.vaultPuzzle = new PuzzleMinigameModal();
     this.refreshBagBadge();
     this.updateSurvivalHud();
+    this.updateInteractPrompt();
+    this.drawMinimap();
     this.bindEvents();
   }
 
@@ -2175,16 +2181,22 @@ export class Hud {
       this.applyGridItemIcon(img, def, cellPx, gap);
 
       el.append(img, dot);
+      if (def.consumableId) {
+        const usesBadge = document.createElement("span");
+        usesBadge.className = "delta-item-uses";
+        usesBadge.textContent = `${getItemRemainingUses(item, def)}/${getItemMaxUses(def)}`;
+        el.appendChild(usesBadge);
+      }
 
       if (enableDrag) {
         el.addEventListener("pointerdown", (e) => {
           e.preventDefault();
           e.stopPropagation();
+          const rect = el.getBoundingClientRect();
           this.selectedItem = { uid: item.uid, zone };
           this.renderInspector();
           this.highlightSelectedElement(gridEl, item.uid);
 
-          const rect = el.getBoundingClientRect();
           this.drag = {
             item,
             fromZone: zone,
@@ -2571,8 +2583,16 @@ export class Hud {
 
   private renderInspector(): void {
     this.inspectorEl.replaceChildren();
+    this.inspectorEl.classList.remove("is-hidden");
+    const renderEmptyInspector = (): void => {
+      const placeholder = document.createElement("div");
+      placeholder.className = "inspector-placeholder";
+      placeholder.textContent = "👆 Chạm vào vật phẩm để xem chi tiết, xoay hoặc cất nhanh.";
+      this.inspectorEl.appendChild(placeholder);
+    };
+
     if (!this.selectedItem) {
-      this.inspectorEl.classList.add("is-hidden");
+      renderEmptyInspector();
       return;
     }
 
@@ -2588,11 +2608,10 @@ export class Hud {
     const def = inst ? ITEM_BY_ID[inst.itemId] : null;
     if (!inst || !def) {
       this.selectedItem = null;
-      this.inspectorEl.classList.add("is-hidden");
+      renderEmptyInspector();
       return;
     }
 
-    this.inspectorEl.classList.remove("is-hidden");
     const { w, h } = getEffectiveSize(def, inst.rotated);
     const hasWornBackpack = Boolean(this.scene.inventory.getBackpackTier());
 
@@ -2609,7 +2628,11 @@ export class Hud {
     const dot = document.createElement("span");
     dot.className = `r-dot r-dot-${def.rarity}`;
     const nameSpan = document.createElement("span");
-    nameSpan.textContent = `${def.name} • 🪙 ${def.valueGold} Vàng • ⚖️ ${def.weightKg} kg`;
+    const valGold = getItemEffectiveValueGold(inst, def);
+    const usesSuffix = def.consumableId
+      ? ` • 🔄 ${getItemRemainingUses(inst, def)}/${getItemMaxUses(def)} lần`
+      : "";
+    nameSpan.textContent = `${def.name} • 🪙 ${valGold} Vàng • ⚖️ ${def.weightKg} kg${usesSuffix}`;
     title.append(dot, nameSpan);
 
     const desc = document.createElement("div");
@@ -2624,18 +2647,19 @@ export class Hud {
 
     if (this.selectedItem.zone === "backpack" && def.consumableId) {
       const cDef = CONSUMABLE_BY_ID[def.consumableId];
-      const durText = cDef ? ` (${(cDef.useDurationMs / 1000).toFixed(1)}s)` : "";
+      const durText = cDef ? ` • ${(cDef.useDurationMs / 1000).toFixed(1)}s` : "";
+      const remUses = getItemRemainingUses(inst, def);
+      const maxUses = getItemMaxUses(def);
       const eatBtn = document.createElement("button");
       eatBtn.type = "button";
       eatBtn.className = "inspector-btn";
-      eatBtn.textContent = `🍽️ Dùng ngay${durText}`;
+      eatBtn.textContent = `🍽️ Dùng (${remUses}/${maxUses}${durText})`;
       eatBtn.addEventListener("click", () => {
         if (!this.selectedItem) return;
         const res = this.scene.useBackpackFood(this.selectedItem.uid);
         if (!res.ok) {
           this.showDiscoveryToast("Không thể dùng", res.message);
         } else {
-          this.selectedItem = null;
           this.renderLootAndBagModal();
           this.updateConsumeProgressToast();
         }
@@ -2982,8 +3006,12 @@ export class Hud {
       t.className = "inspector-title";
       const d = document.createElement("span");
       d.className = `r-dot r-dot-${selDef.rarity}`;
+      const selVal = getItemEffectiveValueGold(sel, selDef);
+      const usesNote = selDef.consumableId
+        ? ` (${getItemRemainingUses(sel, selDef)}/${getItemMaxUses(selDef)} lần)`
+        : "";
       const n = document.createElement("span");
-      n.textContent = `${selDef.name} • 🪙 ${selDef.valueGold} Vàng`;
+      n.textContent = `${selDef.name}${usesNote} • 🪙 ${selVal} Vàng`;
       t.append(d, n);
       box.appendChild(t);
       left.append(img, box);
@@ -2991,7 +3019,7 @@ export class Hud {
       const sellBtn = document.createElement("button");
       sellBtn.type = "button";
       sellBtn.className = "inspector-btn";
-      sellBtn.textContent = `💰 Bán (+${selDef.valueGold} Vàng)`;
+      sellBtn.textContent = `💰 Bán (+${selVal} Vàng)`;
       sellBtn.addEventListener("click", () => {
         const gold = this.scene.inventory.sellItemInZone(this.shopSellZone, sel.uid);
         this.selectedShopUid = null;
@@ -4015,6 +4043,7 @@ export class Hud {
     this.foodShopListEl.replaceChildren();
     for (const f of CONSUMABLE_CATALOG) {
       if (f.shopCategory !== this.foodShopMode) continue;
+      const singlePrice = getConsumableSingleUsePrice(f);
       const card = document.createElement("div");
       card.className = "shop-item-card";
 
@@ -4025,10 +4054,10 @@ export class Hud {
       title.textContent = `${f.emoji} ${f.name}`;
       const tag = document.createElement("span");
       tag.className = "shop-item-tag";
-      tag.textContent = `🪙 ${f.priceGold} • ⏱️ ${(f.useDurationMs / 1000).toFixed(1)}s`;
+      tag.textContent = `🪙 ${f.priceGold} (${f.maxUses} lần) • 📦 ${f.gridW}×${f.gridH} ô`;
       head.append(title, tag);
 
-      const statParts: string[] = [];
+      const statParts: string[] = [`🔄 Dùng ${f.maxUses} lần`, `📦 ${f.gridW}×${f.gridH} ô`];
       if (f.hungerRestore > 0) statParts.push(`🍗 +${f.hungerRestore} Đói`);
       if (f.staminaRestore > 0) statParts.push(`⚡ +${f.staminaRestore} Thể lực`);
       if (f.hpRestore > 0) statParts.push(`❤️ +${f.hpRestore} Máu`);
@@ -4040,7 +4069,7 @@ export class Hud {
       const stats = document.createElement("div");
       stats.className = "shop-item-stats";
       stats.textContent = f.isFullRestore
-        ? "❤️‍🩹 Hồi đầy 100% Máu + Đói + Thể lực + Thân nhiệt"
+        ? `🔄 Dùng ${f.maxUses} lần • 📦 ${f.gridW}×${f.gridH} ô • ❤️‍🩹 Hồi đầy 100% Máu + Đói + Thể lực`
         : statParts.join(" • ");
 
       const desc = document.createElement("div");
@@ -4054,14 +4083,14 @@ export class Hud {
       eatBtn.type = "button";
       eatBtn.className = "btn-card-primary";
       eatBtn.textContent = isPharmacy
-        ? `💊 Dùng ngay (${(f.useDurationMs / 1000).toFixed(1)}s)`
-        : `🍽️ Ăn ngay (${(f.useDurationMs / 1000).toFixed(1)}s)`;
+        ? `💊 Dùng 1 liều (🪙 ${singlePrice} • ${(f.useDurationMs / 1000).toFixed(1)}s)`
+        : `🍽️ Ăn 1 phần (🪙 ${singlePrice} • ${(f.useDurationMs / 1000).toFixed(1)}s)`;
       eatBtn.addEventListener("click", () => {
         this.openPurchaseConfirm({
           subtitle: isPharmacy ? "💊 Hiệu Thuốc & Dược Phẩm" : "🍜 Quán Ăn & Giải Khát",
-          itemTitle: `${f.emoji} ${f.name}`,
+          itemTitle: `${f.emoji} ${f.name} (1 lần)`,
           itemDesc: `${stats.textContent} • ${f.description}`,
-          priceGold: f.priceGold,
+          priceGold: singlePrice,
           onConfirm: () => {
             const res = this.scene.buyConsumable(f.id, "eat");
             if (!res.ok) {
@@ -4077,25 +4106,27 @@ export class Hud {
       const packBtn = document.createElement("button");
       packBtn.type = "button";
       packBtn.className = "btn-card-secondary";
-      packBtn.textContent = foodFits ? "🎒 Bỏ Balo" : "🎒 Balo đầy";
+      packBtn.textContent = foodFits
+        ? `🎒 Mua mang theo (${f.maxUses} lần • 🪙 ${f.priceGold})`
+        : `🎒 Không đủ ${f.gridW}×${f.gridH} ô`;
       packBtn.addEventListener("click", () => {
         const curSum = this.scene.inventory.getSummary();
         const canFit = Boolean(this.scene.inventory.canFitItemInZone("backpack", f.inventoryItemId));
         this.openPurchaseConfirm({
           subtitle: isPharmacy ? "💊 Hiệu Thuốc • Mua bỏ Balo" : "🍜 Quán Ăn • Mua bỏ Balo",
           itemTitle: `${f.emoji} ${f.name}`,
-          itemDesc: `⚖️ ${f.weightKg} kg (1×1 ô) • ${stats.textContent}`,
+          itemDesc: `⚖️ ${f.weightKg} kg (${f.gridW}×${f.gridH} ô • Dùng ${f.maxUses} lần) • ${stats.textContent}`,
           priceGold: f.priceGold,
           bagLine: canFit
-            ? `Còn trống (${curSum.usedCells}/${curSum.totalCells} ô)`
-            : `Đầy (${curSum.usedCells}/${curSum.totalCells} ô)`,
+            ? `Đủ chỗ ${f.gridW}×${f.gridH} ô (${curSum.usedCells}/${curSum.totalCells} ô)`
+            : `Không đủ ${f.gridW}×${f.gridH} ô (${curSum.usedCells}/${curSum.totalCells} ô)`,
           blockedReason: canFit
             ? null
-            : `⚠️ Balo đã đầy (${curSum.usedCells}/${curSum.totalCells} ô)! Bạn có thể dùng ngay tại chỗ hoặc mở Balo dọn chỗ.`,
+            : `⚠️ Balo không đủ ${f.gridW}×${f.gridH} ô trống (${curSum.usedCells}/${curSum.totalCells} ô)! Bạn có thể dùng 1 phần tại chỗ hoặc dọn Balo.`,
           altAction: canFit
             ? undefined
             : {
-                label: isPharmacy ? `💊 Dùng ngay (${f.priceGold})` : `🍽️ Ăn ngay (${f.priceGold})`,
+                label: isPharmacy ? `💊 Dùng 1 liều (${singlePrice})` : `🍽️ Ăn 1 phần (${singlePrice})`,
                 onSelect: () => {
                   const res = this.scene.buyConsumable(f.id, "eat");
                   if (!res.ok) {

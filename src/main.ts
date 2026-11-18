@@ -80,7 +80,8 @@ await app.init({
   // Capped at 2: preserves Retina sharpness while keeping mobile GPU usage smooth
   resolution: Math.min(window.devicePixelRatio, 2),
   autoDensity: true,
-  antialias: true,
+  antialias: false,
+  roundPixels: true,
 });
 
 document.getElementById("pixi-container")!.appendChild(app.canvas);

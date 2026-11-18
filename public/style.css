@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --hud-bg: rgba(9, 14, 18, 0.72);
+  --hud-bg: rgba(11, 22, 28, 0.94);
   --hud-border: rgba(52, 211, 153, 0.28);
   --hud-text: #f1f5f9;
   --hud-muted: #94a3b8;
@@ -94,6 +94,8 @@ button {
     max(12px, env(safe-area-inset-bottom))
     max(12px, env(safe-area-inset-left));
   z-index: 10;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .hud-top {
@@ -111,8 +113,6 @@ button {
   border-radius: 12px;
   background: var(--hud-bg);
   border: 1px solid var(--hud-border);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
@@ -170,8 +170,6 @@ button {
   border-radius: 12px;
   background: var(--hud-bg);
   border: 1px solid var(--hud-border);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   cursor: pointer;
 }
@@ -196,10 +194,8 @@ button {
   transition: opacity 220ms ease, transform 220ms ease;
   padding: 10px 16px;
   border-radius: 12px;
-  background: rgba(6, 78, 59, 0.88);
+  background: rgba(6, 78, 59, 0.95);
   border: 1px solid rgba(52, 211, 153, 0.55);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   text-align: center;
   max-width: min(90vw, 340px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -234,8 +230,6 @@ button {
   border-radius: 10px;
   background: var(--hud-bg);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   font-size: 11px;
   color: var(--hud-muted);
   line-height: 1.3;
@@ -282,8 +276,6 @@ button {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   transition: transform 100ms ease, border-color 150ms ease, background-color 150ms ease;
 }
 
@@ -315,10 +307,8 @@ button {
   min-width: 224px;
   padding: 6px;
   border-radius: 14px;
-  background: rgba(9, 14, 18, 0.94);
+  background: rgba(9, 14, 18, 0.96);
   border: 1px solid rgba(52, 211, 153, 0.36);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
@@ -467,13 +457,11 @@ button {
   padding: 9px 16px;
   border-radius: 999px;
   border: 1.5px solid rgba(251, 191, 36, 0.78);
-  background: rgba(15, 23, 42, 0.94);
+  background: rgba(15, 23, 42, 0.96);
   color: #fef3c7;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.52), 0 0 18px rgba(245, 158, 11, 0.25);
   transition: transform 100ms ease, border-color 150ms ease;
   white-space: nowrap;
@@ -561,15 +549,15 @@ button {
     max(8px, env(safe-area-inset-right))
     max(6px, env(safe-area-inset-bottom))
     max(8px, env(safe-area-inset-left));
-  background: rgba(2, 6, 23, 0.74);
-  backdrop-filter: blur(7px);
-  -webkit-backdrop-filter: blur(7px);
+  background: rgba(2, 6, 23, 0.84);
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 160ms ease;
+  transition: opacity 150ms ease, visibility 150ms ease;
 }
 
 .bag-modal.is-open {
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
 }
@@ -793,6 +781,21 @@ button {
   pointer-events: none;
 }
 
+.delta-item-uses {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(2, 6, 23, 0.86);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #e0f2fe;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  pointer-events: none;
+}
+
 .delta-drag-ghost {
   position: fixed;
   z-index: 90;
@@ -875,6 +878,52 @@ button {
 
 .inspector-btn:hover {
   background: rgba(16, 185, 129, 0.32);
+}
+
+#bag-modal .item-inspector {
+  flex-shrink: 0;
+  height: 76px;
+  min-height: 76px;
+  max-height: 76px;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+
+#bag-modal .inspector-left {
+  min-width: 0;
+}
+
+#bag-modal .inspector-left > div {
+  min-width: 0;
+  flex: 1;
+}
+
+#bag-modal .inspector-title,
+#bag-modal .inspector-desc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#bag-modal .inspector-title {
+  flex-wrap: nowrap;
+}
+
+#bag-modal .inspector-title > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#bag-modal .inspector-actions {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  overflow-x: auto;
+  max-width: 52%;
+}
+
+#bag-modal .inspector-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .bag-footer {
@@ -1097,7 +1146,7 @@ button {
 .hud-minimap-wrap {
   position: relative;
   border: 1px solid rgba(52, 211, 153, 0.45);
-  background: rgba(9, 14, 18, 0.85);
+  background: rgba(9, 14, 18, 0.94);
   padding: 4px;
   border-radius: 12px;
   cursor: pointer;
@@ -1238,10 +1287,8 @@ button {
   max-width: calc(100vw - 120px);
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(11, 25, 29, 0.8);
+  background: rgba(11, 25, 29, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
@@ -1710,15 +1757,15 @@ button {
   align-items: center;
   justify-content: center;
   padding: 12px;
-  background: rgba(2, 6, 23, 0.68);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(2, 6, 23, 0.84);
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 150ms ease;
+  transition: opacity 150ms ease, visibility 150ms ease;
 }
 
 .quick-wheel-modal.is-open {
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
 }
@@ -1933,10 +1980,9 @@ button {
   width: min(500px, calc(100vw - 24px));
   padding: 10px 14px;
   border-radius: 14px;
-  background: rgba(10, 18, 34, 0.88);
+  background: rgba(10, 18, 34, 0.95);
   border: 1px solid rgba(59, 130, 246, 0.7);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(8px);
   pointer-events: none;
   display: none;
   flex-direction: column;
@@ -2134,6 +2180,24 @@ button {
     flex: 1 1 auto;
     text-align: center;
   }
+  #bag-modal .item-inspector {
+    height: 84px;
+    min-height: 84px;
+    max-height: 84px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 10px;
+  }
+  #bag-modal .inspector-actions {
+    max-width: 100%;
+    width: 100%;
+  }
+  #bag-modal .inspector-btn {
+    flex: 1 0 auto;
+    padding: 5px 9px;
+  }
   #hud-controls .hud-pill-btn {
     flex: 0 0 auto;
     padding: 0 13px;
@@ -2262,6 +2326,25 @@ button {
     margin: 0 10px 6px;
     padding: 6px 9px;
     min-height: 40px;
+  }
+  #bag-modal .item-inspector {
+    height: 54px;
+    min-height: 54px;
+    max-height: 54px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 9px;
+  }
+  #bag-modal .inspector-actions {
+    width: auto;
+    max-width: 55%;
+  }
+  #bag-modal .inspector-btn {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    font-size: 11px;
   }
   .bag-footer {
     padding: 5px 10px;

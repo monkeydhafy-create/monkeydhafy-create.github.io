@@ -614,9 +614,9 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
   ...CONSUMABLE_CATALOG.map((c): CollectibleItemDef => ({
     id: c.inventoryItemId,
     name: c.name,
-    rarity: "B",
-    w: 1,
-    h: 1,
+    rarity: c.priceGold >= 240 ? "A" : "B",
+    w: c.gridW,
+    h: c.gridH,
     weightKg: c.weightKg,
     valueGold: Math.max(5, Math.round(c.priceGold * 0.6)),
     homeBiome: "city",
@@ -893,6 +893,38 @@ export interface GridItemInstance {
   originBiome: BiomeId;
   /** False while container item is still hidden/scanning for the first time */
   revealed?: boolean;
+  /** Remaining uses for multi-use consumables */
+  usesLeft?: number;
+}
+
+export function getItemMaxUses(def: CollectibleItemDef | null | undefined): number {
+  if (!def?.consumableId) return 1;
+  return Math.max(1, CONSUMABLE_BY_ID[def.consumableId]?.maxUses ?? 1);
+}
+
+export function getItemRemainingUses(
+  item: GridItemInstance,
+  def?: CollectibleItemDef | null,
+): number {
+  const resolved = def ?? ITEM_BY_ID[item.itemId];
+  const maxUses = getItemMaxUses(resolved);
+  if (maxUses <= 1) return 1;
+  if (typeof item.usesLeft === "number" && Number.isInteger(item.usesLeft)) {
+    return Math.max(1, Math.min(maxUses, item.usesLeft));
+  }
+  return maxUses;
+}
+
+export function getItemEffectiveValueGold(
+  item: GridItemInstance,
+  def?: CollectibleItemDef | null,
+): number {
+  const resolved = def ?? ITEM_BY_ID[item.itemId];
+  if (!resolved) return 0;
+  const maxUses = getItemMaxUses(resolved);
+  if (maxUses <= 1) return resolved.valueGold;
+  const usesLeft = getItemRemainingUses(item, resolved);
+  return Math.max(1, Math.round((resolved.valueGold * usesLeft) / maxUses));
 }
 
 const RARITY_SCAN_BASE_MS: Record<ItemRarity, number> = {
@@ -1001,15 +1033,19 @@ export const STARTER_CONSUMABLE_IDS: readonly string[] = [
 ];
 
 export function createDefaultInventoryState(): PersistedInventoryState {
-  const starterItems: GridItemInstance[] = STARTER_CONSUMABLE_IDS.map((itemId, idx) => ({
-    uid: `it_${idx + 1}`,
-    itemId,
-    x: idx,
-    y: 0,
-    rotated: false,
-    originBiome: "city",
-    revealed: true,
-  }));
+  const starterItems: GridItemInstance[] = STARTER_CONSUMABLE_IDS.map((itemId, idx) => {
+    const def = ITEM_BY_ID[itemId];
+    return {
+      uid: `it_${idx + 1}`,
+      itemId,
+      x: idx,
+      y: 0,
+      rotated: false,
+      originBiome: "city",
+      revealed: true,
+      ...(def?.consumableId ? { usesLeft: getItemMaxUses(def) } : {}),
+    };
+  });
   return {
     gold: 0,
     backpackId: "starter_4x4",
@@ -1990,7 +2026,7 @@ export class InventoryManager {
     if (idx === -1) return 0;
     const item = list[idx];
     const def = ITEM_BY_ID[item.itemId];
-    const value = def ? def.valueGold : 0;
+    const value = getItemEffectiveValueGold(item, def);
     list.splice(idx, 1);
     this.state.gold += value;
     this.saveState();
@@ -2014,7 +2050,7 @@ export class InventoryManager {
         continue;
       }
       soldCount += 1;
-      earnedGold += def.valueGold;
+      earnedGold += getItemEffectiveValueGold(item, def);
     }
 
     if (soldCount > 0) {
@@ -2090,6 +2126,7 @@ export class InventoryManager {
       rotated: fit.rotated,
       originBiome,
       revealed: true,
+      ...(def.consumableId ? { usesLeft: getItemMaxUses(def) } : {}),
     });
     this.saveState();
     const label = zone === "home" ? "Kho Nhà" : zone === "safebox" ? "Safebox" : "Balo";
@@ -2559,7 +2596,12 @@ export class InventoryManager {
     if (!def?.consumableId) return null;
     const consumable = CONSUMABLE_BY_ID[def.consumableId];
     if (!consumable) return null;
-    this.state.backpackItems.splice(idx, 1);
+    const curUses = getItemRemainingUses(item, def);
+    if (curUses > 1) {
+      item.usesLeft = curUses - 1;
+    } else {
+      this.state.backpackItems.splice(idx, 1);
+    }
     this.saveState();
     return consumable;
   }
@@ -2601,7 +2643,7 @@ export class InventoryManager {
       const def = ITEM_BY_ID[item.itemId];
       if (!def) continue;
       usedCells += def.w * def.h;
-      bagValue += def.valueGold;
+      bagValue += getItemEffectiveValueGold(item, def);
     }
 
     const carriedItemsWeightKg = this.getBackpackItemsWeightKg();
