@@ -3,10 +3,11 @@ export const PIXEL_SCALE = 3;
 // High-detail pixel-buildings (110..170px native) render at clean 2x integer scale (~220..340px)
 export const BUILDING_PIXEL_SCALE = 2;
 export const TILE_SIZE = 16 * PIXEL_SCALE; // 48px
-export const MAP_COLS = 146;
+export const MAP_COLS = 204;
 export const MAP_ROWS = 84;
 export const GREEN_END_COL = 31;
-export const YELLOW_END_COL = 104;
+export const YELLOW_END_COL = 141;
+export const JAPAN_SNOW_START_COL = YELLOW_END_COL - 6;
 export const WORLD_WIDTH = MAP_COLS * TILE_SIZE;
 export const WORLD_HEIGHT = MAP_ROWS * TILE_SIZE;
 export const CHUNK_TILES = 21;

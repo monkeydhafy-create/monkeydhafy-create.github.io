@@ -84,15 +84,15 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   const chests: WorldChest[] = [];
   const lilypads: Point[] = [];
 
-  // Visual Biome boundaries (expanded +50% across loot zones):
-  // City [2..55], Plains [56..101], Countryside [102..143]
+  // Visual Biome boundaries (expanded +50% across Yellow & Red loot zones):
+  // City [2..55], Plains [56..138], Countryside [139..201]
   const CITY_END_COL = 55;
-  const PLAINS_END_COL = 101;
+  const PLAINS_END_COL = 138;
 
   // Gameplay Security Zones (from types.ts):
   // - Green (Safe): [0..31] (32 cols — home, shops, collection hall, airport, hospital, police)
-  // - Yellow (Standard / Majority): [32..104] (73 cols, +49% larger)
-  // - Red (High Risk / Rich Loot): [105..145] (41 cols, +52% larger) -> total loot area +50.0%
+  // - Yellow (Standard / Majority): [32..141] (110 cols, +50.7% larger)
+  // - Red (High Risk / Rich Loot): [142..203] (62 cols, +51.2% larger) -> total loot area +50.9%
 
   // 1. Base regional terrain (City / Plains / Countryside) & Security Zones
   for (let row = 0; row < rows; row++) {
@@ -177,14 +177,90 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     }
   };
 
-  // Plains: Grand Lotus Lake (North), South Stream Pond & East Border Pond
-  carvePond(68, 28, 6.2, 4.6, true);
-  carvePond(72, 68, 4.8, 3.6, true);
-  carvePond(96, 48, 4.2, 3.3, true);
+  const carveSandbarIslet = (cx: number, cy: number, rx: number, ry: number): void => {
+    for (let r = Math.floor(cy - ry - 1); r <= Math.ceil(cy + ry + 1); r++) {
+      for (let c = Math.floor(cx - rx - 1); c <= Math.ceil(cx + rx + 1); c++) {
+        if (c <= 2 || r <= 2 || c >= cols - 3 || r >= rows - 3) continue;
+        if (Math.hypot((c - cx) / rx, (r - cy) / ry) <= 1.0) {
+          const idx = r * cols + c;
+          tiles[idx] = "sand";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        }
+      }
+    }
+  };
 
-  // Countryside (Red Zone): Village Pond (North) + Forest Lake (South)
-  carvePond(120, 26, 5.2, 4.0, true);
-  carvePond(123, 60, 4.8, 3.8, true);
+  if (isJapan) {
+    // Japan Yellow Plains: Scenic Koi & Bamboo Lakes across expanded col 56..138
+    carvePond(70, 26, 5.6, 4.2, true);
+    carvePond(74, 66, 4.8, 3.6, true);
+    carvePond(104, 48, 5.2, 3.8, true);
+    carvePond(124, 24, 4.6, 3.4, true);
+    carvePond(126, 64, 4.6, 3.4, true);
+  } else {
+    // Hanoi Map: Extra-Wide Red River (Sông Hồng) running N-S through Yellow Zone + 2 wide scenic branches
+    const paintRiverDisk = (cx: number, cy: number, radius: number, sandRim = 1.0): void => {
+      const rMin = Math.floor(cy - radius - sandRim - 1);
+      const rMax = Math.ceil(cy + radius + sandRim + 1);
+      const cMin = Math.floor(cx - radius - sandRim - 1);
+      const cMax = Math.ceil(cx + radius + sandRim + 1);
+      for (let r = rMin; r <= rMax; r++) {
+        for (let c = cMin; c <= cMax; c++) {
+          if (c <= 2 || r <= 2 || c >= cols - 3 || r >= rows - 3) continue;
+          const dist = Math.hypot(c - cx, r - cy);
+          const idx = r * cols + c;
+          if (dist <= radius) {
+            tiles[idx] = "water";
+            collision[idx] = 0;
+            reserved[idx] = 1;
+          } else if (dist <= radius + sandRim && tiles[idx] !== "water") {
+            tiles[idx] = "sand";
+            collision[idx] = 0;
+            reserved[idx] = 1;
+          }
+        }
+      }
+    };
+
+    // Main River (Sông Hồng): flows full North -> South (~10-11 tiles wide!)
+    for (let r = 2; r <= rows - 3; r++) {
+      const mainCenterC = 92 + Math.sin((r - 12) * 0.08) * 4.0;
+      paintRiverDisk(mainCenterC, r, 5.0, 0.9);
+    }
+
+    // Branch 1 (Nhánh Tây Nam): wide river arm splitting West around row 50 -> lotus bay at (63, 49)
+    for (let c = 63; c <= 93; c++) {
+      const brRow = 50 + Math.sin((c - 63) * 0.14) * 2.8;
+      paintRiverDisk(c, brRow, 3.2, 0.8);
+    }
+    carvePond(63, 49, 4.8, 3.8, true);
+
+    // Branch 2 (Nhánh Đông Bắc): wide river arm splitting East around row 27 -> delta lagoon at (128, 25)
+    for (let c = 95; c <= 128; c++) {
+      const brRow = 27 + Math.sin((c - 95) * 0.13) * 2.6;
+      paintRiverDisk(c, brRow, 3.2, 0.8);
+    }
+    carvePond(128, 25, 4.8, 3.8, true);
+
+    // 3 Mid-River Sandbar Treasure Islets (Bãi Giữa Sông Hồng + 2 Cồn Nhánh Sông)
+    carveSandbarIslet(95, 40, 2.0, 1.8);  // Bãi Giữa Sông Hồng (midway between Cầu Bắc & Cầu Nam)
+    carveSandbarIslet(64, 49, 1.6, 1.4);  // Cồn Đảo Nhánh Tây
+    carveSandbarIslet(128, 25, 1.6, 1.4); // Cồn Đảo Nhánh Đông
+  }
+
+  // Countryside (Expanded Red Zone col 142..201): 4 Scenic Alpine / Forest Lakes with Mid-Lake Treasure Islets
+  carvePond(158, 25, 5.0, 3.8, true);
+  carveSandbarIslet(158, 25, 1.5, 1.3);
+
+  carvePond(158, 60, 5.0, 3.8, true);
+  carveSandbarIslet(158, 60, 1.5, 1.3);
+
+  carvePond(184, 25, 5.2, 3.8, true);
+  carveSandbarIslet(184, 25, 1.5, 1.3);
+
+  carvePond(185, 61, 6.0, 4.4, true);
+  carveSandbarIslet(185, 61, 2.4, 1.6);
 
   // 3. Carve City Park Blocks BEFORE laying asphalt roads so roads cut cleanly around parks
   const carveParkBlock = (
@@ -250,11 +326,18 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
 
   // 4. City Asphalt Road Network + Cross-Plains Boulevard + Dirt Patrol Trails
   const roadNetwork: RoadNetworkMeta = {
-    horizontalRoads: [
-      { row: 16, startCol: 4, endCol: 54 },
-      { row: 39, startCol: 4, endCol: 102 }, // Grand Avenue connecting Green -> Yellow Plains East!
-      { row: 62, startCol: 4, endCol: 54 },
-    ],
+    horizontalRoads: isJapan
+      ? [
+          { row: 16, startCol: 4, endCol: 54 },
+          { row: 39, startCol: 4, endCol: 139 }, // Grand Avenue connecting Tokyo -> Samurai Plains East
+          { row: 62, startCol: 4, endCol: 54 },
+        ]
+      : [
+          { row: 16, startCol: 4, endCol: 54 },
+          { row: 39, startCol: 4, endCol: 83 }, // West Grand Avenue ending at Sông Hồng West Bank
+          { row: 39, startCol: 104, endCol: 139 }, // East Boulevard resuming past Sông Hồng
+          { row: 62, startCol: 4, endCol: 54 },
+        ],
     verticalRoads: [
       { col: 12, startRow: 6, endRow: 75 },
       { col: 25, startRow: 6, endRow: 75 },
@@ -347,18 +430,55 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     }
   }
 
-  // Plains dirt patrol corridors (+50% expanded Yellow Plains)
-  carveHorizontalDirtTrail(19, 55, 103); // North Plains Trail above Lotus Lake
-  carveHorizontalDirtTrail(58, 55, 103); // South Plains Trail below East Pond
-  carveVerticalDirtTrail(68, 13, 74);    // West Plains Trail across Lotus Lake & South Pond bridges
-  carveVerticalDirtTrail(89, 13, 74);    // East Plains Trail connecting outer Yellow compounds
+  // Plains dirt patrol corridors (+50% expanded Yellow Plains col 55..140)
+  if (isJapan) {
+    carveHorizontalDirtTrail(17, 55, 140); // North Samurai Trail
+    carveHorizontalDirtTrail(65, 55, 140); // South Samurai Trail
+    carveVerticalDirtTrail(68, 12, 75);    // West Kyoto Trail
+    carveVerticalDirtTrail(94, 12, 75);    // Central Samurai Trail
+    carveVerticalDirtTrail(116, 12, 75);   // East Kyoto Trail
+    carveVerticalDirtTrail(135, 12, 75);   // Yellow-Red Foothill Road
+  } else {
+    // Hanoi Yellow Plains: 2 widely separated East-West bridge corridors across Sông Hồng
+    // Bridge 1 (Cầu Bắc): row 14..16 (3-tile wide grand bridge), Bridge 2 (Cầu Nam): row 67..69 (53 tiles apart!)
+    carveHorizontalDirtTrail(15, 55, 140);
+    carveHorizontalDirtTrail(68, 55, 140);
+    // Widen both grand river bridges to 3 tiles thick across the Main River water span
+    for (const [bridgeRowTop, minC, maxC] of [
+      [14, 82, 104],
+      [67, 79, 99],
+    ] as const) {
+      for (let c = minC; c <= maxC; c++) {
+        const hasWaterInSpan =
+          tiles[bridgeRowTop * cols + c] === "water" ||
+          tiles[(bridgeRowTop + 1) * cols + c] === "water" ||
+          tiles[(bridgeRowTop + 2) * cols + c] === "water" ||
+          tiles[(bridgeRowTop + 1) * cols + c] === "bridge" ||
+          tiles[(bridgeRowTop + 2) * cols + c] === "bridge";
+        if (!hasWaterInSpan) continue;
+        for (let r = bridgeRowTop; r <= bridgeRowTop + 2; r++) {
+          const idx = r * cols + c;
+          tiles[idx] = "bridge";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        }
+      }
+    }
+    // Dry-land N-S connectors staying completely clear of both river branches (ZERO accidental 3rd bridge!)
+    carveVerticalDirtTrail(56, 14, 72);    // West Plains Ring Road (West of Branch 1 cove)
+    carveVerticalDirtTrail(78, 14, 41);    // North-West Riverside Connector (Cầu Bắc <-> Grand Ave)
+    carveVerticalDirtTrail(76, 58, 71);    // South-West Riverside Connector (South of Branch 1 <-> Cầu Nam)
+    carveVerticalDirtTrail(106, 39, 71);   // Central-East Riverside Connector (East Blvd <-> Cầu Nam)
+    carveVerticalDirtTrail(135, 14, 72);   // East Plains Ring Road (East of Branch 2 lagoon, Cầu Bắc <-> East Blvd <-> Cầu Nam)
+  }
 
-  // Red Zone arterial dirt highway + patrol loop network (col 103..141)
-  carveHorizontalDirtTrail(39, 103, 141, 1.0); // Main East-West Red Artery continuing from Grand Avenue
-  carveHorizontalDirtTrail(18, 103, 140);      // North Red Patrol Trail
-  carveHorizontalDirtTrail(69, 103, 140);      // South Red Patrol Trail
-  carveVerticalDirtTrail(115, 13, 75);         // West Red N-S Trail
-  carveVerticalDirtTrail(132, 13, 75);         // Deep East Red N-S Trail
+  // Red Zone arterial dirt highway + patrol loop network (expanded +51%, col 140..200)
+  carveHorizontalDirtTrail(39, 140, 199, 1.0); // Main East-West Red Artery continuing from East Boulevard
+  carveHorizontalDirtTrail(18, 140, 199);      // North Red Patrol Trail
+  carveHorizontalDirtTrail(69, 140, 199);      // South Red Patrol Trail
+  carveVerticalDirtTrail(151, 13, 75);         // West Red N-S Trail
+  carveVerticalDirtTrail(170, 13, 75);         // Central Red N-S Trail (clear of all 4 Red Zone lakes)
+  carveVerticalDirtTrail(198, 13, 75);         // Deep East Red N-S Trail
 
   // Convert inner shoreline edges of all water bodies into walkable "shallow" wade rim!
   const waterSnapshot = tiles.slice();
@@ -405,8 +525,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           id: "jp-kyoto-shrine",
           name: "Nông Thôn Samurai Cổ Trang (Vùng Vàng)",
           subtitle: "Vùng chiếm đa số — Dinh thự Samurai, làng thợ rèn & Tuần tra Shinsengumi",
-          x: 80 * TILE_SIZE,
-          y: 18 * TILE_SIZE,
+          x: 106 * TILE_SIZE,
+          y: 17 * TILE_SIZE,
           radius: 260,
           accentColor: 0xeab308,
           discovered: false,
@@ -415,7 +535,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           id: "jp-iga-ninja-village",
           name: "Đèo Núi Tuyết & Làng Ninja (Vùng Đỏ Bắc)",
           subtitle: "Giá rét khắc nghiệt làm tụt thân nhiệt & Đặc nhiệm Áo Đỏ gắt gao",
-          x: 117 * TILE_SIZE,
+          x: 163 * TILE_SIZE,
           y: 16 * TILE_SIZE,
           radius: 280,
           accentColor: 0xef4444,
@@ -425,8 +545,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           id: "jp-osaka-shogun-castle",
           name: "Núi Tuyết Shogun & Đền Onsen (Vùng Đỏ Đông)",
           subtitle: "Vùng tuyết giá rét tột độ — Thành Cổ Shogun, Muramasa & Kho báu Đỏ",
-          x: 135 * TILE_SIZE,
-          y: 48 * TILE_SIZE,
+          x: 192 * TILE_SIZE,
+          y: 50 * TILE_SIZE,
           radius: 280,
           accentColor: 0xf43f5e,
           discovered: false,
@@ -455,11 +575,11 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
         },
         {
           id: "plains-lotus-pagoda",
-          name: "Khu Đồng Bằng Mở Rộng (Vùng Vàng)",
-          subtitle: "Vùng chiếm đa số bản đồ — Tuyến đường tuần tra & kho báu trải rộng",
-          x: 80 * TILE_SIZE,
-          y: 18 * TILE_SIZE,
-          radius: 260,
+          name: "Sông Hồng & Đồng Bằng Vàng (Vùng Vàng)",
+          subtitle: "Con sông rộng chia đôi Vùng Vàng với 2 nhánh sông & 2 cây cầu Bắc – Nam",
+          x: 93 * TILE_SIZE,
+          y: 16 * TILE_SIZE,
+          radius: 280,
           accentColor: 0xeab308,
           discovered: false,
         },
@@ -467,7 +587,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           id: "red-zone-north",
           name: "Phức Hợp Kho Báu Bắc (Vùng Đỏ)",
           subtitle: "Khu nhà nhiều đồ Vàng & Đỏ — Đặc nhiệm tuần tra theo trục đường",
-          x: 117 * TILE_SIZE,
+          x: 163 * TILE_SIZE,
           y: 16 * TILE_SIZE,
           radius: 280,
           accentColor: 0xef4444,
@@ -477,8 +597,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           id: "countryside-village",
           name: "Làng Kho Báu Rừng Sâu (Vùng Đỏ Đông)",
           subtitle: "Khu vực giàu tài nguyên nhất bản đồ — Nhiều nhà & rương Vàng/Đỏ",
-          x: 135 * TILE_SIZE,
-          y: 48 * TILE_SIZE,
+          x: 192 * TILE_SIZE,
+          y: 50 * TILE_SIZE,
           radius: 280,
           accentColor: 0xf43f5e,
           discovered: false,
@@ -513,10 +633,15 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
       }
     }
     // Reserve full footprint + oval lawn against random trees/decor overlapping buildings
+    // and ensure solid dry ground underneath placed buildings (never floating on FBM water pockets)
     for (let r = rowStart - 1; r <= anchorRow; r++) {
       for (let c = anchorCol - halfW - 1; c <= anchorCol + (blockCols - halfW); c++) {
         if (c > 1 && r > 1 && c < cols - 2 && r < rows - 2) {
-          reserved[r * cols + c] = 1;
+          const idx = r * cols + c;
+          reserved[idx] = 1;
+          if (isBld && (tiles[idx] === "water" || tiles[idx] === "shallow")) {
+            tiles[idx] = "grass";
+          }
         }
       }
     }
@@ -574,7 +699,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("city_collection_hall", 29, 72, 4, 2);
   }
 
-  // === ZONE 2: YELLOW ZONE (col 32..104 — Urban East Tokyo + Samurai Countryside) ===
+  // === ZONE 2: YELLOW ZONE (col 32..141, +50.7% larger — 21 loot buildings = +40%) ===
   if (isJapan) {
     // Region 1 East: Grand Tokyo Metropolis (col 32..55)
     placeProp("jp_ryokan_inn", 34, 13, 4, 2);
@@ -584,15 +709,21 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("jp_shinkansen_station", 45, 52, 5, 3);
     placeProp("jp_ryokan_inn", 34, 60, 4, 2);
     placeProp("jp_akihabara_arcade", 45, 72, 4, 2);
-    // Region 2: Feudal Samurai Countryside & Estates (col 56..104)
-    placeProp("jp_samurai_manor", 61, 16, 5, 3);
-    placeProp("jp_village_machiya", 60, 36, 4, 2);
-    placeProp("jp_village_machiya", 61, 52, 4, 2);
-    placeProp("jp_shinto_shrine", 80, 17, 5, 3);
-    placeProp("jp_samurai_manor", 80, 36, 5, 3);
-    placeProp("jp_village_machiya", 82, 72, 4, 2);
-    placeProp("plains_pagoda", 97, 29, 5, 3);
-    placeProp("jp_ninja_dojo", 97, 70, 4, 2);
+    // Region 2: Expanded Feudal Samurai Countryside & Estates (col 56..141)
+    placeProp("jp_samurai_manor", 62, 13, 5, 3);
+    placeProp("jp_village_machiya", 61, 35, 4, 2);
+    placeProp("jp_village_machiya", 62, 54, 4, 2);
+    placeProp("jp_ryokan_inn", 63, 75, 4, 2);
+    placeProp("jp_shinto_shrine", 83, 14, 5, 3);
+    placeProp("jp_samurai_manor", 84, 35, 5, 3);
+    placeProp("jp_village_machiya", 84, 56, 4, 2);
+    placeProp("jp_shinto_shrine", 106, 13, 5, 3);
+    placeProp("jp_samurai_manor", 104, 35, 5, 3);
+    placeProp("jp_village_machiya", 104, 75, 4, 2);
+    placeProp("plains_pagoda", 124, 13, 5, 3);
+    placeProp("jp_ninja_dojo", 123, 36, 4, 2);
+    placeProp("jp_ryokan_inn", 122, 52, 4, 2);
+    placeProp("jp_ninja_dojo", 131, 75, 4, 2);
   } else {
     // Urban East Streets (col 32..55)
     placeProp("city_fire_station", 34, 13, 4, 2);
@@ -602,15 +733,22 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("city_green_terrace", 45, 52, 5, 3);
     placeProp("city_terrace_houses", 34, 60, 4, 2);
     placeProp("city_flower_shop", 45, 72, 4, 2);
-    // Expanded Plains Clusters (col 56..104)
-    placeProp("plains_tea_house", 61, 16, 4, 2);
-    placeProp("plains_archway", 60, 36, 4, 2);
-    placeProp("plains_parasol_market", 61, 52, 5, 2);
-    placeProp("plains_pagoda", 80, 17, 5, 3);
-    placeProp("city_courtyard_apt", 80, 36, 5, 3);
-    placeProp("plains_riverside_tavern", 82, 72, 4, 2);
-    placeProp("rural_twin_cottage", 97, 29, 4, 2);
-    placeProp("rural_orchard_farm", 97, 70, 5, 2);
+    // West Bank of Sông Hồng & Branch 1 Surroundings (col 58..86)
+    placeProp("plains_tea_house", 65, 12, 4, 2);
+    placeProp("plains_archway", 65, 35, 4, 2);
+    placeProp("plains_parasol_market", 74, 26, 5, 2);
+    placeProp("city_courtyard_apt", 83, 35, 5, 3);
+    placeProp("plains_riverside_tavern", 72, 62, 4, 2);
+    placeProp("rural_twin_cottage", 65, 76, 4, 2);
+    // East Bank of Sông Hồng, Bridgeheads & Branch 2 Surroundings (col 100..140)
+    placeProp("plains_pagoda", 107, 12, 5, 3);
+    placeProp("rural_orchard_farm", 124, 12, 5, 2);
+    placeProp("plains_riverside_tavern", 106, 36, 4, 2);
+    placeProp("city_green_terrace", 122, 36, 5, 3);
+    placeProp("plains_parasol_market", 116, 53, 5, 2);
+    placeProp("rural_twin_cottage", 101, 64, 4, 2);
+    placeProp("rural_orchard_farm", 122, 76, 5, 2);
+    placeProp("plains_tea_house", 139, 53, 4, 2);
   }
 
   // Park furniture, food carts & park lanterns inside Green Safe Zone Parks
@@ -676,11 +814,11 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     tryStreetDecor("jp_vending_machine", 23, 55);
     tryStreetDecor("jp_vending_machine", 10, 26);
     tryStreetDecor("jp_vending_machine", 27, 61);
-    tryStreetDecor("jp_torii_gate", 80, 20, false);
-    tryStreetDecor("jp_stone_lantern", 78, 20);
-    tryStreetDecor("jp_stone_lantern", 82, 20);
-    tryStreetDecor("jp_stone_lantern", 122, 18);
-    tryStreetDecor("jp_stone_lantern", 126, 18);
+    tryStreetDecor("jp_torii_gate", 106, 16, false);
+    tryStreetDecor("jp_stone_lantern", 104, 16);
+    tryStreetDecor("jp_stone_lantern", 108, 16);
+    tryStreetDecor("jp_stone_lantern", 161, 17);
+    tryStreetDecor("jp_stone_lantern", 165, 17);
   } else {
     // Safe Central Plaza (around Spawn col 19, row 44)
     tryStreetDecor("park_lantern", 16, 42);
@@ -756,37 +894,49 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     }
   }
 
-  // === ZONE 3: RED DANGER ZONE (col 105..143 — Snowy Hokkaido Mountains & Shogun Stronghold) ===
+  // === ZONE 3: RED DANGER ZONE (col 142..201, +51.2% larger — 16 loot buildings = +45.5%) ===
   if (isJapan) {
-    // West Snowy Iga Foothills (col 106..114)
-    placeProp("jp_ninja_dojo", 110, 15, 4, 2);
-    placeProp("jp_samurai_manor", 110, 35, 5, 3);
-    placeProp("jp_snow_onsen_temple", 110, 52, 5, 3);
-    placeProp("jp_village_machiya", 110, 77, 4, 2);
-    // Central Alpine Shogun Valley (col 118..130)
-    placeProp("jp_shogun_castle", 124, 16, 5, 3);
-    placeProp("plains_pagoda", 126, 36, 5, 3);
-    placeProp("jp_ninja_dojo", 124, 49, 4, 2);
-    placeProp("jp_snow_onsen_temple", 124, 77, 5, 3);
-    // Deep East Frozen Summit Fortress (col 135..143)
-    placeProp("jp_shinto_shrine", 139, 15, 4, 2);
-    placeProp("jp_samurai_manor", 139, 34, 5, 3);
-    placeProp("jp_shogun_castle", 139, 55, 5, 3);
+    // Band 1: West Snowy Iga Foothills (col 143..150)
+    placeProp("jp_ninja_dojo", 146, 15, 4, 2);
+    placeProp("jp_samurai_manor", 146, 35, 5, 3);
+    placeProp("jp_snow_onsen_temple", 146, 52, 5, 3);
+    placeProp("jp_village_machiya", 146, 77, 4, 2);
+    // Band 2: Mid-West Alpine Shogun Valley (col 156..168)
+    placeProp("jp_shogun_castle", 163, 15, 5, 3);
+    placeProp("plains_pagoda", 164, 35, 5, 3);
+    placeProp("jp_ninja_dojo", 164, 49, 4, 2);
+    placeProp("jp_snow_onsen_temple", 163, 77, 5, 3);
+    // Band 3: Mid-East Frozen Temple Ridge (col 172..185)
+    placeProp("jp_shinto_shrine", 178, 15, 4, 2);
+    placeProp("jp_samurai_manor", 178, 35, 5, 3);
+    placeProp("jp_snow_onsen_temple", 178, 52, 5, 3);
+    placeProp("jp_ninja_dojo", 178, 77, 4, 2);
+    // Band 4: Deep East Shogun Summit Fortress (col 190..200)
+    placeProp("jp_shinto_shrine", 194, 15, 4, 2);
+    placeProp("jp_samurai_manor", 194, 34, 5, 3);
+    placeProp("jp_shogun_castle", 194, 55, 5, 3);
+    placeProp("jp_shogun_castle", 194, 77, 5, 3);
   } else {
-    // West Red Gate (col 106..114)
-    placeProp("city_twin_towers", 110, 15, 5, 3);
-    placeProp("rural_twin_cottage", 110, 35, 4, 2);
-    placeProp("city_museum", 110, 52, 5, 3);
-    placeProp("rural_log_cabin", 110, 77, 4, 2);
-    // Central Red Valley (col 118..130)
-    placeProp("city_mansion_block", 124, 15, 5, 3);
-    placeProp("rural_dutch_barn", 126, 36, 4, 2);
-    placeProp("rural_orchard_farm", 124, 49, 5, 2);
-    placeProp("rural_stilt_hut", 124, 77, 4, 2);
-    // Deep East Red Woods (col 135..143)
-    placeProp("rural_stilt_hut", 139, 15, 4, 2);
-    placeProp("rural_dutch_barn", 139, 34, 4, 2);
-    placeProp("city_mansion_block", 139, 55, 5, 3);
+    // Band 1: West Red Gate (col 143..150)
+    placeProp("city_twin_towers", 146, 15, 5, 3);
+    placeProp("rural_twin_cottage", 146, 35, 4, 2);
+    placeProp("city_museum", 146, 52, 5, 3);
+    placeProp("rural_log_cabin", 146, 77, 4, 2);
+    // Band 2: Mid-West Red Valley (col 156..168)
+    placeProp("city_mansion_block", 163, 15, 5, 3);
+    placeProp("rural_dutch_barn", 164, 35, 4, 2);
+    placeProp("rural_orchard_farm", 164, 49, 5, 2);
+    placeProp("rural_stilt_hut", 163, 77, 4, 2);
+    // Band 3: Mid-East Red Stronghold (col 172..185)
+    placeProp("city_twin_towers", 178, 15, 5, 3);
+    placeProp("city_museum", 178, 35, 5, 3);
+    placeProp("rural_dutch_barn", 178, 52, 4, 2);
+    placeProp("rural_log_cabin", 178, 77, 4, 2);
+    // Band 4: Deep East Red Woods (col 190..200)
+    placeProp("rural_stilt_hut", 194, 15, 4, 2);
+    placeProp("rural_dutch_barn", 194, 34, 4, 2);
+    placeProp("city_mansion_block", 194, 55, 5, 3);
+    placeProp("city_mansion_block", 194, 77, 5, 3);
   }
 
   // 7. Spawn Position: Safe Green Central Plaza right beside Shops, Home & Airport (col 19, row 44)
@@ -799,15 +949,15 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     [17, 45, 1.1], // Green plaza edge puddle
     [18, 28, 1.2], // North lake park puddle
     [6, 49, 1.3],  // Breeze Park puddle
-    [32, 70, 1.2],  // South Pocket Park puddle
-    [56, 38, 1.4],  // Yellow zone avenue edge puddle
-    [74, 45, 1.5],
-    [85, 55, 1.5],
-    [101, 36, 1.4],
-    [107, 42, 1.6], // Red zone puddles
-    [119, 37, 1.5],
-    [129, 46, 1.6],
-    [136, 58, 1.5],
+    [32, 70, 1.2], // South Pocket Park puddle
+    [59, 37, 1.4], // Yellow zone puddles
+    [77, 44, 1.5],
+    [108, 46, 1.5],
+    [131, 36, 1.4],
+    [147, 42, 1.6], // Red zone puddles
+    [166, 37, 1.5],
+    [181, 46, 1.6],
+    [195, 62, 1.5],
   ];
 
   for (const [pc, pr, rad] of puddleSpots) {
@@ -841,30 +991,45 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           { id: "jp_trash-green-park", name: "Thùng Rác Công Viên Anh Đào", kind: "trash", col: 23, row: 21 },
           { id: "jp_trash-green-breeze", name: "Thùng Rác Vườn Ueno", kind: "trash", col: 9, row: 52 },
 
-          // Yellow Zone Kyoto
+          // Yellow Zone Kyoto (Expanded +50%, 16 Loot Spots = +45%)
           { id: "jp_chest-yellow-1", name: "Rương Ngã Tư Phố Cổ Kyoto", kind: "wooden", col: 36, row: 44 },
           { id: "jp_chest-yellow-2", name: "Rương Lữ Quán Suối Khoáng", kind: "wooden", col: 41, row: 21 },
           { id: "jp_chest-yellow-3", name: "Rương Phố Đèn Lồng Đông", kind: "wooden", col: 50, row: 60 },
-          { id: "jp_chest-yellow-4", name: "Rương Hồ Kamo Kyoto", kind: "wooden", col: 60, row: 27 },
-          { id: "jp_chest-yellow-5", name: "Rương Rừng Trúc Arashiyama", kind: "wooden", col: 76, row: 52 },
-          { id: "jp_chest-yellow-6", name: "Rương Vườn Thiền Kyoto", kind: "wooden", col: 93, row: 42 },
-          { id: "jp_chest-yellow-7", name: "Rương Võ Đường Ngoại Ô", kind: "wooden", col: 100, row: 64 },
-          { id: "jp_chest-yellow-royal-1", name: "Rương Hoàng Kim Đền Inari", kind: "royal", col: 83, row: 14 },
+          { id: "jp_chest-yellow-4", name: "Rương Hồ Kamo Tây", kind: "wooden", col: 60, row: 26 },
+          { id: "jp_chest-yellow-5", name: "Rương Rừng Trúc Arashiyama", kind: "wooden", col: 78, row: 46 },
+          { id: "jp_chest-yellow-6", name: "Rương Bến Thuyền Kyoto Nam", kind: "wooden", col: 82, row: 72 },
+          { id: "jp_chest-yellow-7", name: "Rương Vườn Thiền Trung Tâm", kind: "wooden", col: 98, row: 28 },
+          { id: "jp_chest-yellow-8", name: "Rương Cổng Phủ Samurai Đông", kind: "wooden", col: 112, row: 54 },
+          { id: "jp_chest-yellow-9", name: "Rương Hồ Anh Đào Đông", kind: "wooden", col: 129, row: 44 },
+          { id: "jp_chest-yellow-10", name: "Rương Võ Đường Ngoại Ô", kind: "wooden", col: 138, row: 64 },
+          { id: "jp_chest-yellow-royal-1", name: "Rương Hoàng Kim Đền Inari", kind: "royal", col: 88, row: 14 },
           { id: "jp_chest-yellow-royal-2", name: "Rương Mật Mã Phố Chợ Kyoto", kind: "royal", col: 50, row: 35 },
+          { id: "jp_chest-yellow-royal-3", name: "Rương Hoàng Kim Chùa Cổ Đông", kind: "royal", col: 128, row: 14 },
           { id: "jp_trash-plains-road", name: "Thùng Rác Đại Lộ Kyoto", kind: "trash", col: 74, row: 38 },
-          { id: "jp_trash-plains-east", name: "Thùng Rác Ngã Ba Cố Đô", kind: "trash", col: 88, row: 57 },
+          { id: "jp_trash-plains-mid", name: "Thùng Rác Ngã Ba Samurai", kind: "trash", col: 100, row: 64 },
+          { id: "jp_trash-plains-east", name: "Thùng Rác Cổng Đông Kyoto", kind: "trash", col: 133, row: 38 },
 
-          // Red Zone Iga & Osaka Castle
-          { id: "jp_chest-red-w1", name: "Rương Ám Khí Ninja Iga", kind: "wooden", col: 108, row: 23 },
-          { id: "jp_chest-red-w2", name: "Rương Cổng Đền Thần Bí", kind: "wooden", col: 113, row: 44 },
-          { id: "jp_chest-red-w3", name: "Rương Hồ Lá Phong Đỏ", kind: "wooden", col: 120, row: 53 },
-          { id: "jp_chest-red-w4", name: "Rương Rừng Trúc Mạc Phủ", kind: "wooden", col: 136, row: 26 },
-          { id: "jp_chest-red-w5", name: "Rương Chân Thành Osaka Nam", kind: "wooden", col: 140, row: 64 },
-          { id: "jp_chest-red-royal-1", name: "Rương Hoàng Kim Thành Shogun", kind: "royal", col: 128, row: 15 },
-          { id: "jp_chest-red-royal-2", name: "Rương Báu Vật Suối Khoáng", kind: "royal", col: 135, row: 44 },
-          { id: "jp_chest-red-royal-3", name: "Rương Cổ Vật Rừng Phong", kind: "royal", col: 118, row: 76 },
-          { id: "jp_chest-red-royal-4", name: "Rương Quốc Bảo Mạc Phủ", kind: "royal", col: 140, row: 76 },
-          { id: "jp_trash-rural-trail", name: "Thùng Rác Cổng Làng Ninja", kind: "trash", col: 106, row: 41 },
+          // Red Zone Iga & Osaka Castle (Expanded +51%, 14 High-Value Spots = +40%)
+          { id: "jp_chest-red-w1", name: "Rương Ám Khí Ninja Iga", kind: "wooden", col: 144, row: 23 },
+          { id: "jp_chest-red-w2", name: "Rương Cổng Đền Thần Bí", kind: "wooden", col: 149, row: 44 },
+          { id: "jp_chest-red-w3", name: "Rương Hồ Lá Phong Tây", kind: "wooden", col: 158, row: 52 },
+          { id: "jp_chest-red-w4", name: "Rương Đèo Tuyết Trung Tâm", kind: "wooden", col: 171, row: 26 },
+          { id: "jp_chest-red-w5", name: "Rương Rừng Trúc Mạc Phủ", kind: "wooden", col: 174, row: 64 },
+          { id: "jp_chest-red-w6", name: "Rương Đền Tuyết Phương Đông", kind: "wooden", col: 190, row: 24 },
+          { id: "jp_chest-red-w7", name: "Rương Chân Thành Osaka Nam", kind: "wooden", col: 197, row: 64 },
+          { id: "jp_chest-red-royal-1", name: "Rương Hoàng Kim Thành Shogun", kind: "royal", col: 167, row: 15 },
+          { id: "jp_chest-red-royal-2", name: "Rương Báu Vật Suối Khoáng", kind: "royal", col: 174, row: 44 },
+          { id: "jp_chest-red-royal-3", name: "Rương Cổ Vật Rừng Phong", kind: "royal", col: 155, row: 76 },
+          { id: "jp_chest-red-royal-4", name: "Rương Báu Vật Đền Băng", kind: "royal", col: 184, row: 15 },
+          { id: "jp_chest-red-royal-5", name: "Rương Hoàng Gia Thành Đông", kind: "royal", col: 191, row: 44 },
+          { id: "jp_chest-red-royal-6", name: "Rương Quốc Bảo Mạc Phủ", kind: "royal", col: 197, row: 76 },
+          // Red Zone Mid-Lake Island Treasures (5 chests across 4 alpine lakes)
+          { id: "jp_chest-red-lake-1", name: "Rương Báu Hồ Băng Iga", kind: "royal", col: 158, row: 25 },
+          { id: "jp_chest-red-lake-2", name: "Rương Cổ Vật Hồ Tuyết Nam", kind: "wooden", col: 158, row: 60 },
+          { id: "jp_chest-red-lake-3", name: "Rương Hoàng Kim Hồ Shogun", kind: "royal", col: 184, row: 25 },
+          { id: "jp_chest-red-lake-4", name: "Rương Quốc Bảo Đảo Băng Sâu", kind: "royal", col: 184, row: 61 },
+          { id: "jp_chest-red-lake-5", name: "Rương Trôi Dạt Đảo Băng", kind: "wooden", col: 186, row: 61 },
+          { id: "jp_trash-rural-trail", name: "Thùng Rác Cổng Làng Ninja", kind: "trash", col: 143, row: 41 },
         ]
       : [
           // Green Safe Zone: ONLY Trash Bins (scarce C/B items, zero chests!)
@@ -875,30 +1040,49 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           { id: "trash-green-park", name: "Thùng Rác Hồ Tây Xanh", kind: "trash", col: 23, row: 21 },
           { id: "trash-green-breeze", name: "Thùng Rác Công Viên Gió", kind: "trash", col: 9, row: 52 },
 
-          // Yellow Zone (Expanded +50%, 11 Rearranged Loot Spots = +22%: Urban East + Plains + Lakes)
+          // Yellow Zone (Expanded +50%, 16 Loot Spots = +45%: Urban East + Sông Hồng + 2 Branches + 2 Bridges + East Plains)
           { id: "chest-yellow-1", name: "Rương Ngã Tư Phố Đông", kind: "wooden", col: 36, row: 44 },
           { id: "chest-yellow-2", name: "Rương Khu Tập Thể Bắc", kind: "wooden", col: 41, row: 21 },
           { id: "chest-yellow-3", name: "Rương Phố Chợ Đông", kind: "wooden", col: 50, row: 60 },
-          { id: "chest-yellow-4", name: "Rương Bờ Hồ Sen Tây", kind: "wooden", col: 60, row: 27 },
-          { id: "chest-yellow-5", name: "Rương Bãi Cỏ Đồng Bằng", kind: "wooden", col: 76, row: 52 },
-          { id: "chest-yellow-6", name: "Rương Hồ Phương Đông", kind: "wooden", col: 93, row: 42 },
-          { id: "chest-yellow-7", name: "Rương Trang Trại Biên Giới", kind: "wooden", col: 100, row: 64 },
-          { id: "chest-yellow-royal-1", name: "Rương Hoàng Kim Chùa Cổ", kind: "royal", col: 83, row: 14 },
+          { id: "chest-yellow-4", name: "Rương Bãi Bồi Tây Bắc", kind: "wooden", col: 61, row: 24 },
+          { id: "chest-yellow-5", name: "Rương Bến Đò Nhánh Tây", kind: "wooden", col: 72, row: 57 },
+          { id: "chest-yellow-6", name: "Rương Đầu Cầu Bắc Tây", kind: "wooden", col: 83, row: 12 },
+          { id: "chest-yellow-7", name: "Rương Bờ Đông Cầu Nam", kind: "wooden", col: 97, row: 73 },
+          { id: "chest-yellow-8", name: "Rương Ven Nhánh Sông Đông", kind: "wooden", col: 114, row: 35 },
+          { id: "chest-yellow-9", name: "Rương Cánh Đồng Bờ Đông", kind: "wooden", col: 128, row: 55 },
+          { id: "chest-yellow-10", name: "Rương Trang Trại Biên Giới", kind: "wooden", col: 138, row: 64 },
+          { id: "chest-yellow-royal-1", name: "Rương Hoàng Kim Đầu Cầu Bắc", kind: "royal", col: 112, row: 12 },
           { id: "chest-yellow-royal-2", name: "Rương Mật Mã Phố Đông", kind: "royal", col: 50, row: 35 },
-          { id: "trash-plains-road", name: "Thùng Rác Quốc Lộ Vàng", kind: "trash", col: 74, row: 38 },
-          { id: "trash-plains-east", name: "Thùng Rác Ngã Ba Đồng Bằng", kind: "trash", col: 88, row: 57 },
+          { id: "chest-yellow-royal-3", name: "Rương Báu Vật Bờ Sông Hồng", kind: "royal", col: 112, row: 60 },
+          // 3 Mid-River Sandbar Treasure Chests (Bãi Giữa Sông Hồng & 2 Cồn Nhánh Sông)
+          { id: "chest-yellow-river-royal-1", name: "Rương Báu Bãi Giữa Sông Hồng", kind: "royal", col: 95, row: 40 },
+          { id: "chest-yellow-river-2", name: "Rương Kho Báu Cồn Nhánh Tây", kind: "wooden", col: 64, row: 49 },
+          { id: "chest-yellow-river-3", name: "Rương Báu Cồn Nhánh Đông", kind: "royal", col: 128, row: 25 },
+          { id: "trash-plains-road", name: "Thùng Rác Quốc Lộ Vàng Tây", kind: "trash", col: 74, row: 38 },
+          { id: "trash-plains-mid", name: "Thùng Rác Bến Cầu Nam", kind: "trash", col: 80, row: 71 },
+          { id: "trash-plains-east", name: "Thùng Rác Ngã Ba Đồng Bằng Đông", kind: "trash", col: 133, row: 38 },
 
-          // Red Zone (Expanded +50%, 10 Rearranged High-Value Spots = +25%: West / Central / Deep East Red)
-          { id: "chest-red-w1", name: "Rương Kho Báu Tháp Đôi", kind: "wooden", col: 108, row: 23 },
-          { id: "chest-red-w2", name: "Rương Bến Rừng Tây", kind: "wooden", col: 113, row: 44 },
-          { id: "chest-red-w3", name: "Rương Ven Hồ Rừng Sâu", kind: "wooden", col: 120, row: 53 },
-          { id: "chest-red-w4", name: "Rương Rừng Sâu Phương Đông", kind: "wooden", col: 136, row: 26 },
-          { id: "chest-red-w5", name: "Rương Góc Rừng Đông Nam", kind: "wooden", col: 140, row: 64 },
-          { id: "chest-red-royal-1", name: "Rương Đỏ Hoàng Gia Bắc", kind: "royal", col: 128, row: 15 },
-          { id: "chest-red-royal-2", name: "Rương Hoàng Kim Ao Làng", kind: "royal", col: 135, row: 44 },
-          { id: "chest-red-royal-3", name: "Rương Bí Ẩn Rừng Sâu", kind: "royal", col: 118, row: 76 },
-          { id: "chest-red-royal-4", name: "Rương Kho Báu Tận Cùng", kind: "royal", col: 140, row: 76 },
-          { id: "trash-rural-trail", name: "Thùng Rác Đầu Vùng Đỏ", kind: "trash", col: 106, row: 41 },
+          // Red Zone (Expanded +51%, 19 High-Value Spots including 5 Mid-Lake Treasures)
+          { id: "chest-red-w1", name: "Rương Kho Báu Tháp Đôi", kind: "wooden", col: 144, row: 23 },
+          { id: "chest-red-w2", name: "Rương Bến Rừng Tây", kind: "wooden", col: 149, row: 44 },
+          { id: "chest-red-w3", name: "Rương Ven Hồ Rừng Tây", kind: "wooden", col: 158, row: 52 },
+          { id: "chest-red-w4", name: "Rương Trại Rừng Trung Tâm", kind: "wooden", col: 171, row: 26 },
+          { id: "chest-red-w5", name: "Rương Góc Rừng Trung Nam", kind: "wooden", col: 174, row: 64 },
+          { id: "chest-red-w6", name: "Rương Rừng Sâu Phương Đông", kind: "wooden", col: 190, row: 24 },
+          { id: "chest-red-w7", name: "Rương Góc Rừng Đông Nam", kind: "wooden", col: 197, row: 64 },
+          { id: "chest-red-royal-1", name: "Rương Đỏ Hoàng Gia Bắc", kind: "royal", col: 167, row: 15 },
+          { id: "chest-red-royal-2", name: "Rương Hoàng Kim Thung Lũng", kind: "royal", col: 174, row: 44 },
+          { id: "chest-red-royal-3", name: "Rương Bí Ẩn Rừng Tây Nam", kind: "royal", col: 155, row: 76 },
+          { id: "chest-red-royal-4", name: "Rương Đỏ Hoàng Gia Đông Bắc", kind: "royal", col: 184, row: 15 },
+          { id: "chest-red-royal-5", name: "Rương Hoàng Kim Ao Làng Đông", kind: "royal", col: 191, row: 44 },
+          { id: "chest-red-royal-6", name: "Rương Kho Báu Tận Cùng", kind: "royal", col: 197, row: 76 },
+          // Red Zone Mid-Lake Island Treasures (5 chests across 4 Red Zone lakes)
+          { id: "chest-red-lake-1", name: "Rương Báu Giữa Hồ Rừng Đỏ", kind: "royal", col: 158, row: 25 },
+          { id: "chest-red-lake-2", name: "Rương Cổ Vật Hồ Nam Đỏ", kind: "wooden", col: 158, row: 60 },
+          { id: "chest-red-lake-3", name: "Rương Hoàng Kim Hồ Đông Bắc", kind: "royal", col: 184, row: 25 },
+          { id: "chest-red-lake-4", name: "Rương Tuyệt Phẩm Đảo Hồ Sâu", kind: "royal", col: 184, row: 61 },
+          { id: "chest-red-lake-5", name: "Rương Trôi Dạt Đảo Hồ Sâu", kind: "wooden", col: 186, row: 61 },
+          { id: "trash-rural-trail", name: "Thùng Rác Đầu Vùng Đỏ", kind: "trash", col: 143, row: 41 },
         ];
 
   // Reserve chest coordinates before procedural flora so trees/rocks never cover chests

@@ -42,6 +42,7 @@ import {
 import {
   BIOME_LABELS,
   GREEN_END_COL,
+  JAPAN_SNOW_START_COL,
   MAP_LABELS,
   isBuildingProp,
   SECURITY_ZONE_META,
@@ -2271,7 +2272,14 @@ export class Hud {
         const idx = r * cols + c;
         const tile = tiles[idx];
         let rgb: [number, number, number];
-        if (isJapan && c >= 98 && tile !== "water" && tile !== "shallow" && tile !== "road" && tile !== "bridge") {
+        if (
+          isJapan &&
+          c >= JAPAN_SNOW_START_COL &&
+          tile !== "water" &&
+          tile !== "shallow" &&
+          tile !== "road" &&
+          tile !== "bridge"
+        ) {
           rgb =
             tile === "forest" || tile === "dirt"
               ? SNOW_FOREST_RGB
@@ -2324,15 +2332,15 @@ export class Hud {
     const snap = this.terrainSnapshot;
 
     const zoom = 5;
-    const viewW = WORLD_WIDTH / zoom;
     const viewH = WORLD_HEIGHT / zoom;
+    const viewW = Math.min(WORLD_WIDTH, viewH * (w / h));
     const viewX = Math.max(0, Math.min(WORLD_WIDTH - viewW, this.scene.player.x - viewW / 2));
     const viewY = Math.max(0, Math.min(WORLD_HEIGHT - viewH, this.scene.player.y - viewH / 2));
 
     const sx = (viewX / WORLD_WIDTH) * snap.width;
     const sy = (viewY / WORLD_HEIGHT) * snap.height;
-    const sw = snap.width / zoom;
-    const sh = snap.height / zoom;
+    const sw = (viewW / WORLD_WIDTH) * snap.width;
+    const sh = (viewH / WORLD_HEIGHT) * snap.height;
 
     const toX = (wx: number): number => ((wx - viewX) / viewW) * w;
     const toY = (wy: number): number => ((wy - viewY) / viewH) * h;

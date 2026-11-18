@@ -61,6 +61,7 @@ import {
   BUILDING_PIXEL_SCALE,
   CHUNK_TILES,
   GREEN_END_COL,
+  JAPAN_SNOW_START_COL,
   MAP_LABELS,
   isBuildingProp,
   PIXEL_SCALE,
@@ -1851,7 +1852,7 @@ export class WorldScene {
   private isInSnowZoneAt(x: number): boolean {
     if (this.activeMapId !== "japan") return false;
     const col = Math.floor(x / TILE_SIZE);
-    return col >= 98;
+    return col >= JAPAN_SNOW_START_COL;
   }
 
   public getCurrentSecurityZone(): SecurityZone {
@@ -3015,19 +3016,54 @@ export class WorldScene {
           wSprite.tint = 0x38bdf8;
           ch.node.addChild(wSprite);
 
-          decorGfx
-            .rect(px + 2, py, TILE_SIZE - 4, TILE_SIZE)
-            .fill(0x8b5a2b)
-            .rect(px + 2, py + 6, TILE_SIZE - 4, 2)
-            .fill(0x5c3a1b)
-            .rect(px + 2, py + 22, TILE_SIZE - 4, 2)
-            .fill(0x5c3a1b)
-            .rect(px + 2, py + 38, TILE_SIZE - 4, 2)
-            .fill(0x5c3a1b)
-            .rect(px, py, 5, TILE_SIZE)
-            .fill(0x4a2c11)
-            .rect(px + TILE_SIZE - 5, py, 5, TILE_SIZE)
-            .fill(0x4a2c11);
+          const northTile = row > 0 ? tiles[(row - 1) * cols + col] : "water";
+          const southTile = row < rows - 1 ? tiles[(row + 1) * cols + col] : "water";
+          const westTile = col > 0 ? tiles[row * cols + (col - 1)] : "water";
+          const eastTile = col < cols - 1 ? tiles[row * cols + (col + 1)] : "water";
+          const northIsBridge = northTile === "bridge";
+          const southIsBridge = southTile === "bridge";
+          const westIsBridge = westTile === "bridge";
+          const eastIsBridge = eastTile === "bridge";
+          const isHorizontalBridge =
+            (westIsBridge || eastIsBridge) &&
+            northTile !== "dirt" &&
+            southTile !== "dirt" &&
+            northTile !== "road" &&
+            southTile !== "road";
+
+          if (isHorizontalBridge) {
+            decorGfx
+              .rect(px, py, TILE_SIZE, TILE_SIZE)
+              .fill(0x8b5a2b)
+              .rect(px + 6, py, 2, TILE_SIZE)
+              .fill(0x5c3a1b)
+              .rect(px + 22, py, 2, TILE_SIZE)
+              .fill(0x5c3a1b)
+              .rect(px + 38, py, 2, TILE_SIZE)
+              .fill(0x5c3a1b);
+            if (!northIsBridge) {
+              decorGfx.rect(px, py, TILE_SIZE, 5).fill(0x4a2c11);
+            }
+            if (!southIsBridge) {
+              decorGfx.rect(px, py + TILE_SIZE - 5, TILE_SIZE, 5).fill(0x4a2c11);
+            }
+          } else {
+            decorGfx
+              .rect(px, py, TILE_SIZE, TILE_SIZE)
+              .fill(0x8b5a2b)
+              .rect(px, py + 6, TILE_SIZE, 2)
+              .fill(0x5c3a1b)
+              .rect(px, py + 22, TILE_SIZE, 2)
+              .fill(0x5c3a1b)
+              .rect(px, py + 38, TILE_SIZE, 2)
+              .fill(0x5c3a1b);
+            if (!westIsBridge) {
+              decorGfx.rect(px, py, 5, TILE_SIZE).fill(0x4a2c11);
+            }
+            if (!eastIsBridge) {
+              decorGfx.rect(px + TILE_SIZE - 5, py, 5, TILE_SIZE).fill(0x4a2c11);
+            }
+          }
           continue;
         }
 
@@ -3049,7 +3085,7 @@ export class WorldScene {
         sprite.width = TILE_SIZE + 0.5;
         sprite.height = TILE_SIZE + 0.5;
 
-        const isSnowMountain = this.data.mapId === "japan" && col >= 98;
+        const isSnowMountain = this.data.mapId === "japan" && col >= JAPAN_SNOW_START_COL;
         if (tile === "water") {
           sprite.tint = isSnowMountain ? 0x0369a1 : 0x0284c7;
         } else if (tile === "shallow") {

@@ -382,7 +382,7 @@ export function stepSurvivalState(
 
   // Hunger decay: faster when moving/swimming, carrying heavy load, sweating from heat, or shivering in snow
   const weatherAdverseFactor = adverseFactor * 0.85;
-  const baseHungerLoss = isMoving ? (surface === "swim" ? 0.477 : 0.293) : 0.108;
+  const baseHungerLoss = isMoving ? (surface === "swim" ? 0.549 : 0.337) : 0.124;
   const thermalHungerMul =
     1 + (thermal.heatStress * 0.42 + thermal.coldStress * 0.55 + effSnow * 0.22 + hanoiFx.hungerBonus) * weatherAdverseFactor;
   const weightHungerMul = isMoving ? 1 + Math.max(0, totalWeightKg - 3) * 0.02 * adverseFactor : 1;
@@ -417,7 +417,7 @@ export function stepSurvivalState(
   const buffDrainRelief = 1 / buffMultiplier;
 
   if (isMoving) {
-    const moveDrain = surface === "swim" ? 2.564 : surface === "wade" ? 1.735 : 1.282;
+    const moveDrain = surface === "swim" ? 2.949 : surface === "wade" ? 1.995 : 1.474;
     state.stamina = clamp(
       state.stamina -
         moveDrain *
