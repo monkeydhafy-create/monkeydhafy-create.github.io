@@ -5043,7 +5043,18 @@ export class WorldScene {
     this.adjustZoom(step);
   };
 
+  private isTextInputFocused(target: EventTarget | null): boolean {
+    const el = (target as HTMLElement | null) ?? (document.activeElement as HTMLElement | null);
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+  }
+
   private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (this.isTextInputFocused(e.target)) {
+      this.keysDown.clear();
+      return;
+    }
     this.keysDown.add(e.code);
     if (e.code === "KeyE" && !e.repeat) {
       this.triggerInteraction();

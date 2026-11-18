@@ -3088,8 +3088,21 @@ export class Hud {
     ctx.stroke();
   }
 
+  private isTextInputFocused(target: EventTarget | null): boolean {
+    const el = (target as HTMLElement | null) ?? (document.activeElement as HTMLElement | null);
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+  }
+
   private bindEvents(): void {
     window.addEventListener("keydown", (e) => {
+      if (this.isTextInputFocused(e.target)) {
+        if (e.key === "Escape") {
+          (e.target as HTMLElement | null)?.blur?.();
+        }
+        return;
+      }
       if (this.isOnboardingOpen) return;
       if (this.isPoliceModalOpen) {
         this.policeArcadeCtrl?.handleKeyDown(e);
