@@ -38,9 +38,11 @@ import {
   type ContainerLootState,
   type GridItemInstance,
   type GridZone,
+  type LootSourceType,
   type UpgradeKind,
 } from "../world/LootSystem.ts";
 import {
+  type BiomeId,
   BIOME_LABELS,
   GREEN_END_COL,
   JAPAN_SNOW_START_COL,
@@ -3332,7 +3334,13 @@ export class Hud {
     });
     this.accountModalEl.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
-      if (e.target === this.accountModalEl) this.closeAllModals();
+    });
+    this.accountModalEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (e.target === this.accountModalEl) {
+        e.preventDefault();
+        this.closeAllModals();
+      }
     });
     this.accountTabLoadBtn.addEventListener("click", () => {
       this.accountMode = "load";
@@ -7001,18 +7009,19 @@ export class Hud {
     version: number,
     openedAt: number,
     refreshAt: number,
+    meta?: { title: string; sourceType: LootSourceType; biome: BiomeId },
   ): void {
     this.sharedContainerVersions.set(`${mapId}:${containerId}`, version);
     if (this.scene.getActiveMapId() !== mapId) return;
     const existing = this.scene.inventory.getContainer(containerId);
-    if (!existing) return;
+    if (!existing && !meta) return;
     const updated = this.scene.inventory.applySharedContainerSnapshot(
       containerId,
-      existing.title,
-      existing.sourceType,
-      existing.biome,
-      existing.cols,
-      existing.rows,
+      existing?.title ?? meta!.title,
+      existing?.sourceType ?? meta!.sourceType,
+      existing?.biome ?? meta!.biome,
+      existing?.cols ?? 6,
+      existing?.rows ?? 5,
       items,
       openedAt,
       refreshAt,

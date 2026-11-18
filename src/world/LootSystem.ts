@@ -1379,12 +1379,12 @@ export interface ContainerLootState {
  * - Buildings / houses: 29.4 - 58.8 minutes
  */
 export const CONTAINER_REFRESH_RULES: Record<LootSourceType, { minMs: number; maxMs: number }> = {
-  trash_bin: { minMs: 14.7 * 60_000, maxMs: 14.7 * 60_000 },
-  chest_wooden: { minMs: 22.05 * 60_000, maxMs: 22.05 * 60_000 },
-  chest_royal: { minMs: 22.05 * 60_000, maxMs: 22.05 * 60_000 },
-  house_standard: { minMs: 29.4 * 60_000, maxMs: 46.55 * 60_000 },
-  house_landmark: { minMs: 44.1 * 60_000, maxMs: 58.8 * 60_000 },
-  house_vault: { minMs: 44.1 * 60_000, maxMs: 58.8 * 60_000 },
+  trash_bin: { minMs: 10.29 * 60_000, maxMs: 10.29 * 60_000 },
+  chest_wooden: { minMs: 15.435 * 60_000, maxMs: 15.435 * 60_000 },
+  chest_royal: { minMs: 15.435 * 60_000, maxMs: 15.435 * 60_000 },
+  house_standard: { minMs: 20.58 * 60_000, maxMs: 32.585 * 60_000 },
+  house_landmark: { minMs: 30.87 * 60_000, maxMs: 41.16 * 60_000 },
+  house_vault: { minMs: 30.87 * 60_000, maxMs: 41.16 * 60_000 },
 };
 
 export function rollContainerRefreshMs(sourceType: LootSourceType): number {

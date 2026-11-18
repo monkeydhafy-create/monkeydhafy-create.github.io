@@ -82,7 +82,15 @@ export interface SupabaseSyncCallbacks {
     moves: Map<string, RemotePlayerMovePacket>,
   ) => void;
   onRemotePoliceChase?: (officerId: string, x: number, y: number, untilMs: number) => void;
-  onSharedContainerUpdated?: (mapId: MapId, containerId: string, items: GridItemInstance[], version: number, openedAt: number, refreshAt: number) => void;
+  onSharedContainerUpdated?: (
+    mapId: MapId,
+    containerId: string,
+    items: GridItemInstance[],
+    version: number,
+    openedAt: number,
+    refreshAt: number,
+    meta?: { title: string; sourceType: LootSourceType; biome: BiomeId },
+  ) => void;
   onSharedVaultUnlocked?: (payload: {
     mapId: MapId;
     containerId: string;
@@ -761,11 +769,13 @@ export class SupabaseSync {
       const row = data[0];
       const items = Array.isArray(row.items) ? (row.items as GridItemInstance[]) : [];
       const newVersion = Number(row.new_version) || expectedVersion;
+      const openedAt = row.opened_at ? Date.parse(row.opened_at) : Date.now();
+      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 926_100;
       if (row.ok && this.worldChannel) {
         void this.worldChannel.send({
           type: "broadcast",
           event: "w_chest",
-          payload: { mapId, cid: containerId, items, ver: newVersion },
+          payload: { mapId, cid: containerId, items, ver: newVersion, openedAt, refreshAt },
         });
       }
       return {
@@ -801,11 +811,13 @@ export class SupabaseSync {
       const row = data[0];
       const items = Array.isArray(row.items) ? (row.items as GridItemInstance[]) : [];
       const newVersion = Number(row.new_version) || expectedVersion;
+      const openedAt = row.opened_at ? Date.parse(row.opened_at) : Date.now();
+      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 926_100;
       if (row.ok && this.worldChannel) {
         void this.worldChannel.send({
           type: "broadcast",
           event: "w_chest",
-          payload: { mapId, cid: containerId, items, ver: newVersion },
+          payload: { mapId, cid: containerId, items, ver: newVersion, openedAt, refreshAt },
         });
       }
       return {
@@ -966,15 +978,22 @@ export class SupabaseSync {
         this.callbacks.onRemotePoliceChase?.(p.oid, p.x ?? 0, p.y ?? 0, p.until ?? Date.now() + 3000);
       })
       .on("broadcast", { event: "w_chest" }, ({ payload }) => {
-        const p = payload as { mapId?: MapId; cid?: string; items?: GridItemInstance[]; ver?: number };
+        const p = payload as {
+          mapId?: MapId;
+          cid?: string;
+          items?: GridItemInstance[];
+          ver?: number;
+          openedAt?: number;
+          refreshAt?: number;
+        };
         if (!p?.mapId || !p.cid || !Array.isArray(p.items)) return;
         this.callbacks.onSharedContainerUpdated?.(
           p.mapId,
           p.cid,
           p.items,
           Number(p.ver) || 1,
-          Date.now(),
-          Date.now() + 60_000,
+          Number(p.openedAt) || Date.now(),
+          Number(p.refreshAt) || Date.now() + 926_100,
         );
       })
       .on("broadcast", { event: "w_vault_open" }, ({ payload }) => {
@@ -1001,6 +1020,10 @@ export class SupabaseSync {
             void chan.track({ ...this.latestLocalAppearance, uid });
           }
           broadcastCurrentPos();
+          if (this.user) {
+            const sectorMapId = (sectorKey.split(":")[0] || "vietnam") as MapId;
+            void this.syncActiveWorldContainers(sectorMapId);
+          }
         }
       });
 
@@ -1026,6 +1049,45 @@ export class SupabaseSync {
   }
 
   // ─── AUCTION HOUSE (24H PLAYER MARKET) ─────────────────────────────────────────────────────
+
+  public async syncActiveWorldContainers(mapId: MapId): Promise<void> {
+    if (!this.user) return;
+    try {
+      const { data, error } = await this.client.rpc("sync_active_world_containers", {
+        p_map_id: mapId,
+      });
+      if (error || !Array.isArray(data)) return;
+      for (const row of data as Array<{
+        container_id: string;
+        title: string;
+        source_type: LootSourceType;
+        biome: BiomeId;
+        items: GridItemInstance[];
+        state_version: number;
+        opened_at: string;
+        refresh_at: string;
+      }>) {
+        const items = Array.isArray(row.items) ? row.items : [];
+        const openedAt = Date.parse(row.opened_at) || Date.now();
+        const refreshAt = Date.parse(row.refresh_at) || Date.now() + 926_100;
+        this.callbacks.onSharedContainerUpdated?.(
+          mapId,
+          row.container_id,
+          items,
+          Number(row.state_version) || 1,
+          openedAt,
+          refreshAt,
+          {
+            title: row.title,
+            sourceType: row.source_type,
+            biome: row.biome,
+          },
+        );
+      }
+    } catch {
+      // Ignore transient sync error
+    }
+  }
 
   public async fetchAuctionListings(): Promise<{ ok: boolean; listings: AuctionListingRow[]; error?: string }> {
     const nowIso = new Date().toISOString();

@@ -91,6 +91,26 @@ AS $$
   SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
 $$;
 
+-- 5b. Thời gian reset điểm loot chuẩn quản lý tập trung trên DB (đã giảm 30%)
+CREATE OR REPLACE FUNCTION public.get_container_refresh_ms(p_source_type text)
+RETURNS bigint
+LANGUAGE plpgsql
+VOLATILE
+SET search_path = public
+AS $$
+BEGIN
+  CASE p_source_type
+    WHEN 'trash_bin' THEN RETURN 617400; -- 10.29 phút
+    WHEN 'chest_wooden' THEN RETURN 926100; -- 15.435 phút
+    WHEN 'chest_royal' THEN RETURN 926100; -- 15.435 phút
+    WHEN 'house_standard' THEN RETURN floor(1234800 + random() * (1955100 - 1234800))::bigint; -- 20.58 - 32.585 phút
+    WHEN 'house_landmark' THEN RETURN floor(1852200 + random() * (2469600 - 1852200))::bigint; -- 30.87 - 41.16 phút
+    WHEN 'house_vault' THEN RETURN floor(1852200 + random() * (2469600 - 1852200))::bigint; -- 30.87 - 41.16 phút
+    ELSE RETURN 926100;
+  END CASE;
+END;
+$$;
+
 -- 6. RPC mở hoặc lấy trạng thái rương chung (khóa dòng FOR UPDATE chống trùng sinh loot)
 CREATE OR REPLACE FUNCTION public.claim_or_open_world_container(
   p_map_id text,
@@ -110,6 +130,7 @@ AS $$
 DECLARE
   v_row public.world_containers;
   v_now timestamptz := clock_timestamp();
+  v_refresh_ms bigint := public.get_container_refresh_ms(p_source_type);
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Authentication required';
@@ -122,7 +143,7 @@ BEGIN
   VALUES (
     p_map_id, p_container_id, p_title, p_source_type, p_biome, p_zone,
     COALESCE(p_initial_items, '[]'::jsonb), v_now,
-    v_now + (GREATEST(1000, p_refresh_ms) * interval '1 millisecond'),
+    v_now + (GREATEST(1000, COALESCE(v_refresh_ms, p_refresh_ms)) * interval '1 millisecond'),
     1, auth.uid(), v_now
   )
   ON CONFLICT (map_id, container_id) DO NOTHING;
@@ -133,6 +154,7 @@ BEGIN
   FOR UPDATE;
 
   IF v_row.refresh_at <= v_now THEN
+    v_refresh_ms := public.get_container_refresh_ms(p_source_type);
     UPDATE public.world_containers
     SET
       title = p_title,
@@ -141,7 +163,7 @@ BEGIN
       zone = p_zone,
       items = COALESCE(p_initial_items, '[]'::jsonb),
       opened_at = v_now,
-      refresh_at = v_now + (GREATEST(1000, p_refresh_ms) * interval '1 millisecond'),
+      refresh_at = v_now + (GREATEST(1000, COALESCE(v_refresh_ms, p_refresh_ms)) * interval '1 millisecond'),
       state_version = v_row.state_version + 1,
       updated_by = auth.uid(),
       updated_at = v_now
@@ -154,13 +176,14 @@ END;
 $$;
 
 -- 7. RPC nhặt 1 món đồ từ rương chung (Atomic chống dupe khi 2 người bấm cùng lúc)
+DROP FUNCTION IF EXISTS public.take_world_container_item(text, text, text, bigint);
 CREATE OR REPLACE FUNCTION public.take_world_container_item(
   p_map_id text,
   p_container_id text,
   p_item_uid text,
   p_expected_version bigint
 )
-RETURNS TABLE(ok boolean, new_version bigint, taken_item jsonb, items jsonb)
+RETURNS TABLE(ok boolean, new_version bigint, taken_item jsonb, items jsonb, opened_at timestamptz, refresh_at timestamptz)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -180,12 +203,12 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RETURN QUERY SELECT false, 0::bigint, NULL::jsonb, '[]'::jsonb;
+    RETURN QUERY SELECT false, 0::bigint, NULL::jsonb, '[]'::jsonb, clock_timestamp(), clock_timestamp();
     RETURN;
   END IF;
 
   IF p_expected_version > 0 AND v_row.state_version <> p_expected_version THEN
-    RETURN QUERY SELECT false, v_row.state_version, NULL::jsonb, v_row.items;
+    RETURN QUERY SELECT false, v_row.state_version, NULL::jsonb, v_row.items, v_row.opened_at, v_row.refresh_at;
     RETURN;
   END IF;
 
@@ -195,7 +218,7 @@ BEGIN
   LIMIT 1;
 
   IF v_taken IS NULL THEN
-    RETURN QUERY SELECT false, v_row.state_version, NULL::jsonb, v_row.items;
+    RETURN QUERY SELECT false, v_row.state_version, NULL::jsonb, v_row.items, v_row.opened_at, v_row.refresh_at;
     RETURN;
   END IF;
 
@@ -212,18 +235,19 @@ BEGIN
   WHERE map_id = p_map_id AND container_id = p_container_id
   RETURNING * INTO v_row;
 
-  RETURN QUERY SELECT true, v_row.state_version, v_taken, v_row.items;
+  RETURN QUERY SELECT true, v_row.state_version, v_taken, v_row.items, v_row.opened_at, v_row.refresh_at;
 END;
 $$;
 
 -- 8. RPC cất/thả 1 món đồ vào lại rương chung
+DROP FUNCTION IF EXISTS public.deposit_world_container_item(text, text, jsonb, bigint);
 CREATE OR REPLACE FUNCTION public.deposit_world_container_item(
   p_map_id text,
   p_container_id text,
   p_item jsonb,
   p_expected_version bigint
 )
-RETURNS TABLE(ok boolean, new_version bigint, items jsonb)
+RETURNS TABLE(ok boolean, new_version bigint, items jsonb, opened_at timestamptz, refresh_at timestamptz)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -242,12 +266,12 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RETURN QUERY SELECT false, 0::bigint, '[]'::jsonb;
+    RETURN QUERY SELECT false, 0::bigint, '[]'::jsonb, clock_timestamp(), clock_timestamp();
     RETURN;
   END IF;
 
   IF p_expected_version > 0 AND v_row.state_version <> p_expected_version THEN
-    RETURN QUERY SELECT false, v_row.state_version, v_row.items;
+    RETURN QUERY SELECT false, v_row.state_version, v_row.items, v_row.opened_at, v_row.refresh_at;
     RETURN;
   END IF;
 
@@ -262,14 +286,29 @@ BEGIN
   WHERE map_id = p_map_id AND container_id = p_container_id
   RETURNING * INTO v_row;
 
-  RETURN QUERY SELECT true, v_row.state_version, v_row.items;
+  RETURN QUERY SELECT true, v_row.state_version, v_row.items, v_row.opened_at, v_row.refresh_at;
 END;
 $$;
 
+-- 8b. RPC đồng bộ toàn bộ điểm loot còn hạn reset theo bản đồ
+CREATE OR REPLACE FUNCTION public.sync_active_world_containers(p_map_id text)
+RETURNS SETOF public.world_containers
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT *
+  FROM public.world_containers
+  WHERE map_id = p_map_id
+    AND refresh_at > clock_timestamp();
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_container_refresh_ms(text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_server_time_ms() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_or_open_world_container(text, text, text, text, text, text, jsonb, bigint) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.take_world_container_item(text, text, text, bigint) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.deposit_world_container_item(text, text, jsonb, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_active_world_containers(text) TO authenticated;
 
 -- 9. Bật Supabase Realtime cho đồng bộ đa thiết bị & thế giới chung
 ALTER PUBLICATION supabase_realtime ADD TABLE public.player_live_state;

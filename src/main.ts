@@ -127,8 +127,8 @@ async function bootstrap(): Promise<void> {
     onRemotePoliceChase: (officerId, x, y, untilMs) => {
       worldScene?.applyRemotePoliceChase(officerId, x, y, untilMs);
     },
-    onSharedContainerUpdated: (mapId, containerId, items, version, openedAt, refreshAt) => {
-      hud?.handleSharedContainerUpdated(mapId, containerId, items, version, openedAt, refreshAt);
+    onSharedContainerUpdated: (mapId, containerId, items, version, openedAt, refreshAt, meta) => {
+      hud?.handleSharedContainerUpdated(mapId, containerId, items, version, openedAt, refreshAt, meta);
     },
     onSharedVaultUnlocked: (payload) => {
       hud?.handleSharedVaultUnlocked(payload);
