@@ -1273,6 +1273,7 @@ export const GARMENT_BLEND_CHANCE: Record<string, number> = {
 
 for (const g of GARMENT_CATALOG) {
   (g as GarmentDef).blendChance = GARMENT_BLEND_CHANCE[g.id] ?? 0;
+  (g as GarmentDef).weightKg = Number(Math.max(0.05, g.weightKg * 0.6).toFixed(2));
   if (!g.mapOrigin && g.priceGold > 0 && !g.excludeFromShop) {
     (g as GarmentDef).mapOrigin = "vietnam";
   }
@@ -1853,6 +1854,8 @@ for (const c of CONSUMABLE_CATALOG) {
   if (c.shopCategory === "food" && !c.mapOrigin) {
     (c as ConsumableDef).mapOrigin = "vietnam";
   }
+  (c as ConsumableDef).useDurationMs = Math.round((c.useDurationMs * 1.8) / 100) * 100;
+  (c as ConsumableDef).weightKg = Number(Math.max(0.05, c.weightKg * 0.6).toFixed(2));
 }
 
 export const CONSUMABLE_BY_ID: Record<string, ConsumableDef> = Object.fromEntries(

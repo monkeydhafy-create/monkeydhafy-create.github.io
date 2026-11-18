@@ -393,8 +393,15 @@ export function stepSurvivalState(
   const lightWeightExcess = Math.min(8, Math.max(0, totalWeightKg - 2.0));
   const heavyOver10Kg = Math.max(0, totalWeightKg - 10.0);
   const superHeavyOver20Kg = Math.max(0, totalWeightKg - 20.0);
+  const weightThresholdPenalty =
+    (totalWeightKg >= 10.0 ? 0.2 : 0) + (totalWeightKg >= 20.0 ? 0.2 : 0);
   const weightDrainMul =
-    1 + (lightWeightExcess * 0.055 + heavyOver10Kg * 0.095 + superHeavyOver20Kg * 0.06) * adverseFactor;
+    1 +
+    (lightWeightExcess * 0.055 +
+      weightThresholdPenalty +
+      heavyOver10Kg * 0.114 +
+      superHeavyOver20Kg * 0.072) *
+      adverseFactor;
   const snowShield = clamp(equip.windRainResist, 0, 0.92);
   const weatherFatigueMul =
     1 +
@@ -492,14 +499,14 @@ export function stepSurvivalState(
 
   let overloadSpeedMul = 1.0;
   if (totalWeightKg >= 35) {
-    overloadSpeedMul = clamp(0.32 - (totalWeightKg - 35) * 0.012, 0.22, 0.32);
+    overloadSpeedMul = clamp(0.25 - (totalWeightKg - 35) * 0.01, 0.18, 0.25);
   } else if (totalWeightKg >= 20) {
-    overloadSpeedMul = clamp(0.58 - (totalWeightKg - 20) * 0.0173, 0.32, 0.58);
+    overloadSpeedMul = clamp(0.46 - (totalWeightKg - 20) * 0.014, 0.25, 0.46);
   } else if (totalWeightKg >= 10) {
-    overloadSpeedMul = clamp(0.78 - (totalWeightKg - 10) * 0.02, 0.58, 0.78);
+    overloadSpeedMul = clamp(0.62 - (totalWeightKg - 10) * 0.016, 0.46, 0.62);
   }
   if (totalWeightKg >= 10 && heavySpeedBonusPct > 0) {
-    overloadSpeedMul = clamp(overloadSpeedMul * (1 + heavySpeedBonusPct / 100), 0.22, 1.0);
+    overloadSpeedMul = clamp(overloadSpeedMul * (1 + heavySpeedBonusPct / 100), 0.18, 1.0);
   }
   overloadSpeedMul = 1 - (1 - overloadSpeedMul) * adverseFactor;
 

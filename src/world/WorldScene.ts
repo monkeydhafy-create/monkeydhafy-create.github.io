@@ -2293,8 +2293,9 @@ export class WorldScene {
         heavySpeedBonusPct: this.inventory.getHeavySpeedBonusPct(),
       });
       this.lastSurvivalTick = survivalTick;
+      const consumeSlowMul = this.pendingConsume ? 0.34 : 1;
       this.player.setSurvivalVisuals({
-        speedMultiplier: survivalTick.speedMultiplier,
+        speedMultiplier: survivalTick.speedMultiplier * consumeSlowMul,
         isSweating: survivalTick.thermal.isSweating,
         isShivering: survivalTick.thermal.isShivering,
       });

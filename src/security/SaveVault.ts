@@ -988,7 +988,7 @@ export function validateSavePayload(
         ? c.refreshAt
         : genAt + rule.minMs;
 
-    const legacyMaxMs = Math.ceil(rule.maxMs / 0.7);
+    const legacyMaxMs = Math.ceil(rule.maxMs / 0.49);
     if (strict && (refAt < genAt || refAt - genAt > legacyMaxMs + 60_000)) {
       throw new TamperError("Container cooldown window tampered");
     }

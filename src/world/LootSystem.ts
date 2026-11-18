@@ -1235,18 +1235,18 @@ export interface ContainerLootState {
 }
 
 /**
- * Respawn/refresh intervals per lootable container type (-30% faster reset):
- * - Trash bins: 21 minutes
- * - Chests (wooden & royal): 31.5 minutes
- * - Buildings / houses: 42 - 84 minutes
+ * Respawn/refresh intervals per lootable container type (-30% faster reset again):
+ * - Trash bins: 14m 42s
+ * - Chests (wooden & royal): 22m 03s
+ * - Buildings / houses: 29.4 - 58.8 minutes
  */
 export const CONTAINER_REFRESH_RULES: Record<LootSourceType, { minMs: number; maxMs: number }> = {
-  trash_bin: { minMs: 21 * 60_000, maxMs: 21 * 60_000 },
-  chest_wooden: { minMs: 31.5 * 60_000, maxMs: 31.5 * 60_000 },
-  chest_royal: { minMs: 31.5 * 60_000, maxMs: 31.5 * 60_000 },
-  house_standard: { minMs: 42 * 60_000, maxMs: 66.5 * 60_000 },
-  house_landmark: { minMs: 63 * 60_000, maxMs: 84 * 60_000 },
-  house_vault: { minMs: 63 * 60_000, maxMs: 84 * 60_000 },
+  trash_bin: { minMs: 14.7 * 60_000, maxMs: 14.7 * 60_000 },
+  chest_wooden: { minMs: 22.05 * 60_000, maxMs: 22.05 * 60_000 },
+  chest_royal: { minMs: 22.05 * 60_000, maxMs: 22.05 * 60_000 },
+  house_standard: { minMs: 29.4 * 60_000, maxMs: 46.55 * 60_000 },
+  house_landmark: { minMs: 44.1 * 60_000, maxMs: 58.8 * 60_000 },
+  house_vault: { minMs: 44.1 * 60_000, maxMs: 58.8 * 60_000 },
 };
 
 export function rollContainerRefreshMs(sourceType: LootSourceType): number {
@@ -2361,7 +2361,7 @@ export class InventoryManager {
 
   public sellAllInZone(
     zone: "backpack" | "safebox",
-    onlyJunk = false,
+    onlyNonFood = false,
   ): { soldCount: number; earnedGold: number } {
     const list = zone === "safebox" ? this.state.safeboxItems : this.state.backpackItems;
     let soldCount = 0;
@@ -2371,7 +2371,7 @@ export class InventoryManager {
     for (const item of list) {
       const def = ITEM_BY_ID[item.itemId];
       if (!def) continue;
-      if (onlyJunk && def.rarity !== "C") {
+      if (onlyNonFood && Boolean(def.consumableId)) {
         keep.push(item);
         continue;
       }
@@ -2392,8 +2392,8 @@ export class InventoryManager {
     return this.sellItemInZone("backpack", uid);
   }
 
-  public sellAllInBackpack(onlyJunk = false): { soldCount: number; earnedGold: number } {
-    return this.sellAllInZone("backpack", onlyJunk);
+  public sellAllInBackpack(onlyNonFood = false): { soldCount: number; earnedGold: number } {
+    return this.sellAllInZone("backpack", onlyNonFood);
   }
 
   public trySpendGold(amount: number): boolean {

@@ -81,16 +81,6 @@
               <canvas id="hud-minimap" width="146" height="84"></canvas>
               <span class="minimap-badge">🗺️</span>
             </button>
-            <button
-              id="btn-minimap-zoom"
-              class="minimap-zoom-btn"
-              type="button"
-              title="Zoom to khu vực đang đứng"
-              aria-label="Bật hoặc tắt zoom minimap khu vực đang đứng"
-              aria-pressed="false"
-            >
-              🔍 1×
-            </button>
           </div>
         </div>
 
@@ -131,6 +121,12 @@
               <div id="fullmap-meta" class="bag-stats"></div>
             </div>
             <button id="btn-fullmap-close" class="bag-close" type="button" aria-label="Đóng bản đồ">✕</button>
+          </div>
+          <div id="fullmap-zone-filter" class="fullmap-zone-filter" role="tablist" aria-label="Lọc khu vực bản đồ">
+            <button class="btn-sell-zone is-active" type="button" data-zone-filter="all">🌐 Toàn Bản Đồ</button>
+            <button class="btn-sell-zone" type="button" data-zone-filter="green">🟢 Vùng Xanh</button>
+            <button class="btn-sell-zone" type="button" data-zone-filter="yellow">🟡 Vùng Vàng</button>
+            <button class="btn-sell-zone" type="button" data-zone-filter="red">🔴 Vùng Đỏ</button>
           </div>
           <div class="fullmap-wrap">
             <canvas id="fullmap-canvas" width="730" height="420"></canvas>
@@ -253,7 +249,7 @@
                     <div class="inspector-placeholder">Chạm vật phẩm để bán.</div>
                   </div>
                   <div class="shop-sell-actions">
-                    <button id="btn-shop-sell-c" class="btn-sell-junk" type="button">♻️ Bán hết Rác (C)</button>
+                    <button id="btn-shop-sell-nonfood" class="btn-sell-junk" type="button">🧺 Bán đồ không phải đồ ăn</button>
                     <button id="btn-shop-sell-all" class="btn-sell-all" type="button">💵 Bán toàn bộ Balo</button>
                   </div>
                 </div>

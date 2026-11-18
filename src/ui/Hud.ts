@@ -131,7 +131,6 @@ export class Hud {
   private readonly scene: WorldScene;
 
   private readonly minimapBtn: HTMLButtonElement;
-  private readonly minimapZoomBtn: HTMLButtonElement;
   private readonly minimapCanvas: HTMLCanvasElement;
   private readonly minimapCtx: CanvasRenderingContext2D;
   private terrainSnapshot: HTMLCanvasElement;
@@ -187,7 +186,7 @@ export class Hud {
   private readonly shopSellZoneSafeboxBtn: HTMLButtonElement;
   private readonly shopSellGridEl: HTMLElement;
   private readonly shopInspectorEl: HTMLElement;
-  private readonly shopSellCBtn: HTMLButtonElement;
+  private readonly shopSellNonFoodBtn: HTMLButtonElement;
   private readonly shopSellAllBtn: HTMLButtonElement;
 
   // Safebox, Home Storage, Gym & Treadmill Upgrade Modal
@@ -337,7 +336,7 @@ export class Hud {
   private isPoliceModalOpen = false;
   private policeSuspicionTimerId: number | null = null;
   private isFullmapOpen = false;
-  private minimapZoomed = false;
+  private fullmapZoneFilter: "all" | SecurityZone = "all";
   private readonly vaultPuzzle: PuzzleMinigameModal;
   private readonly trimmedIconCache = new Map<string, string>();
   private readonly trimmedIconWaiters = new Map<string, HTMLImageElement[]>();
@@ -387,7 +386,6 @@ export class Hud {
     this.scene = scene;
 
     this.minimapBtn = document.getElementById("btn-minimap") as HTMLButtonElement;
-    this.minimapZoomBtn = document.getElementById("btn-minimap-zoom") as HTMLButtonElement;
     this.minimapCanvas = document.getElementById("hud-minimap") as HTMLCanvasElement;
     this.minimapCtx = this.minimapCanvas.getContext("2d")!;
     this.toastEl = document.getElementById("hud-toast")!;
@@ -452,7 +450,7 @@ export class Hud {
     this.shopSellZoneSafeboxBtn = document.getElementById("btn-sell-zone-safebox") as HTMLButtonElement;
     this.shopSellGridEl = document.getElementById("shop-sell-grid")!;
     this.shopInspectorEl = document.getElementById("shop-inspector")!;
-    this.shopSellCBtn = document.getElementById("btn-shop-sell-c") as HTMLButtonElement;
+    this.shopSellNonFoodBtn = document.getElementById("btn-shop-sell-nonfood") as HTMLButtonElement;
     this.shopSellAllBtn = document.getElementById("btn-shop-sell-all") as HTMLButtonElement;
 
     this.safeboxModalEl = document.getElementById("safebox-modal")!;
@@ -1402,7 +1400,7 @@ export class Hud {
     const ctx = this.minimapCtx;
     const snap = this.terrainSnapshot;
 
-    const zoom = this.minimapZoomed ? 3 : 1;
+    const zoom = 5;
     const viewW = WORLD_WIDTH / zoom;
     const viewH = WORLD_HEIGHT / zoom;
     const viewX = Math.max(0, Math.min(WORLD_WIDTH - viewW, this.scene.player.x - viewW / 2));
@@ -1415,7 +1413,7 @@ export class Hud {
 
     const toX = (wx: number): number => ((wx - viewX) / viewW) * w;
     const toY = (wy: number): number => ((wy - viewY) / viewH) * h;
-    const rScale = this.minimapZoomed ? 1.25 : 1;
+    const rScale = 1.45;
 
     ctx.clearRect(0, 0, w, h);
     ctx.imageSmoothingEnabled = false;
@@ -1520,15 +1518,6 @@ export class Hud {
       if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
       this.setFullmapOpen(true);
     });
-    this.minimapZoomBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
-    this.minimapZoomBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.minimapZoomed = !this.minimapZoomed;
-      this.minimapZoomBtn.classList.toggle("is-active", this.minimapZoomed);
-      this.minimapZoomBtn.setAttribute("aria-pressed", String(this.minimapZoomed));
-      this.minimapZoomBtn.textContent = this.minimapZoomed ? "🔍 3×" : "🔍 1×";
-      this.drawMinimap();
-    });
 
     this.fullmapCloseBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1547,9 +1536,30 @@ export class Hud {
       const rect = this.fullmapCanvas.getBoundingClientRect();
       const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-      this.scene.moveToWorldPoint(nx * WORLD_WIDTH, ny * WORLD_HEIGHT, true);
+      const bounds = this.getFullmapViewBounds();
+      this.scene.moveToWorldPoint(
+        bounds.viewX + nx * bounds.viewW,
+        bounds.viewY + ny * bounds.viewH,
+        true,
+      );
       this.setFullmapOpen(false);
     });
+
+    const zoneFilterEl = document.getElementById("fullmap-zone-filter");
+    if (zoneFilterEl) {
+      zoneFilterEl.addEventListener("pointerdown", (e) => e.stopPropagation());
+      zoneFilterEl.addEventListener("click", (e) => {
+        const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-zone-filter]");
+        if (!btn) return;
+        const z = btn.dataset.zoneFilter as "all" | SecurityZone | undefined;
+        if (!z) return;
+        this.fullmapZoneFilter = z;
+        zoneFilterEl.querySelectorAll<HTMLButtonElement>("[data-zone-filter]").forEach((b) => {
+          b.classList.toggle("is-active", b.dataset.zoneFilter === z);
+        });
+        this.drawFullMap();
+      });
+    }
 
     const quickNavEl = document.getElementById("fullmap-quick-nav");
     if (quickNavEl) {
@@ -1681,12 +1691,14 @@ export class Hud {
       this.renderSafeboxModal();
     });
 
-    this.shopSellCBtn.addEventListener("click", () => {
+    this.shopSellNonFoodBtn.addEventListener("click", () => {
       const { soldCount, earnedGold } = this.scene.inventory.sellAllInZone(this.shopSellZone, true);
       const zoneLabel = this.shopSellZone === "safebox" ? "Safebox" : "Balo";
       this.showDiscoveryToast(
-        soldCount > 0 ? "♻️ Đã bán hết đồ Trắng (C)" : "Không có đồ C",
-        soldCount > 0 ? `Nhận +${earnedGold.toLocaleString("vi-VN")} Vàng.` : `${zoneLabel} hiện không chứa đồ Rác.`,
+        soldCount > 0 ? "🧺 Đã bán vật phẩm (trừ đồ ăn)" : "Không có vật phẩm cần bán",
+        soldCount > 0
+          ? `Nhận +${earnedGold.toLocaleString("vi-VN")} Vàng (giữ lại đồ ăn & thuốc).`
+          : `${zoneLabel} chỉ còn đồ ăn hoặc đang trống.`,
       );
       this.selectedShopUid = null;
       this.refreshBagBadge();
@@ -1947,55 +1959,100 @@ export class Hud {
     this.fullmapModalEl.classList.toggle("is-open", open);
   }
 
+  private getFullmapViewBounds(): { viewX: number; viewY: number; viewW: number; viewH: number } {
+    const greenBoundaryX = (GREEN_END_COL + 1) * TILE_SIZE;
+    const yellowBoundaryX = (YELLOW_END_COL + 1) * TILE_SIZE;
+    if (this.fullmapZoneFilter === "green") {
+      return { viewX: 0, viewY: 0, viewW: greenBoundaryX, viewH: WORLD_HEIGHT };
+    }
+    if (this.fullmapZoneFilter === "yellow") {
+      return {
+        viewX: greenBoundaryX,
+        viewY: 0,
+        viewW: yellowBoundaryX - greenBoundaryX,
+        viewH: WORLD_HEIGHT,
+      };
+    }
+    if (this.fullmapZoneFilter === "red") {
+      return {
+        viewX: yellowBoundaryX,
+        viewY: 0,
+        viewW: WORLD_WIDTH - yellowBoundaryX,
+        viewH: WORLD_HEIGHT,
+      };
+    }
+    return { viewX: 0, viewY: 0, viewW: WORLD_WIDTH, viewH: WORLD_HEIGHT };
+  }
+
   private drawFullMap(): void {
     const w = this.fullmapCanvas.width;
     const h = this.fullmapCanvas.height;
     const ctx = this.fullmapCtx;
+    const snap = this.terrainSnapshot;
+    const bounds = this.getFullmapViewBounds();
+
+    const sx = (bounds.viewX / WORLD_WIDTH) * snap.width;
+    const sw = (bounds.viewW / WORLD_WIDTH) * snap.width;
+    const toX = (wx: number): number => ((wx - bounds.viewX) / bounds.viewW) * w;
+    const toY = (wy: number): number => ((wy - bounds.viewY) / bounds.viewH) * h;
 
     ctx.clearRect(0, 0, w, h);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.terrainSnapshot, 0, 0, w, h);
+    ctx.drawImage(snap, sx, 0, sw, snap.height, 0, 0, w, h);
 
-    // Security Zone Shading & Divider Lines (Green <= GREEN_END_COL, Yellow <= YELLOW_END_COL, Red East)
-    const greenEndX = ((GREEN_END_COL + 1) / this.scene.data.cols) * w;
-    const yellowEndX = ((YELLOW_END_COL + 1) / this.scene.data.cols) * w;
+    const greenEndX = toX((GREEN_END_COL + 1) * TILE_SIZE);
+    const yellowEndX = toX((YELLOW_END_COL + 1) * TILE_SIZE);
 
-    ctx.fillStyle = "rgba(16, 185, 129, 0.10)";
-    ctx.fillRect(0, 0, greenEndX, h);
-    ctx.fillStyle = "rgba(234, 179, 8, 0.08)";
-    ctx.fillRect(greenEndX, 0, yellowEndX - greenEndX, h);
-    ctx.fillStyle = "rgba(239, 68, 68, 0.13)";
-    ctx.fillRect(yellowEndX, 0, w - yellowEndX, h);
+    if (this.fullmapZoneFilter === "all") {
+      ctx.fillStyle = "rgba(16, 185, 129, 0.10)";
+      ctx.fillRect(0, 0, greenEndX, h);
+      ctx.fillStyle = "rgba(234, 179, 8, 0.08)";
+      ctx.fillRect(greenEndX, 0, yellowEndX - greenEndX, h);
+      ctx.fillStyle = "rgba(239, 68, 68, 0.13)";
+      ctx.fillRect(yellowEndX, 0, w - yellowEndX, h);
 
-    ctx.lineWidth = 2;
-    ctx.setLineDash([7, 5]);
-    ctx.strokeStyle = "rgba(16, 185, 129, 0.78)";
-    ctx.beginPath();
-    ctx.moveTo(greenEndX, 0);
-    ctx.lineTo(greenEndX, h);
-    ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 5]);
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.78)";
+      ctx.beginPath();
+      ctx.moveTo(greenEndX, 0);
+      ctx.lineTo(greenEndX, h);
+      ctx.stroke();
 
-    ctx.strokeStyle = "rgba(239, 68, 68, 0.78)";
-    ctx.beginPath();
-    ctx.moveTo(yellowEndX, 0);
-    ctx.lineTo(yellowEndX, h);
-    ctx.stroke();
-    ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.78)";
+      ctx.beginPath();
+      ctx.moveTo(yellowEndX, 0);
+      ctx.lineTo(yellowEndX, h);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle =
+        this.fullmapZoneFilter === "green"
+          ? "rgba(16, 185, 129, 0.08)"
+          : this.fullmapZoneFilter === "yellow"
+            ? "rgba(234, 179, 8, 0.07)"
+            : "rgba(239, 68, 68, 0.11)";
+      ctx.fillRect(0, 0, w, h);
+    }
 
     ctx.font = "bold 13px system-ui, sans-serif";
     ctx.textAlign = "center";
     const isJapanMap = this.scene.getActiveMapId() === "japan";
-    const zoneHeaders: Array<[string, number, string]> = isJapanMap
-      ? [
-          ["🟢 ĐÔ THỊ TOKYO (AN TOÀN)", greenEndX * 0.5, "#6ee7b7"],
-          ["🟡 NÔNG THÔN SAMURAI", (greenEndX + yellowEndX) * 0.5, "#fde047"],
-          ["🔴 NÚI TUYẾT SHOGUN (KHẮC NGHIỆT)", (yellowEndX + w) * 0.5, "#fca5a5"],
-        ]
-      : [
-          ["🟢 VÙNG XANH (AN TOÀN)", greenEndX * 0.5, "#6ee7b7"],
-          ["🟡 VÙNG VÀNG (CHIẾM ĐA SỐ)", (greenEndX + yellowEndX) * 0.5, "#fde047"],
-          ["🔴 VÙNG ĐỎ (NHIỀU ĐỒ)", (yellowEndX + w) * 0.5, "#fca5a5"],
-        ];
+    const zoneHeaderByKey: Record<SecurityZone, [string, number, string]> = isJapanMap
+      ? {
+          green: ["🟢 ĐÔ THỊ TOKYO (AN TOÀN)", this.fullmapZoneFilter === "green" ? w * 0.5 : greenEndX * 0.5, "#6ee7b7"],
+          yellow: ["🟡 NÔNG THÔN SAMURAI", this.fullmapZoneFilter === "yellow" ? w * 0.5 : (greenEndX + yellowEndX) * 0.5, "#fde047"],
+          red: ["🔴 NÚI TUYẾT SHOGUN (KHẮC NGHIỆT)", this.fullmapZoneFilter === "red" ? w * 0.5 : (yellowEndX + w) * 0.5, "#fca5a5"],
+        }
+      : {
+          green: ["🟢 VÙNG XANH (AN TOÀN)", this.fullmapZoneFilter === "green" ? w * 0.5 : greenEndX * 0.5, "#6ee7b7"],
+          yellow: ["🟡 VÙNG VÀNG (CHIẾM ĐA SỐ)", this.fullmapZoneFilter === "yellow" ? w * 0.5 : (greenEndX + yellowEndX) * 0.5, "#fde047"],
+          red: ["🔴 VÙNG ĐỎ (NHIỀU ĐỒ)", this.fullmapZoneFilter === "red" ? w * 0.5 : (yellowEndX + w) * 0.5, "#fca5a5"],
+        };
+    const zoneHeaders =
+      this.fullmapZoneFilter === "all"
+        ? [zoneHeaderByKey.green, zoneHeaderByKey.yellow, zoneHeaderByKey.red]
+        : [zoneHeaderByKey[this.fullmapZoneFilter]];
     for (const [label, zx, colHex] of zoneHeaders) {
       ctx.fillStyle = "rgba(2, 6, 23, 0.78)";
       ctx.fillRect(zx - 114, 8, 228, 24);
@@ -2005,8 +2062,9 @@ export class Hud {
 
     // Patrolling police officers
     for (const p of this.scene.getPoliceMarkers()) {
-      const px = (p.x / WORLD_WIDTH) * w;
-      const py = (p.y / WORLD_HEIGHT) * h;
+      const px = toX(p.x);
+      const py = toY(p.y);
+      if (px < -10 || px > w + 10) continue;
       ctx.fillStyle = p.ignored ? "#6ee7b7" : p.state === "chase" ? "#ef4444" : "#3b82f6";
       ctx.beginPath();
       ctx.arc(px, py, p.state === "chase" ? 6 : 5, 0, Math.PI * 2);
@@ -2019,8 +2077,9 @@ export class Hud {
     // Chests & Trash bins
     for (const ch of this.scene.data.chests) {
       if (this.scene.inventory.isContainerLootedEmpty(ch.id)) continue;
-      const cx = (ch.x / WORLD_WIDTH) * w;
-      const cy = (ch.y / WORLD_HEIGHT) * h;
+      const cx = toX(ch.x);
+      const cy = toY(ch.y);
+      if (cx < -10 || cx > w + 10) continue;
       ctx.fillStyle =
         ch.kind === "trash" ? "#cbd5e1" : ch.kind === "royal" ? "#ef4444" : "#38bdf8";
       ctx.beginPath();
@@ -2059,25 +2118,27 @@ export class Hud {
     for (const prop of this.scene.data.props) {
       const poi = mapPoiStyles[prop.kind];
       if (!poi) continue;
-      const sx = (prop.x / WORLD_WIDTH) * w;
-      const sy = (prop.y / WORLD_HEIGHT) * h;
+      const sxp = toX(prop.x);
+      const syp = toY(prop.y);
+      if (sxp < -30 || sxp > w + 30) continue;
       ctx.fillStyle = poi.color;
       ctx.beginPath();
-      ctx.arc(sx, sy, 6.5, 0, Math.PI * 2);
+      ctx.arc(sxp, syp, 6.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = "#0f172a";
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.font = "bold 11px system-ui, sans-serif";
       ctx.fillStyle = poi.textColor;
-      ctx.fillText(poi.label, sx, sy - 10);
+      ctx.fillText(poi.label, sxp, syp - 10);
     }
 
     // Landmarks
     ctx.font = "11px system-ui, sans-serif";
     for (const lm of this.scene.data.landmarks) {
-      const lx = (lm.x / WORLD_WIDTH) * w;
-      const ly = (lm.y / WORLD_HEIGHT) * h;
+      const lx = toX(lm.x);
+      const ly = toY(lm.y);
+      if (lx < -10 || lx > w + 10) continue;
       ctx.fillStyle = lm.discovered ? "#34d399" : "#f59e0b";
       ctx.beginPath();
       ctx.arc(lx, ly, 4.5, 0, Math.PI * 2);
@@ -2087,25 +2148,29 @@ export class Hud {
     // Active destination
     const dest = this.scene.getDestination();
     if (dest) {
-      const dx = (dest.x / WORLD_WIDTH) * w;
-      const dy = (dest.y / WORLD_HEIGHT) * h;
-      ctx.strokeStyle = "#6ee7b7";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(dx, dy, 8, 0, Math.PI * 2);
-      ctx.stroke();
+      const dx = toX(dest.x);
+      const dy = toY(dest.y);
+      if (dx >= -12 && dx <= w + 12) {
+        ctx.strokeStyle = "#6ee7b7";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(dx, dy, 8, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
 
     // Player marker
-    const px = (this.scene.player.x / WORLD_WIDTH) * w;
-    const py = (this.scene.player.y / WORLD_HEIGHT) * h;
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(px, py, 6.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#10b981";
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
+    const px = toX(this.scene.player.x);
+    const py = toY(this.scene.player.y);
+    if (px >= -12 && px <= w + 12) {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(px, py, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#10b981";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
 
     const tx = Math.floor(this.scene.player.x / TILE_SIZE);
     const ty = Math.floor(this.scene.player.y / TILE_SIZE);
