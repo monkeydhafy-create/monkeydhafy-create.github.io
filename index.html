@@ -70,16 +70,28 @@
             <div id="sv-thermal-text" class="sv-thermal">🌡️ 36.8°C • 🌤️ 25°C</div>
           </div>
 
-          <button
-            id="btn-minimap"
-            class="hud-minimap-wrap"
-            type="button"
-            title="Chạm để mở bản đồ lớn"
-            aria-label="Mở bản đồ lớn"
-          >
-            <canvas id="hud-minimap" width="146" height="84"></canvas>
-            <span class="minimap-badge">🗺️</span>
-          </button>
+          <div class="hud-minimap-shell">
+            <button
+              id="btn-minimap"
+              class="hud-minimap-wrap"
+              type="button"
+              title="Chạm để mở bản đồ lớn"
+              aria-label="Mở bản đồ lớn"
+            >
+              <canvas id="hud-minimap" width="146" height="84"></canvas>
+              <span class="minimap-badge">🗺️</span>
+            </button>
+            <button
+              id="btn-minimap-zoom"
+              class="minimap-zoom-btn"
+              type="button"
+              title="Zoom to khu vực đang đứng"
+              aria-label="Bật hoặc tắt zoom minimap khu vực đang đứng"
+              aria-pressed="false"
+            >
+              🔍 1×
+            </button>
+          </div>
         </div>
 
         <!-- Bottom Stack: Context Interact Pill + Wardrobe & Backpack Buttons -->

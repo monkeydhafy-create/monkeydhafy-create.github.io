@@ -31,6 +31,7 @@ export interface ArcadeSessionOptions {
   kind: ArcadeMinigameKind;
   mode: ArcadeMode;
   difficulty?: ArcadeDifficulty;
+  extraMisses?: number;
   seed?: number;
   boardEl: HTMLElement;
   statusEl: HTMLElement;
@@ -152,7 +153,7 @@ export class ArcadeMinigameController {
     let compareLocked = false;
     let matchedPairs = 0;
     let misses = 0;
-    const maxMisses =
+    const baseMaxMisses =
       this.opts.mode === "police"
         ? this.difficulty === "nightmare"
           ? 4
@@ -164,6 +165,7 @@ export class ArcadeMinigameController {
           : this.difficulty === "hard"
             ? 6
             : 0;
+    const maxMisses = baseMaxMisses > 0 ? baseMaxMisses + (this.opts.extraMisses ?? 0) : 0;
 
     const grid = document.createElement("div");
     grid.className = "arc-cards-grid";
@@ -273,21 +275,22 @@ export class ArcadeMinigameController {
     const isHardPlus = this.difficulty !== "normal";
     const pinCount = isHardPlus ? 5 : 4;
     const zoneHeightPct =
-      this.difficulty === "nightmare" ? 13 : this.difficulty === "hard" ? 15 : 24;
+      this.difficulty === "nightmare" ? 19 : this.difficulty === "hard" ? 21 : 27;
     const pins = Array.from({ length: pinCount }, (_, i) => ({
       targetTopPct: 12 + Math.floor(this.rng() * (88 - zoneHeightPct - 12)),
       speed:
         this.difficulty === "nightmare"
-          ? 1.52 + i * 0.28
+          ? 1.18 + i * 0.20
           : this.difficulty === "hard"
-            ? 1.38 + i * 0.25
+            ? 1.08 + i * 0.18
             : 1.05 + i * 0.16,
       locked: false,
       valuePct: 50,
     }));
     let activePin = 0;
     let misses = 0;
-    const maxMisses = this.opts.mode === "police" ? (isHardPlus ? 2 : 3) : isHardPlus ? 2 : 0;
+    const baseMaxMisses = this.opts.mode === "police" ? (isHardPlus ? 2 : 3) : isHardPlus ? 2 : 0;
+    const maxMisses = baseMaxMisses > 0 ? baseMaxMisses + (this.opts.extraMisses ?? 0) : 0;
     let phase = this.rng() * Math.PI * 2;
     let lastTs = performance.now();
 
@@ -418,7 +421,7 @@ export class ArcadeMinigameController {
       const dt = Math.min(0.05, Math.max(0.001, (now - lastTs) / 1000));
       lastTs = now;
       if (activePin < pinCount) {
-        phase += dt * pins[activePin].speed * Math.PI * 1.305;
+        phase += dt * pins[activePin].speed * Math.PI * 1.17;
         const pct = 8 + ((Math.sin(phase) + 1) * 0.5) * 84;
         pins[activePin].valuePct = pct;
         cursorEls[activePin].style.top = `${pct.toFixed(1)}%`;
@@ -439,7 +442,8 @@ export class ArcadeMinigameController {
     const totalHits = isHardPlus ? 5 : 3;
     let hits = 0;
     let misses = 0;
-    const maxMisses = this.opts.mode === "police" ? (isHardPlus ? 2 : 3) : isHardPlus ? 3 : 0;
+    const baseMaxMisses = this.opts.mode === "police" ? (isHardPlus ? 2 : 3) : isHardPlus ? 3 : 0;
+    const maxMisses = baseMaxMisses > 0 ? baseMaxMisses + (this.opts.extraMisses ?? 0) : 0;
     let cursorPct = 10;
     let dir = 1;
     let targetLeftPct = 36;
@@ -480,10 +484,10 @@ export class ArcadeMinigameController {
     const rollZone = (): void => {
       targetWidthPct =
         this.difficulty === "nightmare"
-          ? Math.max(10, 18 - hits * 2)
+          ? Math.max(14, 25 - hits * 2)
           : this.difficulty === "hard"
-            ? Math.max(12, 20 - hits * 2)
-            : Math.max(16, 25 - hits * 3);
+            ? Math.max(17, 28 - hits * 2)
+            : Math.max(18, 28 - hits * 3);
       targetLeftPct = 10 + Math.floor(this.rng() * (90 - targetWidthPct - 10));
       targetZone.style.left = `${targetLeftPct}%`;
       targetZone.style.width = `${targetWidthPct}%`;
@@ -570,10 +574,10 @@ export class ArcadeMinigameController {
       lastTs = now;
       const speedPctPerSec =
         this.difficulty === "nightmare"
-          ? 136 + hits * 34
+          ? 90 + hits * 22
           : this.difficulty === "hard"
-            ? 124 + hits * 30
-            : (95 + hits * 24) * 0.9;
+            ? 81 + hits * 20
+            : (95 + hits * 24) * 0.81;
       cursorPct += dir * speedPctPerSec * dt;
       if (cursorPct >= 97) {
         cursorPct = 97;

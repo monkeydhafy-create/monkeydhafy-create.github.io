@@ -402,7 +402,12 @@ export class WorldScene {
         this.getSurfaceAt(startX, startY),
         this.cachedEquipStats,
         this.survival.bodyTempC,
-        { inSnowZone: this.isInSnowZoneAt(startX) },
+        {
+          inSnowZone: this.isInSnowZoneAt(startX),
+          securityZone: this.getSecurityZoneAt(startX, startY),
+          mapId: this.activeMapId,
+          biome: this.getCurrentBiome(),
+        },
       ),
       blurIntensity: 0,
       speedMultiplier: 1,
@@ -2226,7 +2231,7 @@ export class WorldScene {
       this.lootingCheckAccum += dt;
       if (this.lootingCheckAccum >= 2.5) {
         this.lootingCheckAccum = 0;
-        const askChance = playerZone === "red" ? 0.07 : 0.03;
+        const askChance = playerZone === "red" ? 0.05 : 0.03;
         if (Math.random() < askChance) {
           const nearest = this.police.findNearestOfficer(
             this.player.x,
@@ -2280,6 +2285,9 @@ export class WorldScene {
         env,
         equip: this.cachedEquipStats,
         inSnowZone: this.isInSnowZoneAt(this.player.x),
+        securityZone: playerZone,
+        mapId: this.activeMapId,
+        biome: this.getCurrentBiome(),
         totalWeightKg: this.inventory.getCarriedWeightKg(this.cachedEquipStats.weightKg),
         permanentStaminaBonusPct: this.inventory.getPermanentStaminaBonusPct(),
         heavySpeedBonusPct: this.inventory.getHeavySpeedBonusPct(),
@@ -2321,7 +2329,15 @@ export class WorldScene {
             "dry",
             this.cachedEquipStats,
             SURVIVAL_IDEAL_TEMP_C,
-            { inSnowZone: this.isInSnowZoneAt(this.data.hospitalRespawn.x) },
+            {
+              inSnowZone: this.isInSnowZoneAt(this.data.hospitalRespawn.x),
+              securityZone: this.getSecurityZoneAt(
+                this.data.hospitalRespawn.x,
+                this.data.hospitalRespawn.y,
+              ),
+              mapId: this.activeMapId,
+              biome: this.getCurrentBiome(),
+            },
           ),
           blurIntensity: 0,
           speedMultiplier: 1,

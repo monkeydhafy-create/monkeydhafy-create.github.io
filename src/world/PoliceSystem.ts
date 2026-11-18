@@ -438,10 +438,11 @@ export class PoliceSystem {
     const dy = py - agent.y;
     const dist = Math.hypot(dx, dy);
     const lootSightBonus = isLooting ? 45 : 0;
-    const jpSightBonus = this.world.mapId === "japan" ? 35 : 0;
+    const isRed = agent.patrolZone === "red";
+    const jpSightBonus = this.world.mapId === "japan" ? (isRed ? 24 : 35) : 0;
     const sightRange =
-      (agent.patrolZone === "red" ? 295 : 255) + jpSightBonus - nightFactor * 42 + lootSightBonus;
-    const hearRange = 104 + (this.world.mapId === "japan" ? 18 : 0) + (isLooting ? 28 : 0);
+      (isRed ? 235 : 255) + jpSightBonus - nightFactor * 42 + lootSightBonus;
+    const hearRange = (isRed ? 84 : 104) + (this.world.mapId === "japan" ? (isRed ? 12 : 18) : 0) + (isLooting ? 28 : 0);
 
     if (dist > sightRange) return false;
     if (dist <= hearRange) {
@@ -468,10 +469,11 @@ export class PoliceSystem {
     const spotted = !isIgnored && canArrest && this.canDetectPlayer(agent, px, py, nightFactor, isLooting);
 
     if (spotted) {
+      const redDurationScale = agent.patrolZone === "red" ? 0.7 : 1;
       agent.state = "chase";
       agent.pauseTimer = 0;
-      agent.chaseTimer = this.world.mapId === "japan" ? 11.5 : 9.0;
-      agent.investigateTimer = this.world.mapId === "japan" ? 13.0 : 11.0;
+      agent.chaseTimer = (this.world.mapId === "japan" ? 11.5 : 9.0) * redDurationScale;
+      agent.investigateTimer = (this.world.mapId === "japan" ? 13.0 : 11.0) * redDurationScale;
       agent.lastSeenPlayer = { x: px, y: py };
       // Predictive lead target cuts corners smoothly during chase
       const leadX = Math.max(TILE_SIZE * 3, Math.min(WORLD_WIDTH - TILE_SIZE * 3, px + pvx * 0.32));
@@ -524,8 +526,9 @@ export class PoliceSystem {
     if (dist < 4) return false;
 
     const isJapan = this.world.mapId === "japan";
+    const redSpeedScale = agent.patrolZone === "red" ? 0.78 : 1;
     const speed =
-      agent.state === "chase"
+      (agent.state === "chase"
         ? isJapan
           ? JP_CHASE_SPEED
           : CHASE_SPEED
@@ -535,7 +538,7 @@ export class PoliceSystem {
             : INVESTIGATE_SPEED
           : isJapan
             ? JP_PATROL_SPEED
-            : PATROL_SPEED;
+            : PATROL_SPEED) * redSpeedScale;
 
     const baseAngle = Math.atan2(dy, dx);
     const b = agent.turnBias;

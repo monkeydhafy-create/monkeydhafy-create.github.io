@@ -14,6 +14,7 @@ export interface VaultPuzzleTarget {
   kind?: VaultPuzzleKind;
   seed?: number;
   difficulty?: ArcadeDifficulty;
+  extraMisses?: number;
 }
 
 type Dir = 0 | 1 | 2 | 3; // 0:N, 1:E, 2:S, 3:W
@@ -693,13 +694,14 @@ export function createCode4State(
   rng: () => number = Math.random,
   resetCount = 0,
   justReset = false,
+  maxAttempts = 6,
 ): Code4State {
   const digits = shuffleInPlace(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], rng);
   return {
     secret: digits.slice(0, 4).join(""),
     input: "",
     attempts: [],
-    maxAttempts: 6,
+    maxAttempts,
     resetCount,
     justReset,
     solved: false,
@@ -872,7 +874,9 @@ export class PuzzleMinigameModal {
     if (this.kind === "wires") this.wires = createWiresState(this.activeRng);
     else if (this.kind === "pipes") this.pipes = createPipesState(this.activeRng);
     else if (this.kind === "signal") this.signal = createSignalState(this.activeRng);
-    else if (this.kind === "code4") this.code4 = createCode4State(this.activeRng);
+    else if (this.kind === "code4") {
+      this.code4 = createCode4State(this.activeRng, 0, false, 6 + (this.activeTarget?.extraMisses ?? 0));
+    }
   }
 
   private resetCurrentPuzzle(): void {
@@ -930,6 +934,7 @@ export class PuzzleMinigameModal {
         kind: this.kind,
         mode: "free",
         difficulty: this.activeDifficulty,
+        extraMisses: this.activeTarget?.extraMisses,
         seed: this.activeSeed,
         boardEl: this.boardWrapEl,
         statusEl: this.statusEl,
@@ -1393,7 +1398,7 @@ export class PuzzleMinigameModal {
     }
 
     if (st.attempts.length >= st.maxAttempts) {
-      this.code4 = createCode4State(this.activeRng, st.resetCount + 1, true);
+      this.code4 = createCode4State(this.activeRng, st.resetCount + 1, true, st.maxAttempts);
     }
 
     this.saveSessionToCache();

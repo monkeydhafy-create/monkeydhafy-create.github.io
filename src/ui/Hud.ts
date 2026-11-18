@@ -131,6 +131,7 @@ export class Hud {
   private readonly scene: WorldScene;
 
   private readonly minimapBtn: HTMLButtonElement;
+  private readonly minimapZoomBtn: HTMLButtonElement;
   private readonly minimapCanvas: HTMLCanvasElement;
   private readonly minimapCtx: CanvasRenderingContext2D;
   private terrainSnapshot: HTMLCanvasElement;
@@ -334,7 +335,9 @@ export class Hud {
   private isAirportOpen = false;
   private isCollectionOpen = false;
   private isPoliceModalOpen = false;
+  private policeSuspicionTimerId: number | null = null;
   private isFullmapOpen = false;
+  private minimapZoomed = false;
   private readonly vaultPuzzle: PuzzleMinigameModal;
   private readonly trimmedIconCache = new Map<string, string>();
   private readonly trimmedIconWaiters = new Map<string, HTMLImageElement[]>();
@@ -384,6 +387,7 @@ export class Hud {
     this.scene = scene;
 
     this.minimapBtn = document.getElementById("btn-minimap") as HTMLButtonElement;
+    this.minimapZoomBtn = document.getElementById("btn-minimap-zoom") as HTMLButtonElement;
     this.minimapCanvas = document.getElementById("hud-minimap") as HTMLCanvasElement;
     this.minimapCtx = this.minimapCanvas.getContext("2d")!;
     this.toastEl = document.getElementById("hud-toast")!;
@@ -749,7 +753,7 @@ export class Hud {
   public openVaultPuzzleModal(target: PendingVaultTarget): void {
     if (this.isPoliceModalOpen) return;
     this.closeAllModals("vaultpuzzle");
-    const difficulty: ArcadeDifficulty = target.zone === "red" ? "nightmare" : "hard";
+    const difficulty: ArcadeDifficulty = target.zone === "red" ? "hard" : "normal";
     this.vaultPuzzle.open(
       {
         containerId: target.containerId,
@@ -758,6 +762,7 @@ export class Hud {
         kind: target.kind,
         seed: target.seed,
         difficulty,
+        extraMisses: target.zone === "red" ? 1 : 0,
       },
       () => {
         this.scene.completeVaultPuzzle();
@@ -941,9 +946,16 @@ export class Hud {
     name: string;
     zone?: SecurityZone;
   }): void {
+    if (this.policeSuspicionTimerId !== null) {
+      window.clearTimeout(this.policeSuspicionTimerId);
+      this.policeSuspicionTimerId = null;
+    }
     this.closeAllModals();
     this.policeArcadeCtrl?.destroy();
     this.policeArcadeCtrl = null;
+    this.policeGame = null;
+    this.policeModalEl.classList.remove("is-open");
+    this.isPoliceModalOpen = true;
 
     const isJapan = this.scene.getActiveMapId() === "japan";
     const zone: SecurityZone =
@@ -952,33 +964,41 @@ export class Hud {
         : this.scene.getCurrentSecurityZone() === "red"
           ? "red"
           : "yellow";
-    const maxAttempts = zone === "red" ? 1 : isJapan ? 3 : 5;
-    const maxFails = zone === "red" ? 1 : isJapan ? 2 : 3;
+    const maxAttempts = zone === "red" ? 2 : isJapan ? 3 : 5;
+    const maxFails = zone === "red" ? 2 : isJapan ? 2 : 3;
     const difficulty: ArcadeDifficulty =
-      zone === "red" ? (isJapan ? "nightmare" : "hard") : "normal";
-    const inputMaxMs = zone === "red" ? (isJapan ? 9_500 : 11_000) : isJapan ? 11_000 : 15_000;
+      zone === "red" ? (isJapan ? "hard" : "normal") : "normal";
+    const inputMaxMs = zone === "red" ? (isJapan ? 12_500 : 14_500) : isJapan ? 11_000 : 15_000;
 
-    this.policeGame = {
-      officerId: officer.id,
-      officerName: officer.name,
-      zone,
-      difficulty,
-      maxAttempts,
-      maxFails,
-      attempt: 1,
-      fails: 0,
-      gameKind: "police_4x4",
-      sequence: [],
-      phase: "preview",
-      flashIdx: 0,
-      flashTimerMs: 0,
-      inputMaxMs,
-      inputRemainingMs: inputMaxMs,
-      picked: [],
-    };
-    this.isPoliceModalOpen = true;
-    this.policeModalEl.classList.add("is-open");
-    this.startNextPoliceRound();
+    this.showDiscoveryToast(
+      "🚨 Đang bị tình nghi!",
+      `${officer.name} phát hiện dấu hiệu khả nghi — Kiểm tra sau 2 giây...`,
+    );
+
+    this.policeSuspicionTimerId = window.setTimeout(() => {
+      this.policeSuspicionTimerId = null;
+      if (!this.isPoliceModalOpen || this.scene.isDetained()) return;
+      this.policeGame = {
+        officerId: officer.id,
+        officerName: officer.name,
+        zone,
+        difficulty,
+        maxAttempts,
+        maxFails,
+        attempt: 1,
+        fails: 0,
+        gameKind: "police_4x4",
+        sequence: [],
+        phase: "preview",
+        flashIdx: 0,
+        flashTimerMs: 0,
+        inputMaxMs,
+        inputRemainingMs: inputMaxMs,
+        picked: [],
+      };
+      this.policeModalEl.classList.add("is-open");
+      this.startNextPoliceRound();
+    }, 2000);
   }
 
   private startNextPoliceRound(): void {
@@ -1007,7 +1027,7 @@ export class Hud {
         const j = Math.floor(Math.random() * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
       }
-      const seqLen = g.zone === "red" ? (isJapan ? 7 : 6) : isJapan ? 6 : 5;
+      const seqLen = g.zone === "red" ? (isJapan ? 5 : 4) : isJapan ? 6 : 5;
       g.sequence = pool.slice(0, seqLen);
     } else {
       g.sequence = [];
@@ -1054,6 +1074,10 @@ export class Hud {
   }
 
   public showDetentionScreen(lostItemCount: number, durationMs: number, resumed = false): void {
+    if (this.policeSuspicionTimerId !== null) {
+      window.clearTimeout(this.policeSuspicionTimerId);
+      this.policeSuspicionTimerId = null;
+    }
     this.closeAllModals();
     this.policeArcadeCtrl?.destroy();
     this.policeArcadeCtrl = null;
@@ -1376,24 +1400,42 @@ export class Hud {
     const w = this.minimapCanvas.width;
     const h = this.minimapCanvas.height;
     const ctx = this.minimapCtx;
+    const snap = this.terrainSnapshot;
+
+    const zoom = this.minimapZoomed ? 3 : 1;
+    const viewW = WORLD_WIDTH / zoom;
+    const viewH = WORLD_HEIGHT / zoom;
+    const viewX = Math.max(0, Math.min(WORLD_WIDTH - viewW, this.scene.player.x - viewW / 2));
+    const viewY = Math.max(0, Math.min(WORLD_HEIGHT - viewH, this.scene.player.y - viewH / 2));
+
+    const sx = (viewX / WORLD_WIDTH) * snap.width;
+    const sy = (viewY / WORLD_HEIGHT) * snap.height;
+    const sw = snap.width / zoom;
+    const sh = snap.height / zoom;
+
+    const toX = (wx: number): number => ((wx - viewX) / viewW) * w;
+    const toY = (wy: number): number => ((wy - viewY) / viewH) * h;
+    const rScale = this.minimapZoomed ? 1.25 : 1;
 
     ctx.clearRect(0, 0, w, h);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.terrainSnapshot, 0, 0, w, h);
+    ctx.drawImage(snap, sx, sy, sw, sh, 0, 0, w, h);
 
     for (const p of this.scene.getPoliceMarkers()) {
-      const px = (p.x / WORLD_WIDTH) * w;
-      const py = (p.y / WORLD_HEIGHT) * h;
+      const px = toX(p.x);
+      const py = toY(p.y);
+      if (px < -6 || px > w + 6 || py < -6 || py > h + 6) continue;
       ctx.fillStyle = p.ignored ? "#6ee7b7" : p.state === "chase" ? "#ef4444" : "#3b82f6";
       ctx.beginPath();
-      ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+      ctx.arc(px, py, 2.2 * rScale, 0, Math.PI * 2);
       ctx.fill();
     }
 
     for (const ch of this.scene.data.chests) {
       if (this.scene.inventory.isContainerLootedEmpty(ch.id)) continue;
-      const cx = (ch.x / WORLD_WIDTH) * w;
-      const cy = (ch.y / WORLD_HEIGHT) * h;
+      const cx = toX(ch.x);
+      const cy = toY(ch.y);
+      if (cx < -6 || cx > w + 6 || cy < -6 || cy > h + 6) continue;
       ctx.fillStyle =
         ch.kind === "trash"
           ? "#cbd5e1"
@@ -1401,35 +1443,36 @@ export class Hud {
             ? "#ef4444"
             : "#38bdf8";
       ctx.beginPath();
-      ctx.arc(cx, cy, ch.kind === "trash" ? 1.6 : 2.3, 0, Math.PI * 2);
+      ctx.arc(cx, cy, (ch.kind === "trash" ? 1.6 : 2.3) * rScale, 0, Math.PI * 2);
       ctx.fill();
     }
 
     for (const lm of this.scene.data.landmarks) {
-      const lx = (lm.x / WORLD_WIDTH) * w;
-      const ly = (lm.y / WORLD_HEIGHT) * h;
+      const lx = toX(lm.x);
+      const ly = toY(lm.y);
+      if (lx < -6 || lx > w + 6 || ly < -6 || ly > h + 6) continue;
       ctx.fillStyle = lm.discovered ? "#34d399" : "#f59e0b";
       ctx.beginPath();
-      ctx.arc(lx, ly, 2.5, 0, Math.PI * 2);
+      ctx.arc(lx, ly, 2.5 * rScale, 0, Math.PI * 2);
       ctx.fill();
     }
 
     const dest = this.scene.getDestination();
     if (dest) {
-      const dx = (dest.x / WORLD_WIDTH) * w;
-      const dy = (dest.y / WORLD_HEIGHT) * h;
+      const dx = toX(dest.x);
+      const dy = toY(dest.y);
       ctx.strokeStyle = "#6ee7b7";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(dx, dy, 3.5, 0, Math.PI * 2);
+      ctx.arc(dx, dy, 3.5 * rScale, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    const px = (this.scene.player.x / WORLD_WIDTH) * w;
-    const py = (this.scene.player.y / WORLD_HEIGHT) * h;
+    const px = toX(this.scene.player.x);
+    const py = toY(this.scene.player.y);
     ctx.fillStyle = "#ffffff";
     ctx.beginPath();
-    ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+    ctx.arc(px, py, 3.2 * rScale, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#059669";
     ctx.lineWidth = 1.5;
@@ -1476,6 +1519,15 @@ export class Hud {
       e.stopPropagation();
       if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
       this.setFullmapOpen(true);
+    });
+    this.minimapZoomBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.minimapZoomBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.minimapZoomed = !this.minimapZoomed;
+      this.minimapZoomBtn.classList.toggle("is-active", this.minimapZoomed);
+      this.minimapZoomBtn.setAttribute("aria-pressed", String(this.minimapZoomed));
+      this.minimapZoomBtn.textContent = this.minimapZoomed ? "🔍 3×" : "🔍 1×";
+      this.drawMinimap();
     });
 
     this.fullmapCloseBtn.addEventListener("click", (e) => {
@@ -4710,8 +4762,8 @@ export class Hud {
 
     if (g.phase === "preview") {
       g.flashTimerMs += dtMs;
-      const stepDurMs = g.zone === "red" ? 420 : 560;
-      const litDurMs = g.zone === "red" ? 310 : 420;
+      const stepDurMs = g.zone === "red" ? 550 : 560;
+      const litDurMs = g.zone === "red" ? 410 : 420;
       const nextStep = Math.floor(g.flashTimerMs / stepDurMs);
       if (nextStep >= g.sequence.length) {
         g.phase = "input";
@@ -4800,6 +4852,7 @@ export class Hud {
         kind: arcadeKind,
         mode: "police",
         difficulty: g.difficulty,
+        extraMisses: g.zone === "red" ? 1 : 0,
         boardEl: this.policeArcadeStageEl,
         statusEl: this.policeStatusEl,
         onWin: () => this.handlePoliceRoundResult(true),

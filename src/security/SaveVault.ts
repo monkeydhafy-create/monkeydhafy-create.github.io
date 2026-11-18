@@ -983,13 +983,17 @@ export function validateSavePayload(
 
     const genAt = typeof c.generatedAt === "number" && Number.isFinite(c.generatedAt) ? c.generatedAt : now;
     const rule = CONTAINER_REFRESH_RULES[c.sourceType];
-    const refAt =
+    let refAt =
       typeof c.refreshAt === "number" && Number.isFinite(c.refreshAt)
         ? c.refreshAt
         : genAt + rule.minMs;
 
-    if (strict && (refAt < genAt || refAt - genAt > rule.maxMs + 60_000)) {
+    const legacyMaxMs = Math.ceil(rule.maxMs / 0.7);
+    if (strict && (refAt < genAt || refAt - genAt > legacyMaxMs + 60_000)) {
       throw new TamperError("Container cooldown window tampered");
+    }
+    if (refAt - genAt > rule.maxMs) {
+      refAt = genAt + rule.maxMs;
     }
     if (now >= refAt) {
       // Automatically discard expired containers instead of reviving old loot

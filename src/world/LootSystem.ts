@@ -1235,18 +1235,18 @@ export interface ContainerLootState {
 }
 
 /**
- * Respawn/refresh intervals per lootable container type:
- * - Trash bins: 30 minutes
- * - Chests (wooden & royal): 45 minutes
- * - Buildings / houses: 1 - 2 hours
+ * Respawn/refresh intervals per lootable container type (-30% faster reset):
+ * - Trash bins: 21 minutes
+ * - Chests (wooden & royal): 31.5 minutes
+ * - Buildings / houses: 42 - 84 minutes
  */
 export const CONTAINER_REFRESH_RULES: Record<LootSourceType, { minMs: number; maxMs: number }> = {
-  trash_bin: { minMs: 30 * 60_000, maxMs: 30 * 60_000 },
-  chest_wooden: { minMs: 45 * 60_000, maxMs: 45 * 60_000 },
-  chest_royal: { minMs: 45 * 60_000, maxMs: 45 * 60_000 },
-  house_standard: { minMs: 60 * 60_000, maxMs: 95 * 60_000 },
-  house_landmark: { minMs: 90 * 60_000, maxMs: 120 * 60_000 },
-  house_vault: { minMs: 90 * 60_000, maxMs: 120 * 60_000 },
+  trash_bin: { minMs: 21 * 60_000, maxMs: 21 * 60_000 },
+  chest_wooden: { minMs: 31.5 * 60_000, maxMs: 31.5 * 60_000 },
+  chest_royal: { minMs: 31.5 * 60_000, maxMs: 31.5 * 60_000 },
+  house_standard: { minMs: 42 * 60_000, maxMs: 66.5 * 60_000 },
+  house_landmark: { minMs: 63 * 60_000, maxMs: 84 * 60_000 },
+  house_vault: { minMs: 63 * 60_000, maxMs: 84 * 60_000 },
 };
 
 export function rollContainerRefreshMs(sourceType: LootSourceType): number {
