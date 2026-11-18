@@ -3761,32 +3761,49 @@ export class WorldScene {
     shadow.height = 10;
     shadow.alpha = 0.28;
 
+    const groundGlow = new Graphics();
     const aura = new Graphics();
     if (pet.rarity === "S") {
-      aura
-        .circle(0, -8, 20)
-        .fill({ color: 0xf43f5e, alpha: 0.24 })
-        .circle(0, -8, 16)
-        .stroke({ color: 0xfde047, width: 1.8, alpha: 0.9 });
-      for (let r = 0; r < 4; r++) {
-        const ang = (r * Math.PI) / 2;
+      // Soft borderless multi-layer crimson & gold floor glow
+      groundGlow
+        .ellipse(0, 5, 24, 10)
+        .fill({ color: 0xf43f5e, alpha: 0.14 })
+        .ellipse(0, 5, 17, 7)
+        .fill({ color: 0xfde047, alpha: 0.22 })
+        .ellipse(0, 5, 10, 4)
+        .fill({ color: 0xfef9c3, alpha: 0.26 });
+      // Orbiting sparkle motes (no hard ring border)
+      for (let r = 0; r < 5; r++) {
+        const ang = (r * Math.PI * 2) / 5;
+        const rad = 16 + (r % 2) * 4;
         aura
-          .moveTo(Math.cos(ang) * 14, -8 + Math.sin(ang) * 14)
-          .lineTo(Math.cos(ang) * 23, -8 + Math.sin(ang) * 23)
-          .stroke({ color: 0xfef08a, width: 1.8, alpha: 0.9 });
+          .circle(Math.cos(ang) * rad, -8 + Math.sin(ang) * (rad * 0.55), r % 2 === 0 ? 2.1 : 1.5)
+          .fill({ color: r % 2 === 0 ? 0xfef08a : 0xfb7185, alpha: 0.85 });
       }
     } else if (pet.rarity === "A") {
-      aura
-        .circle(0, -8, 17)
-        .fill({ color: 0xfacc15, alpha: 0.2 })
-        .circle(0, -8, 15)
-        .stroke({ color: 0xfef08a, width: 1.4, alpha: 0.78 });
+      groundGlow
+        .ellipse(0, 5, 20, 8.5)
+        .fill({ color: 0xf59e0b, alpha: 0.12 })
+        .ellipse(0, 5, 13, 5.5)
+        .fill({ color: 0xfde047, alpha: 0.2 });
+      for (let r = 0; r < 3; r++) {
+        const ang = (r * Math.PI * 2) / 3;
+        aura
+          .circle(Math.cos(ang) * 15, -8 + Math.sin(ang) * 8, 1.7)
+          .fill({ color: 0xfef08a, alpha: 0.78 });
+      }
     } else if (pet.rarity === "B") {
-      aura
-        .circle(0, -8, 14)
-        .fill({ color: 0x38bdf8, alpha: 0.14 })
-        .circle(0, -8, 14)
-        .stroke({ color: 0xbae6fd, width: 1, alpha: 0.5 });
+      groundGlow
+        .ellipse(0, 5, 16, 7)
+        .fill({ color: 0x38bdf8, alpha: 0.11 })
+        .ellipse(0, 5, 10, 4.5)
+        .fill({ color: 0xbae6fd, alpha: 0.16 });
+      for (let r = 0; r < 2; r++) {
+        const ang = r * Math.PI;
+        aura
+          .circle(Math.cos(ang) * 13, -7 + Math.sin(ang) * 6, 1.4)
+          .fill({ color: 0xe0f2fe, alpha: 0.68 });
+      }
     }
 
     const sprite = new Sprite();
@@ -3842,7 +3859,7 @@ export class WorldScene {
       sprite.scale.set(this.petBaseScale * this.petFacingSign, this.petBaseScale);
     });
 
-    node.addChild(shadow, aura, sprite, bubble);
+    node.addChild(shadow, groundGlow, aura, sprite, bubble);
     this.entityLayer.addChild(node);
     this.petPosX = this.player.x - 28;
     this.petPosY = this.player.y + 4;

@@ -194,10 +194,13 @@ interface SignalState {
 
 // ===================== CODE4 (BULLS & COWS) =====================
 
+type CodeDigitStatus = "exact" | "misplaced" | "miss";
+
 interface CodeAttempt {
   guess: string;
   bulls: number;
   cows: number;
+  statuses?: CodeDigitStatus[];
 }
 
 interface Code4State {
@@ -694,7 +697,7 @@ export function createCode4State(
   rng: () => number = Math.random,
   resetCount = 0,
   justReset = false,
-  maxAttempts = 6,
+  maxAttempts = 8,
 ): Code4State {
   const digits = shuffleInPlace(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], rng);
   return {
@@ -1300,31 +1303,62 @@ export class PuzzleMinigameModal {
     if (st.attempts.length === 0) {
       const hint = document.createElement("div");
       hint.className = "vp-code-empty";
-      hint.textContent = "Đoán quá 6 lượt chưa trúng sẽ tự động đổi mã két mới! (🟢 Đúng chỗ • 🟡 Sai chỗ)";
+      hint.textContent = `Đoán quá ${st.maxAttempts} lượt chưa trúng sẽ tự đổi mã mới! (🟢 Đúng vị trí • 🟡 Đúng số, sai vị trí)`;
       log.appendChild(hint);
     } else {
       for (let i = st.attempts.length - 1; i >= 0; i--) {
         const a = st.attempts[i];
         const row = document.createElement("div");
         row.className = "vp-code-row";
-        const num = document.createElement("span");
-        num.className = "vp-code-guess";
-        num.textContent = `#${i + 1}  ${a.guess.split("").join(" ")}`;
+
+        const left = document.createElement("div");
+        left.className = "vp-code-guess-cells";
+        const idxLbl = document.createElement("span");
+        idxLbl.className = "vp-code-idx";
+        idxLbl.textContent = `#${i + 1}`;
+        left.appendChild(idxLbl);
+
+        for (let dIdx = 0; dIdx < a.guess.length; dIdx++) {
+          const ch = a.guess[dIdx];
+          const status: CodeDigitStatus =
+            a.statuses?.[dIdx] ??
+            (ch === st.secret[dIdx] ? "exact" : st.secret.includes(ch) ? "misplaced" : "miss");
+          const cell = document.createElement("span");
+          cell.className = `vp-code-digit is-${status}`;
+          cell.textContent = ch;
+          left.appendChild(cell);
+        }
+
         const res = document.createElement("span");
         res.className = "vp-code-clue";
         res.textContent = `🟢 ${a.bulls} đúng chỗ • 🟡 ${a.cows} sai chỗ`;
-        row.append(num, res);
+        row.append(left, res);
         log.appendChild(row);
       }
     }
 
     const pad = document.createElement("div");
     pad.className = "vp-code-pad";
+    const digitHint = new Map<string, CodeDigitStatus>();
+    for (const a of st.attempts) {
+      for (let dIdx = 0; dIdx < a.guess.length; dIdx++) {
+        const ch = a.guess[dIdx];
+        const status: CodeDigitStatus =
+          a.statuses?.[dIdx] ??
+          (ch === st.secret[dIdx] ? "exact" : st.secret.includes(ch) ? "misplaced" : "miss");
+        const prev = digitHint.get(ch);
+        if (prev === "exact") continue;
+        if (status === "exact" || !prev || (prev === "miss" && status === "misplaced")) {
+          digitHint.set(ch, status);
+        }
+      }
+    }
     const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"];
     for (const k of keys) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = `vp-code-key${k === "✓" ? " is-submit" : k === "⌫" ? " is-back" : ""}`;
+      const hintCls = digitHint.get(k) ? ` is-hint-${digitHint.get(k)}` : "";
+      btn.className = `vp-code-key${k === "✓" ? " is-submit" : k === "⌫" ? " is-back" : hintCls}`;
       btn.textContent = k;
 
       if (k === "⌫") {
@@ -1379,15 +1413,20 @@ export class PuzzleMinigameModal {
 
     let bulls = 0;
     let cows = 0;
+    const statuses: CodeDigitStatus[] = [];
     for (let i = 0; i < 4; i++) {
       if (st.input[i] === st.secret[i]) {
         bulls++;
+        statuses.push("exact");
       } else if (st.secret.includes(st.input[i])) {
         cows++;
+        statuses.push("misplaced");
+      } else {
+        statuses.push("miss");
       }
     }
 
-    st.attempts.push({ guess: st.input, bulls, cows });
+    st.attempts.push({ guess: st.input, bulls, cows, statuses });
     st.input = "";
     st.justReset = false;
     if (bulls === 4) {

@@ -1845,14 +1845,47 @@ export class Hud {
       zone === "red" ? (isJapan ? "hard" : "normal") : "normal";
     const inputMaxMs = zone === "red" ? (isJapan ? 12_500 : 14_500) : isJapan ? 11_000 : 15_000;
 
+    const delayMs = 3000;
     this.showDiscoveryToast(
       "🚨 Đang bị tình nghi!",
-      `${officer.name} phát hiện dấu hiệu khả nghi — Kiểm tra sau 2 giây...`,
+      `${officer.name} phát hiện dấu hiệu khả nghi — Kiểm tra sau 3 giây...`,
     );
+
+    this.policeTitleEl.textContent = `🚓 ${officer.name} — Chặn Kiểm Tra`;
+    this.policeStatsEl.replaceChildren();
+    for (const txt of [
+      zone === "red" ? "🔴 Vùng Đỏ" : "🟡 Vùng Vàng",
+      `⏳ Bắt đầu sau 3s`,
+    ]) {
+      const p = document.createElement("span");
+      p.className = "bag-stat-pill";
+      p.textContent = txt;
+      this.policeStatsEl.appendChild(p);
+    }
+    this.policeStatusEl.textContent = `🚨 ${officer.name}: "Đứng lại! Chuẩn bị kiểm tra hành chính..."`;
+    this.policeTimerTrackEl.style.display = "none";
+    this.policeGridEl.style.display = "block";
+    this.policeGridEl.replaceChildren();
+    const introStage = document.createElement("div");
+    introStage.className = "police-intro-stage";
+    const modelImg = document.createElement("img");
+    modelImg.className = "police-intro-model";
+    modelImg.src = isJapan ? "assets/world/char_samurai_blue.png" : "assets/world/char_ninja_blue.png";
+    modelImg.alt = officer.name;
+    const introCaption = document.createElement("div");
+    introCaption.style.fontWeight = "800";
+    introCaption.style.fontSize = "14px";
+    introCaption.style.color = "#bfdbfe";
+    introCaption.textContent = "Đang áp giải vào khu vực kiểm tra (3 giây)...";
+    introStage.append(modelImg, introCaption);
+    this.policeGridEl.appendChild(introStage);
+    this.policeModalEl.classList.add("is-open");
 
     this.policeSuspicionTimerId = window.setTimeout(() => {
       this.policeSuspicionTimerId = null;
       if (!this.isPoliceModalOpen || this.scene.isDetained()) return;
+      this.policeTimerTrackEl.style.display = "";
+      this.policeGridEl.style.display = "";
       this.policeGame = {
         officerId: officer.id,
         officerName: officer.name,
@@ -1873,7 +1906,7 @@ export class Hud {
       };
       this.policeModalEl.classList.add("is-open");
       this.startNextPoliceRound();
-    }, 2000);
+    }, delayMs);
   }
 
   private startNextPoliceRound(): void {

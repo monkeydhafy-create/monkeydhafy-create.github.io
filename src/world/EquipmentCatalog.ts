@@ -1854,7 +1854,7 @@ for (const c of CONSUMABLE_CATALOG) {
   if (c.shopCategory === "food" && !c.mapOrigin) {
     (c as ConsumableDef).mapOrigin = "vietnam";
   }
-  (c as ConsumableDef).useDurationMs = Math.round((c.useDurationMs * 1.8) / 100) * 100;
+  (c as ConsumableDef).useDurationMs = Math.round((c.useDurationMs * 2.8) / 100) * 100;
   (c as ConsumableDef).weightKg = Number(Math.max(0.05, c.weightKg * 0.6).toFixed(2));
 }
 

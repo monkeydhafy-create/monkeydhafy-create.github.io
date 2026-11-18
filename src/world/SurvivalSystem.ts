@@ -497,18 +497,22 @@ export function stepSurvivalState(
     staminaSpeedMul = 0.88;
   }
 
-  let overloadSpeedMul = 1.0;
+  let overloadSpeedMul = 0.7;
   if (totalWeightKg >= 35) {
-    overloadSpeedMul = clamp(0.25 - (totalWeightKg - 35) * 0.01, 0.18, 0.25);
+    overloadSpeedMul = clamp(0.24 - (totalWeightKg - 35) * 0.008, 0.16, 0.24);
   } else if (totalWeightKg >= 20) {
-    overloadSpeedMul = clamp(0.46 - (totalWeightKg - 20) * 0.014, 0.25, 0.46);
+    overloadSpeedMul = clamp(0.42 - (totalWeightKg - 20) * 0.012, 0.24, 0.42);
   } else if (totalWeightKg >= 10) {
-    overloadSpeedMul = clamp(0.62 - (totalWeightKg - 10) * 0.016, 0.46, 0.62);
+    overloadSpeedMul = clamp(0.56 - (totalWeightKg - 10) * 0.014, 0.42, 0.56);
+  } else if (totalWeightKg >= 5) {
+    overloadSpeedMul = clamp(0.66 - (totalWeightKg - 5) * 0.02, 0.56, 0.66);
   }
-  if (totalWeightKg >= 10 && heavySpeedBonusPct > 0) {
-    overloadSpeedMul = clamp(overloadSpeedMul * (1 + heavySpeedBonusPct / 100), 0.18, 1.0);
+  if (totalWeightKg >= 5 && heavySpeedBonusPct > 0) {
+    overloadSpeedMul = clamp(overloadSpeedMul * (1 + heavySpeedBonusPct / 100), 0.16, 0.9);
   }
-  overloadSpeedMul = 1 - (1 - overloadSpeedMul) * adverseFactor;
+  if (totalWeightKg >= 10) {
+    overloadSpeedMul = 0.7 - (0.7 - overloadSpeedMul) * adverseFactor;
+  }
 
   const snowSlowPenalty =
     effSnow > 0 || thermal.coldStress > 0.25
