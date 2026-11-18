@@ -395,13 +395,13 @@ export function stepSurvivalState(
   const heavyOver10Kg = Math.max(0, totalWeightKg - 10.0);
   const superHeavyOver20Kg = Math.max(0, totalWeightKg - 20.0);
   const weightThresholdPenalty =
-    (totalWeightKg >= 10.0 ? 0.1 : 0) + (totalWeightKg > 20.0 ? 0.06 : 0);
+    (totalWeightKg >= 10.0 ? 0.25 : 0) + (totalWeightKg > 20.0 ? 0.07 : 0);
   const weightDrainMul =
     1 +
     (lightWeightExcess * 0.055 +
       weightThresholdPenalty +
-      heavyOver10Kg * 0.105 +
-      superHeavyOver20Kg * 0.054) *
+      heavyOver10Kg * 0.116 +
+      superHeavyOver20Kg * 0.06) *
       adverseFactor;
   const snowShield = clamp(equip.windRainResist, 0, 0.92);
   const weatherFatigueMul =
