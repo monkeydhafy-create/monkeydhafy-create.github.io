@@ -4298,6 +4298,27 @@ export class Hud {
     this.renderInspector();
   }
 
+  /**
+   * Personal panels wrap into rows: [Backpack | Safebox] then [Torso pocket | Legs pocket].
+   * Returns the column count and row-stack height of each visual row so one shared cell size fits all.
+   */
+  private getPersonalLayout(): { rowCols: number[]; stackRows: number; hasPockets: boolean } {
+    const bp = this.scene.inventory.getBackpackTier();
+    const sb = this.scene.inventory.getSafeboxTier();
+    const torso = this.scene.inventory.getPocketSize("torso");
+    const legs = this.scene.inventory.getPocketSize("legs");
+    const rowCols: number[] = [];
+    let stackRows = 0;
+    const row1Cols = (bp?.cols ?? 0) + sb.cols;
+    rowCols.push(row1Cols);
+    stackRows += Math.max(bp?.rows ?? 0, sb.rows);
+    if (torso || legs) {
+      rowCols.push((torso?.cols ?? 0) + (legs?.cols ?? 0));
+      stackRows += Math.max(torso?.rows ?? 0, legs?.rows ?? 0);
+    }
+    return { rowCols, stackRows, hasPockets: Boolean(torso || legs) };
+  }
+
   private computeDeltaCellPx(
     cols: number,
     rows: number,
@@ -4314,8 +4335,11 @@ export class Hud {
     const pad = 8;
 
     const bp = this.scene.inventory.getBackpackTier();
-    const sb = this.scene.inventory.getSafeboxTier();
-    const isPersonal = !isShopSell && (zone === "backpack" || zone === "safebox");
+    const isPersonal =
+      !isShopSell && (zone === "backpack" || zone === "safebox" || zone === "torso" || zone === "legs");
+    const layout = this.getPersonalLayout();
+    const widestRowCols = Math.max(...layout.rowCols);
+    const rowPanelCount = 2;
 
     let maxW: number;
     let maxH: number;
@@ -4326,8 +4350,8 @@ export class Hud {
         // Landscape Shop puts grid next to sell controls inside the right column
         maxW = vw >= 680 ? vw * 0.34 : vw - 60;
         maxH = Math.max(115, vh - 120);
-      } else if (isPersonal && bp) {
-        const personalTotalCols = bp.cols + sb.cols;
+      } else if (isPersonal && (bp || layout.hasPockets)) {
+        const personalTotalCols = widestRowCols;
         const containerCols = twoPanels
           ? this.isHomeStorageOpen
             ? this.scene.inventory.getHomeTier().cols
@@ -4335,22 +4359,32 @@ export class Hud {
           : 0;
         const personalShare = twoPanels ? (vw - 110) * (personalTotalCols / (personalTotalCols + containerCols)) : vw - 76;
         const byPersonalW = Math.floor((personalShare - 20 - (personalTotalCols - 2) * gap) / personalTotalCols);
-        const byPersonalH = Math.floor((Math.max(115, vh - 125) - pad - (Math.max(bp.rows, sb.rows) - 1) * gap) / Math.max(bp.rows, sb.rows));
+        const byPersonalH = Math.floor((Math.max(115, vh - 125) - pad - (layout.stackRows - 1) * gap) / layout.stackRows);
         return Math.max(minCell, Math.min(34, byPersonalW, byPersonalH));
       } else {
         maxW = twoPanels ? (vw - 84) * 0.42 : vw - 60;
         maxH = Math.max(115, vh - 125);
       }
     } else if (isPortraitNarrow) {
-      if (isPersonal && bp) {
-        // Fit [Backpack | Safebox] cleanly side-by-side within mobile portrait width!
-        const personalTotalCols = bp.cols + sb.cols;
-        const availPersonalW = vw - 70;
-        const byPersonalW = Math.floor((availPersonalW - (personalTotalCols - 2) * gap) / personalTotalCols);
-        const maxRows = Math.max(bp.rows, sb.rows);
-        const availH = twoPanels ? Math.max(145, (vh - 200) * 0.48) : vh - 210;
-        const byPersonalH = Math.floor((availH - pad - (maxRows - 1) * gap) / maxRows);
-        return Math.max(18, Math.min(36, byPersonalW, byPersonalH));
+      if (isPersonal && (bp || layout.hasPockets)) {
+        // Wrap personal panels into rows so nothing ever scrolls sideways on mobile portrait.
+        const budget = vw - 62;
+        let byPersonalW = 36;
+        for (const rc of layout.rowCols) {
+          if (rc <= 0) continue;
+          const panelsInRow = rowPanelCount;
+          byPersonalW = Math.min(
+            byPersonalW,
+            Math.floor((budget - panelsInRow * (pad + 6) - (rc - panelsInRow) * gap) / rc),
+          );
+        }
+        const availH = layout.hasPockets
+          ? Math.max(200, vh * 0.5)
+          : twoPanels
+            ? Math.max(145, (vh - 200) * 0.48)
+            : vh - 210;
+        const byPersonalH = Math.floor((availH - pad - (layout.stackRows - 1) * gap) / layout.stackRows);
+        return Math.max(15, Math.min(36, byPersonalW, byPersonalH));
       }
       if (isPersonal && !bp) {
         maxW = vw - 220;
@@ -4361,12 +4395,11 @@ export class Hud {
       }
     } else {
       const sideBySide = twoPanels || isShopSell;
-      if (isPersonal && bp) {
-        const personalTotalCols = bp.cols + sb.cols;
+      if (isPersonal && (bp || layout.hasPockets)) {
+        const personalTotalCols = widestRowCols;
         const availPersonalW = twoPanels ? Math.min(540, (vw - 110) * 0.56) : Math.min(560, vw - 80);
         const byPersonalW = Math.floor((availPersonalW - 24 - (personalTotalCols - 2) * gap) / personalTotalCols);
-        const maxRows = Math.max(bp.rows, sb.rows);
-        const byPersonalH = Math.floor((Math.min(340, vh - 210) - pad - (maxRows - 1) * gap) / maxRows);
+        const byPersonalH = Math.floor((Math.min(340, vh - 210) - pad - (layout.stackRows - 1) * gap) / layout.stackRows);
         return Math.max(minCell, Math.min(38, byPersonalW, byPersonalH));
       }
       maxW = sideBySide ? Math.min(380, (vw - 120) * 0.44) : 420;

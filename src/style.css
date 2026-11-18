@@ -646,6 +646,7 @@ button {
 .bag-grids-wrap {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 16px;
   display: flex;
   flex-wrap: wrap;
@@ -3683,10 +3684,30 @@ button {
 .bag-personal-col {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: center;
-  gap: 10px;
+  gap: 8px 10px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Visual rows: [Balo | Safebox] on top, [Túi Áo | Túi Quần] below */
+.bag-personal-col > #backpack-panel {
+  order: 1;
+}
+.bag-personal-col > #safebox-panel {
+  order: 2;
+}
+.bag-personal-col > #pocket-torso-panel {
+  order: 3;
+}
+.bag-personal-col > #pocket-legs-panel {
+  order: 4;
+}
+.bag-personal-col > .grid-panel {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .no-backpack-banner {
