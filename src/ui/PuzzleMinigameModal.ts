@@ -1330,10 +1330,7 @@ export class PuzzleMinigameModal {
           left.appendChild(cell);
         }
 
-        const res = document.createElement("span");
-        res.className = "vp-code-clue";
-        res.textContent = `🟢 ${a.bulls} đúng chỗ • 🟡 ${a.cows} sai chỗ`;
-        row.append(left, res);
+        row.append(left);
         log.appendChild(row);
       }
     }
