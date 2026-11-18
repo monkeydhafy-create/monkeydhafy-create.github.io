@@ -40,13 +40,13 @@ export const SURVIVAL_IDEAL_TEMP_C = 36.8;
 /**
  * Zone-based scaling for adverse environmental & survival effects:
  * - Green Safe Zone: -70% adverse impact (0.3x)
- * - Yellow Transition Zone: -30% adverse impact (0.7x)
- * - Red High-Risk Zone: full 100% adverse impact (1.0x)
+ * - Yellow Transition Zone: -40% adverse impact (0.6x)
+ * - Red High-Risk Zone: -10% adverse impact (0.9x)
  */
 export function getZoneAdverseFactor(zone?: SecurityZone): number {
   if (zone === "green") return 0.3;
-  if (zone === "yellow") return 0.7;
-  return 1.0;
+  if (zone === "yellow") return 0.6;
+  return 0.9;
 }
 
 export function createDefaultSurvivalState(): SurvivalState {
@@ -381,13 +381,14 @@ export function stepSurvivalState(
   );
 
   // Hunger decay: faster when moving/swimming, carrying heavy load, sweating from heat, or shivering in snow
+  const weatherAdverseFactor = adverseFactor * 0.85;
   const baseHungerLoss = isMoving ? (surface === "swim" ? 0.434 : 0.266) : 0.098;
   const thermalHungerMul =
-    1 + (thermal.heatStress * 0.42 + thermal.coldStress * 0.55 + effSnow * 0.22 + hanoiFx.hungerBonus) * adverseFactor;
+    1 + (thermal.heatStress * 0.42 + thermal.coldStress * 0.55 + effSnow * 0.22 + hanoiFx.hungerBonus) * weatherAdverseFactor;
   const weightHungerMul = isMoving ? 1 + Math.max(0, totalWeightKg - 3) * 0.02 * adverseFactor : 1;
   state.hunger = clamp(state.hunger - baseHungerLoss * thermalHungerMul * weightHungerMul * dt, 0, 100);
 
-  // Fatigue/Stamina model scaled by zone adverse factor (Green -70%, Yellow -30%, Red 100%)
+  // Fatigue/Stamina model scaled by zone adverse factor (Green 0.3x, Yellow 0.6x, Red 0.9x)
   const hungerPenaltyMul =
     state.hunger < 45 ? 1 + ((45 - state.hunger) / 45) * 1.5 * adverseFactor : 1.0;
   const lightWeightExcess = Math.min(8, Math.max(0, totalWeightKg - 2.0));
@@ -411,12 +412,12 @@ export function stepSurvivalState(
       (thermal.isRainExposed ? env.rainIntensity * 0.45 : 0) +
       env.windIntensity * (1 - clamp(equip.windRainResist, 0, 0.9) * 0.75) * 0.35 +
       hanoiFx.fatigueBonus) *
-      adverseFactor;
+      weatherAdverseFactor;
   const gearReliefMul = 1 - clamp(equip.staminaSave, 0, 0.45);
   const buffDrainRelief = 1 / buffMultiplier;
 
   if (isMoving) {
-    const moveDrain = surface === "swim" ? 3.237 : surface === "wade" ? 2.19 : 1.618;
+    const moveDrain = surface === "swim" ? 2.331 : surface === "wade" ? 1.577 : 1.165;
     state.stamina = clamp(
       state.stamina -
         moveDrain *
@@ -433,7 +434,7 @@ export function stepSurvivalState(
     const baseRecovery = getSmartStaminaRecoveryBaseRate(state.stamina);
     const hungerRecoveryScale = state.hunger < 25 ? 0.48 : state.hunger < 50 ? 0.78 : 1.0;
     const weatherRecoveryScale = clamp(
-      1 - ((thermal.heatStress + thermal.coldStress) * 0.35 + hanoiFx.recoveryPenalty) * adverseFactor,
+      1 - ((thermal.heatStress + thermal.coldStress) * 0.35 + hanoiFx.recoveryPenalty) * weatherAdverseFactor,
       0.3,
       1,
     );
@@ -456,18 +457,18 @@ export function stepSurvivalState(
   }
 
   if (state.bodyTempC >= 39.1) {
-    hpDelta -= 1.65;
+    hpDelta -= 1.4;
     dangerReason ??= "sốc nhiệt nắng nóng";
   } else if (state.bodyTempC <= 34.9) {
-    hpDelta -= effSnow > 0 ? 2.4 : 1.55;
+    hpDelta -= effSnow > 0 ? 2.04 : 1.32;
     dangerReason ??= effSnow > 0 ? "cóng giá giữa bão tuyết" : "hạ thân nhiệt vì rét";
   } else if (effSnow > 0 && state.bodyTempC <= 35.3) {
-    hpDelta -= 1.1;
+    hpDelta -= 0.935;
     dangerReason ??= "hạ thân nhiệt vì rét";
   }
 
   if (hanoiFx.hpDrain > 0) {
-    hpDelta -= hanoiFx.hpDrain;
+    hpDelta -= hanoiFx.hpDrain * 0.85;
     dangerReason ??= hanoiFx.dangerReason;
   }
 
@@ -483,7 +484,11 @@ export function stepSurvivalState(
   const hungerBlur = state.hunger < 30 ? (30 - state.hunger) / 30 : 0;
   const staminaBlur = state.stamina < 30 ? (30 - state.stamina) / 30 : 0;
   const hpBlur = state.hp < 35 ? (35 - state.hp) / 35 : 0;
-  const blurIntensity = clamp(Math.max(hungerBlur, staminaBlur, hpBlur, hanoiFx.blurBonus) * adverseFactor, 0, 1);
+  const blurIntensity = clamp(
+    Math.max(hungerBlur, staminaBlur, hpBlur, hanoiFx.blurBonus * 0.85) * adverseFactor,
+    0,
+    1,
+  );
 
   // Extreme slow movement when stamina drops to 0 + progressive weight overload slow + snow/Hanoi storm slow
   let staminaSpeedMul = 1.0;
@@ -518,7 +523,7 @@ export function stepSurvivalState(
     effSnow > 0 || thermal.coldStress > 0.25
       ? effSnow * 0.22 * (1 - snowShield * 0.7) + thermal.coldStress * 0.18
       : 0;
-  const weatherSpeedMul = clamp(1 - (snowSlowPenalty + hanoiFx.speedPenalty) * adverseFactor, 0.58, 1.0);
+  const weatherSpeedMul = clamp(1 - (snowSlowPenalty + hanoiFx.speedPenalty) * weatherAdverseFactor, 0.58, 1.0);
 
   const speedMultiplier = Math.max(0.18, staminaSpeedMul * overloadSpeedMul * weatherSpeedMul);
   const fainted = state.hp <= 0 || (state.hunger <= 0 && state.stamina <= 1);

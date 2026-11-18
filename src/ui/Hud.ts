@@ -102,8 +102,8 @@ const GUIDE_SLIDES: ReadonlyArray<{
     points: [
       "Dùng chuột/chạm để dẫn đường hoặc phím WASD / mũi tên để di chuyển; nhấn [E] hoặc nút tương tác khi đứng gần rương và tòa nhà.",
       "🟢 Vùng Xanh: Khu an toàn (-70% hiệu ứng bất lợi), có Nhà Riêng, Shop, Hội Sở Nhiệm Vụ & Sân Bay.",
-      "🟡 Vùng Vàng: (-30% hiệu ứng bất lợi) có cảnh sát tuần tra & nhiều nhà dân, cửa tiệm loot đồ.",
-      "🔴 Vùng Đỏ: Rủi ro cao nhất (100% bất lợi), nhiều Rương Hoàng Gia, Két khóa và tỷ lệ vật phẩm hiếm cao nhất.",
+      "🟡 Vùng Vàng: (-40% hiệu ứng bất lợi) có cảnh sát tuần tra & nhiều nhà dân, cửa tiệm loot đồ.",
+      "🔴 Vùng Đỏ: Rủi ro cao nhất (90% bất lợi), nhiều Rương Hoàng Gia, Két khóa và tỷ lệ vật phẩm hiếm cao nhất.",
     ],
   },
   {
