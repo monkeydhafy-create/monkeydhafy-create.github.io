@@ -859,6 +859,14 @@ export function validateSavePayload(
     rawInv.safeboxItems !== undefined
       ? validatePlacedItems(rawInv.safeboxItems, sbDef.cols, sbDef.rows, strict)
       : [];
+  const torsoItems =
+    rawInv.torsoItems !== undefined
+      ? validatePlacedItems(rawInv.torsoItems, 5, 5, strict)
+      : [];
+  const legsItems =
+    rawInv.legsItems !== undefined
+      ? validatePlacedItems(rawInv.legsItems, 5, 5, strict)
+      : [];
 
   const expectedNextSb = getNextSafeboxTier(safeboxId);
   const sbContractRes = validateContractRequirements(
@@ -1518,6 +1526,8 @@ export function validateSavePayload(
       backpackId,
       ownedBackpackIds: Array.from(ownedSet),
       backpackItems,
+      torsoItems,
+      legsItems,
       homeStorageId,
       homeItems,
       homeContract,

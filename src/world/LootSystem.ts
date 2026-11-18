@@ -2,12 +2,15 @@ import { withAssetHash } from "../assetUrl.ts";
 import {
   CONSUMABLE_BY_ID,
   CONSUMABLE_CATALOG,
+  GARMENT_BY_ID,
   GARMENT_CATALOG,
+  getGarmentPocketSize,
   type ConsumableDef,
+  type EquippedGear,
 } from "./EquipmentCatalog.ts";
 import type { BiomeId, ItemRarity, MapId, SecurityZone } from "./types.ts";
 
-export type GridZone = "backpack" | "container" | "home" | "safebox";
+export type GridZone = "backpack" | "container" | "home" | "safebox" | "torso" | "legs";
 
 export const LOCKED_PUZZLE_KINDS = [
   "wires",
@@ -183,16 +186,16 @@ export const BACKPACK_CATALOG: readonly BackpackTierDef[] = [
     id: "royal_7x6",
     inventoryItemId: "bp_royal_7x6",
     name: "Balo Không Gian Hoàng Gia",
-    cols: 7,
-    rows: 6,
+    cols: 8,
+    rows: 8,
     itemW: 3,
     itemH: 3,
     weightKg: 2.8,
     priceGold: 4800,
     valueGold: 2400,
     rarity: "S",
-    description: "Dung tích tối đa 42 ô (7×6) dành cho thợ săn Siêu phẩm.",
-    iconSrc: makeBackpackSvgUrl(7, 6, "#ef4444", "#7f1d1d"),
+    description: "Dung tích tối đa 64 ô (8×8) dành cho thợ săn Siêu phẩm.",
+    iconSrc: makeBackpackSvgUrl(8, 8, "#ef4444", "#7f1d1d"),
   },
 ];
 
@@ -1412,6 +1415,8 @@ export interface PersistedInventoryState {
   backpackId: string | null;
   ownedBackpackIds?: string[];
   backpackItems: GridItemInstance[];
+  torsoItems?: GridItemInstance[];
+  legsItems?: GridItemInstance[];
   homeStorageId?: string;
   homeItems: GridItemInstance[];
   homeContract?: HomeUpgradeContract | null;
@@ -1594,6 +1599,8 @@ function cloneInventoryState(state: PersistedInventoryState): PersistedInventory
     backpackItems: state.backpackItems.map((it) => ({ ...it })),
     homeStorageId,
     homeItems: (state.homeItems ?? []).map((it) => ({ ...it })),
+    torsoItems: (state.torsoItems ?? []).map((it) => ({ ...it })),
+    legsItems: (state.legsItems ?? []).map((it) => ({ ...it })),
     homeContract,
     homeGymId,
     homeGymContract,
@@ -1733,6 +1740,27 @@ export class InventoryManager {
 
   public getPersistedState(): PersistedInventoryState {
     return cloneInventoryState(this.state);
+  }
+
+  private equippedGear: EquippedGear | null = null;
+
+  public setEquippedGear(gear: EquippedGear | null): void {
+    this.equippedGear = gear ? { ...gear } : null;
+  }
+
+  public getPocketSize(zone: "torso" | "legs"): { cols: number; rows: number } | null {
+    const gid = this.equippedGear?.[zone];
+    if (!gid) return null;
+    return getGarmentPocketSize(GARMENT_BY_ID[gid]);
+  }
+
+  public getPocketItems(zone: "torso" | "legs"): readonly GridItemInstance[] {
+    if (zone === "torso") return this.state.torsoItems ?? [];
+    return this.state.legsItems ?? [];
+  }
+
+  public hasPocketItems(zone: "torso" | "legs"): boolean {
+    return this.getPocketItems(zone).length > 0;
   }
 
   public getBackpackTier(): BackpackTierDef | null {
@@ -2106,6 +2134,20 @@ export class InventoryManager {
     if (zone === "home") {
       const ht = this.getHomeTier();
       return { cols: ht.cols, rows: ht.rows, items: this.state.homeItems };
+    }
+    if (zone === "torso") {
+      const pocket = this.getPocketSize("torso");
+      if (!this.state.torsoItems) this.state.torsoItems = [];
+      return pocket
+        ? { cols: pocket.cols, rows: pocket.rows, items: this.state.torsoItems }
+        : { cols: 0, rows: 0, items: this.state.torsoItems };
+    }
+    if (zone === "legs") {
+      const pocket = this.getPocketSize("legs");
+      if (!this.state.legsItems) this.state.legsItems = [];
+      return pocket
+        ? { cols: pocket.cols, rows: pocket.rows, items: this.state.legsItems }
+        : { cols: 0, rows: 0, items: this.state.legsItems };
     }
     if (!containerId) return null;
     const container = this.state.containers[containerId];
@@ -2696,10 +2738,13 @@ export class InventoryManager {
 
   /** Confiscates every carried item in backpack AND the worn backpack itself on arrest; Safebox & Home Storage remain untouched. */
   public confiscateOnArrest(): { lostItemCount: number; lostBackpack: boolean } {
-    const lostItemCount = this.state.backpackItems.length;
+    const pocketLost = (this.state.torsoItems?.length ?? 0) + (this.state.legsItems?.length ?? 0);
+    const lostItemCount = this.state.backpackItems.length + pocketLost;
     const lostBackpack = this.state.backpackId !== null;
     if (lostItemCount > 0 || lostBackpack) {
       this.state.backpackItems = [];
+      this.state.torsoItems = [];
+      this.state.legsItems = [];
       this.state.backpackId = null;
       this.saveState();
     }
@@ -3191,7 +3236,12 @@ export class InventoryManager {
 
   public getCarriedWeightKg(equippedWeightKg: number): number {
     const bp = this.getBackpackTier();
-    const total = (bp?.weightKg ?? 0) + equippedWeightKg + this.getBackpackItemsWeightKg();
+    let pocketKg = 0;
+    for (const item of [...(this.state.torsoItems ?? []), ...(this.state.legsItems ?? [])]) {
+      const def = ITEM_BY_ID[item.itemId];
+      if (def) pocketKg += def.weightKg;
+    }
+    const total = (bp?.weightKg ?? 0) + equippedWeightKg + this.getBackpackItemsWeightKg() + pocketKg;
     return Number(total.toFixed(2));
   }
 

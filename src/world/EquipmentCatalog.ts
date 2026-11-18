@@ -4,6 +4,37 @@ export type EquipmentSlot = "hat" | "torso" | "legs" | "feet" | "accessory";
 
 export type EquippedGear = Record<EquipmentSlot, string | null>;
 
+/**
+ * Only shirts/jackets ("torso") and pants/shorts ("legs") have pockets.
+ * Pocket capacity scales smoothly by garment price from 2x2 (4 cells) up to 5x5 (25 cells).
+ */
+export function getGarmentPocketSize(
+  def: GarmentDef | null | undefined,
+): { cols: number; rows: number } | null {
+  if (!def || (def.slot !== "torso" && def.slot !== "legs")) {
+    return null;
+  }
+  if (
+    typeof def.pocketCols === "number" &&
+    typeof def.pocketRows === "number" &&
+    def.pocketCols >= 2 &&
+    def.pocketRows >= 2
+  ) {
+    return {
+      cols: Math.min(5, def.pocketCols),
+      rows: Math.min(5, def.pocketRows),
+    };
+  }
+  const price = Math.max(0, def.priceGold);
+  if (price <= 0) return { cols: 2, rows: 2 };
+  if (price < 150) return { cols: 2, rows: 3 };
+  if (price < 260) return { cols: 3, rows: 3 };
+  if (price < 400) return { cols: 4, rows: 3 };
+  if (price < 600) return { cols: 4, rows: 4 };
+  if (price < 800) return { cols: 5, rows: 4 };
+  return { cols: 5, rows: 5 };
+}
+
 export interface SavedOutfitPreset {
   id: string;
   name: string;
@@ -41,6 +72,8 @@ export interface GarmentDef {
   weightKg: number;
   gridW: number;
   gridH: number;
+  pocketCols?: number;
+  pocketRows?: number;
   layerKey: string;
   femaleLayerKey?: string;
   bgLayerKey?: string;

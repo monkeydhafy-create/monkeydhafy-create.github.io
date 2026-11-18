@@ -339,6 +339,15 @@ export class WorldScene {
     {
       actor: Player;
       label: Text;
+      equippedPetId: string | null;
+      petNode: Container | null;
+      petSprite: Sprite | null;
+      petIdleFrames: Texture[];
+      petRunFrames: Texture[];
+      petBaseScale: number;
+      petFacingSign: number;
+      petPosX: number;
+      petPosY: number;
       targetX: number;
       targetY: number;
       vx: number;
@@ -513,6 +522,7 @@ export class WorldScene {
     this.gender = initialSave?.profile?.gender === "female" ? "female" : "male";
     this.onboardingDone = initialSave?.profile?.onboardingDone ?? true;
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
 
     this.pathfinder = new Pathfinder(data.cols, data.rows, data.tileSize, data.collision);
     this.worldCache.set(this.activeMapId, { data, pathfinder: this.pathfinder });
@@ -612,6 +622,7 @@ export class WorldScene {
         this.inventory.confiscateOnArrest();
         this.equipment = createPrisonerEquippedGear();
         this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
         this.player.setAppearance(this.equipment, this.hairId, this.gender);
         this.player.position.set(data.policeDetainRespawn.x, data.policeDetainRespawn.y);
         this.player.setFacing("down");
@@ -743,6 +754,7 @@ export class WorldScene {
     this.gender = chosenGender;
     this.equipment = createDefaultEquippedGear();
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
     this.onboardingDone = true;
     this.player.setAppearance(this.equipment, this.hairId, this.gender);
     this.callbacks.onRequestSave?.(true);
@@ -970,6 +982,10 @@ export class WorldScene {
         rp.actor.destroy({ children: true });
         rp.label.removeFromParent();
         rp.label.destroy();
+        if (rp.petNode) {
+          rp.petNode.removeFromParent();
+          rp.petNode.destroy({ children: true });
+        }
         this.remotePlayers.delete(uid);
       }
     }
@@ -1002,6 +1018,15 @@ export class WorldScene {
         entry = {
           actor,
           label,
+          equippedPetId: null,
+          petNode: null,
+          petSprite: null,
+          petIdleFrames: [],
+          petRunFrames: [],
+          petBaseScale: 0.4,
+          petFacingSign: 1,
+          petPosX: initX - 28,
+          petPosY: initY + 4,
           targetX: initX,
           targetY: initY,
           vx: move?.vx ?? 0,
@@ -1016,6 +1041,69 @@ export class WorldScene {
       entry.actor.setAppearance(appData.equipped, appData.hairId, appData.gender);
       if (entry.label.text !== appData.name) {
         entry.label.text = appData.name;
+      }
+
+      const nextPetId = appData.equippedPetId ?? null;
+      if (entry.equippedPetId !== nextPetId) {
+        entry.equippedPetId = nextPetId;
+        if (entry.petNode) {
+          entry.petNode.removeFromParent();
+          entry.petNode.destroy({ children: true });
+          entry.petNode = null;
+          entry.petSprite = null;
+          entry.petIdleFrames = [];
+          entry.petRunFrames = [];
+        }
+        const petDef = nextPetId ? PET_BY_ID[nextPetId] : null;
+        if (petDef) {
+          const pNode = new Container();
+          const shadow = new Sprite(this.atlas.shadow);
+          shadow.anchor.set(0.5, 0.5);
+          shadow.position.set(0, 6);
+          shadow.width = 24;
+          shadow.height = 10;
+          shadow.alpha = 0.25;
+
+          const pSprite = new Sprite();
+          pSprite.anchor.set(0.5, 0.85);
+          pNode.addChild(shadow, pSprite);
+          entry.petPosX = entry.actor.x - 28;
+          entry.petPosY = entry.actor.y + 4;
+          pNode.position.set(entry.petPosX, entry.petPosY);
+          pNode.zIndex = entry.petPosY;
+          this.entityLayer.addChild(pNode);
+
+          entry.petNode = pNode;
+          entry.petSprite = pSprite;
+          const sheet = petDef.spriteSheet;
+          const targetPx = petDef.rarity === "S" ? 36 : petDef.rarity === "A" ? 33 : 30;
+          entry.petBaseScale = targetPx / Math.max(1, sheet.iw);
+
+          const sliceStrip = (tex: Texture, w: number, h: number, count: number): Texture[] => {
+            const out: Texture[] = [];
+            for (let i = 0; i < count; i++) {
+              if ((i + 1) * w > tex.source.width + 1) break;
+              out.push(
+                new Texture({
+                  source: tex.source,
+                  frame: new Rectangle(i * w, 0, w, h),
+                }),
+              );
+            }
+            return out.length > 0 ? out : [tex];
+          };
+          const targetEntry = entry;
+          void Promise.all([
+            this.getOrbitTexture(sheet.idleSrc),
+            this.getOrbitTexture(sheet.runSrc),
+          ]).then(([idleTex, runTex]) => {
+            if (pSprite.destroyed || targetEntry.equippedPetId !== nextPetId) return;
+            targetEntry.petIdleFrames = sliceStrip(idleTex, sheet.iw, sheet.ih, sheet.ic);
+            targetEntry.petRunFrames = sliceStrip(runTex, sheet.rw, sheet.rh, sheet.rc);
+            pSprite.texture = targetEntry.petIdleFrames[0];
+            pSprite.scale.set(targetEntry.petBaseScale * targetEntry.petFacingSign, targetEntry.petBaseScale);
+          });
+        }
       }
       if (move) {
         entry.targetX = move.x;
@@ -1039,6 +1127,35 @@ export class WorldScene {
       rp.actor.syncRemotePose(rp.targetX, rp.targetY, rp.facing, rp.isMoving, dt);
       rp.label.position.set(rp.actor.x, rp.actor.y - 72);
       rp.label.zIndex = rp.actor.y + 1;
+
+      if (rp.petNode && rp.petSprite) {
+        const tx = rp.actor.x - 28;
+        const ty = rp.actor.y + 6;
+        const dx = tx - rp.petPosX;
+        const dy = ty - rp.petPosY;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 280) {
+          rp.petPosX = tx;
+          rp.petPosY = ty;
+        } else {
+          const followRate = 1 - Math.exp(-7.5 * dt);
+          rp.petPosX += dx * followRate;
+          rp.petPosY += dy * followRate;
+        }
+        if (Math.abs(dx) > 2) {
+          rp.petFacingSign = dx >= 0 ? 1 : -1;
+        }
+        rp.petNode.position.set(rp.petPosX, rp.petPosY);
+        rp.petNode.zIndex = rp.petPosY;
+        const frames = dist > 10 && rp.petRunFrames.length > 0 ? rp.petRunFrames : rp.petIdleFrames;
+        if (frames.length > 0) {
+          const idx = Math.floor(this.elapsed * (dist > 10 ? 10 : 5)) % frames.length;
+          if (rp.petSprite.texture !== frames[idx]) {
+            rp.petSprite.texture = frames[idx];
+          }
+          rp.petSprite.scale.set(rp.petBaseScale * rp.petFacingSign, rp.petBaseScale);
+        }
+      }
     }
   }
 
@@ -1077,6 +1194,8 @@ export class WorldScene {
       }
       this.equipment = { ...save.equipment };
       this.cachedEquipStats = computeEquipmentStats(this.equipment);
+      this.inventory.setEquippedGear(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
       this.savedOutfits = (save.savedOutfits ?? []).map((p) => ({ ...p, gear: { ...p.gear } }));
       this.survival = {
         ...save.survival,
@@ -1217,6 +1336,13 @@ export class WorldScene {
       return { ok: true, message: `Đã mua & cất ${def.name} vào Balo!` };
     }
 
+    if ((def.slot === "torso" || def.slot === "legs") && this.inventory.hasPocketItems(def.slot)) {
+      return {
+        ok: false,
+        message: `Hãy lấy hết đồ trong túi ${def.slot === "torso" ? "Áo" : "Quần"} ra trước khi đổi trang bị!`,
+      };
+    }
+
     // Physical equipment rule: replacing an already-worn garment must fit the old one into Balo
     // (0-value prisoner uniform is automatically replaced if Balo is missing or full).
     const prevId = this.equipment[def.slot];
@@ -1243,6 +1369,7 @@ export class WorldScene {
 
     this.equipment[def.slot] = def.id;
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
     this.player.setAppearance(this.equipment, this.hairId, this.gender);
     this.callbacks.onRequestSave?.(true);
 
@@ -1262,12 +1389,19 @@ export class WorldScene {
     if (!curId) return { ok: false, message: "Ô trang bị đang trống." };
     const def = GARMENT_BY_ID[curId];
     if (!def) return { ok: false, message: "Trang bị không hợp lệ." };
+    if ((slot === "torso" || slot === "legs") && this.inventory.hasPocketItems(slot)) {
+      return {
+        ok: false,
+        message: `Hãy lấy hết đồ trong túi ${slot === "torso" ? "Áo" : "Quần"} ra trước khi tháo!`,
+      };
+    }
 
     const addRes = this.inventory.addItemToZone(destZone, def.inventoryItemId, "city");
     if (!addRes.ok) return addRes;
 
     this.equipment[slot] = null;
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
     this.player.setAppearance(this.equipment, this.hairId, this.gender);
     this.callbacks.onRequestSave?.(true);
     const label = destZone === "home" ? "Kho Nhà" : destZone === "safebox" ? "Safebox" : "Balo";
@@ -1292,6 +1426,15 @@ export class WorldScene {
     const itemDef = ITEM_BY_ID[inst.itemId];
     const garmentDef = itemDef?.garmentId ? GARMENT_BY_ID[itemDef.garmentId] : null;
     if (!garmentDef) return { ok: false, message: "Vật phẩm này không phải quần áo/trang bị." };
+    if (
+      (garmentDef.slot === "torso" || garmentDef.slot === "legs") &&
+      this.inventory.hasPocketItems(garmentDef.slot)
+    ) {
+      return {
+        ok: false,
+        message: `Hãy lấy hết đồ trong túi ${garmentDef.slot === "torso" ? "Áo" : "Quần"} ra trước khi đổi trang bị!`,
+      };
+    }
 
     const zoneLabel = zone === "home" ? "Kho Nhà" : zone === "safebox" ? "Safebox" : "Balo";
     const prevId = this.equipment[garmentDef.slot];
@@ -1318,6 +1461,7 @@ export class WorldScene {
 
     this.equipment[garmentDef.slot] = garmentDef.id;
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
     this.player.setAppearance(this.equipment, this.hairId, this.gender);
     this.callbacks.onRequestSave?.(true);
 
@@ -1714,6 +1858,19 @@ export class WorldScene {
 
     const displacedSlots: Array<{ slot: EquipmentSlot; prevDef: GarmentDef; destZone: "backpack" | "safebox" }> = [];
     for (const { slot } of activeSlotsToChange) {
+      if ((slot === "torso" || slot === "legs") && this.inventory.hasPocketItems(slot)) {
+        return {
+          ok: false,
+          preset,
+          alreadyWorn,
+          equipFromOwned,
+          missingBuy,
+          unavailableStarter,
+          displacedSlots,
+          totalCost,
+          blockedReason: `Hãy lấy hết đồ trong túi ${slot === "torso" ? "Áo" : "Quần"} ra trước khi đổi bộ đồ!`,
+        };
+      }
       const prevId = this.equipment[slot];
       if (!prevId) continue;
       const prevDef = GARMENT_BY_ID[prevId];
@@ -1827,6 +1984,7 @@ export class WorldScene {
     }
 
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
     this.player.setAppearance(this.equipment, this.hairId, this.gender);
     this.callbacks.onRequestSave?.(true);
 
@@ -2666,6 +2824,7 @@ export class WorldScene {
     const { lostItemCount, lostBackpack } = this.inventory.confiscateOnArrest();
     this.equipment = createPrisonerEquippedGear();
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
+    this.inventory.setEquippedGear(this.equipment);
     this.player.setAppearance(this.equipment, this.hairId, this.gender);
 
     this.detainedUntil = Date.now() + 300_000;

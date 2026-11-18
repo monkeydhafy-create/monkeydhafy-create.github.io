@@ -12,6 +12,7 @@ import {
   createDefaultEquippedGear,
   getCharacterBodyScale,
   getConsumableSingleUsePrice,
+  getGarmentPocketSize,
   resolveGarmentLayerKey,
   type EquipmentSlot,
   type EquippedGear,
@@ -306,6 +307,14 @@ export class Hud {
   private readonly safeboxSubEl: HTMLElement;
   private readonly openSafeboxUpgradeBtn: HTMLButtonElement;
   private readonly safeboxGridEl: HTMLElement;
+  private readonly pocketTorsoPanelEl: HTMLElement;
+  private readonly pocketTorsoTitleEl: HTMLElement;
+  private readonly pocketTorsoSubEl: HTMLElement;
+  private readonly pocketTorsoGridEl: HTMLElement;
+  private readonly pocketLegsPanelEl: HTMLElement;
+  private readonly pocketLegsTitleEl: HTMLElement;
+  private readonly pocketLegsSubEl: HTMLElement;
+  private readonly pocketLegsGridEl: HTMLElement;
   private readonly inspectorEl: HTMLElement;
 
   // Shop Modal
@@ -570,6 +579,7 @@ export class Hud {
 
   private scanQueue: string[] = [];
   private activeScanUid: string | null = null;
+  private containerSyncPending = false;
   private scanElapsedMs = 0;
   private scanDurationMs = 0;
   private activeScanFillEl: HTMLDivElement | null = null;
@@ -659,6 +669,14 @@ export class Hud {
     this.safeboxSubEl = document.getElementById("safebox-panel-sub")!;
     this.openSafeboxUpgradeBtn = document.getElementById("btn-open-safebox-upgrade") as HTMLButtonElement;
     this.safeboxGridEl = document.getElementById("safebox-grid")!;
+    this.pocketTorsoPanelEl = document.getElementById("pocket-torso-panel")!;
+    this.pocketTorsoTitleEl = document.getElementById("pocket-torso-title")!;
+    this.pocketTorsoSubEl = document.getElementById("pocket-torso-sub")!;
+    this.pocketTorsoGridEl = document.getElementById("pocket-torso-grid")!;
+    this.pocketLegsPanelEl = document.getElementById("pocket-legs-panel")!;
+    this.pocketLegsTitleEl = document.getElementById("pocket-legs-title")!;
+    this.pocketLegsSubEl = document.getElementById("pocket-legs-sub")!;
+    this.pocketLegsGridEl = document.getElementById("pocket-legs-grid")!;
     this.inspectorEl = document.getElementById("item-inspector")!;
 
     this.shopModalEl = document.getElementById("shop-modal")!;
@@ -1106,12 +1124,14 @@ export class Hud {
     this.isHomeStorageOpen = false;
     this.activeContainer = container;
     this.selectedItem = null;
-    this.initContainerScan(container);
     this.isBagOpen = true;
     this.bagModalEl.classList.add("is-open");
-    this.renderLootAndBagModal();
 
     if (this.cloudSync?.isAuthenticated()) {
+      this.resetContainerScan();
+      this.containerSyncPending = true;
+      this.renderLootAndBagModal();
+
       const mapId = this.scene.getActiveMapId();
       const zone = this.scene.getCurrentSecurityZone();
       const refreshMs = Math.max(60_000, container.refreshAt - container.generatedAt);
@@ -1127,7 +1147,14 @@ export class Hud {
           refreshMs,
         })
         .then((shared) => {
-          if (!shared) return;
+          this.containerSyncPending = false;
+          if (!shared) {
+            if (this.isBagOpen && this.activeContainer?.containerId === container.containerId) {
+              this.initContainerScan(container);
+              this.renderLootAndBagModal();
+            }
+            return;
+          }
           this.sharedContainerVersions.set(`${mapId}:${container.containerId}`, shared.version);
           const updated = this.scene.inventory.applySharedContainerSnapshot(
             container.containerId,
@@ -1142,9 +1169,14 @@ export class Hud {
           );
           if (this.isBagOpen && this.activeContainer?.containerId === container.containerId) {
             this.activeContainer = updated;
+            this.initContainerScan(updated);
             this.renderLootAndBagModal();
           }
         });
+    } else {
+      this.containerSyncPending = false;
+      this.initContainerScan(container);
+      this.renderLootAndBagModal();
     }
   }
 
@@ -4146,15 +4178,27 @@ export class Hud {
       this.containerPanelEl.classList.remove("is-hidden");
       this.openHomeUpgradeBtn.classList.add("is-hidden");
       this.containerTitleEl.textContent = `📦 ${this.activeContainer.title}`;
-      this.updateContainerSubtitle();
-      this.renderDeltaGrid(
-        this.containerGridEl,
-        this.activeContainer.cols,
-        this.activeContainer.rows,
-        this.activeContainer.items,
-        "container",
-        true,
-      );
+      if (this.containerSyncPending) {
+        this.containerSubEl.textContent = "⏳ Đang đồng bộ kho đồ chung từ máy chủ...";
+        this.renderDeltaGrid(
+          this.containerGridEl,
+          this.activeContainer.cols,
+          this.activeContainer.rows,
+          [],
+          "container",
+          true,
+        );
+      } else {
+        this.updateContainerSubtitle();
+        this.renderDeltaGrid(
+          this.containerGridEl,
+          this.activeContainer.cols,
+          this.activeContainer.rows,
+          this.activeContainer.items,
+          "container",
+          true,
+        );
+      }
       this.justRevealedUid = null;
     } else {
       this.openHomeUpgradeBtn.classList.add("is-hidden");
@@ -4187,6 +4231,40 @@ export class Hud {
     this.openSafeboxUpgradeBtn.textContent =
       this.isHomeStorageOpen || this.scene.isAtHome() ? "⬆️ Nâng cấp Safebox" : "📋 NV Safebox";
     this.renderDeltaGrid(this.safeboxGridEl, sb.cols, sb.rows, sbItems, "safebox", true);
+
+    const torsoPocket = this.scene.inventory.getPocketSize("torso");
+    if (torsoPocket) {
+      const torsoItems = this.scene.inventory.getPocketItems("torso");
+      let torsoUsed = 0;
+      for (const it of torsoItems) {
+        const d = ITEM_BY_ID[it.itemId];
+        if (d) torsoUsed += d.w * d.h;
+      }
+      this.pocketTorsoPanelEl.classList.remove("is-hidden");
+      this.pocketTorsoTitleEl.textContent = `👕 Túi Áo (${torsoPocket.cols}×${torsoPocket.rows})`;
+      this.pocketTorsoSubEl.textContent = `${torsoUsed}/${torsoPocket.cols * torsoPocket.rows} ô`;
+      this.renderDeltaGrid(this.pocketTorsoGridEl, torsoPocket.cols, torsoPocket.rows, torsoItems, "torso", true);
+    } else {
+      this.pocketTorsoPanelEl.classList.add("is-hidden");
+      this.pocketTorsoGridEl.replaceChildren();
+    }
+
+    const legsPocket = this.scene.inventory.getPocketSize("legs");
+    if (legsPocket) {
+      const legsItems = this.scene.inventory.getPocketItems("legs");
+      let legsUsed = 0;
+      for (const it of legsItems) {
+        const d = ITEM_BY_ID[it.itemId];
+        if (d) legsUsed += d.w * d.h;
+      }
+      this.pocketLegsPanelEl.classList.remove("is-hidden");
+      this.pocketLegsTitleEl.textContent = `👖 Túi Quần (${legsPocket.cols}×${legsPocket.rows})`;
+      this.pocketLegsSubEl.textContent = `${legsUsed}/${legsPocket.cols * legsPocket.rows} ô`;
+      this.renderDeltaGrid(this.pocketLegsGridEl, legsPocket.cols, legsPocket.rows, legsItems, "legs", true);
+    } else {
+      this.pocketLegsPanelEl.classList.add("is-hidden");
+      this.pocketLegsGridEl.replaceChildren();
+    }
 
     this.renderInspector();
   }
@@ -4516,7 +4594,11 @@ export class Hud {
         ? this.backpackGridEl
         : this.drag.fromZone === "safebox"
           ? this.safeboxGridEl
-          : this.containerGridEl;
+          : this.drag.fromZone === "torso"
+            ? this.pocketTorsoGridEl
+            : this.drag.fromZone === "legs"
+              ? this.pocketLegsGridEl
+              : this.containerGridEl;
     const cellPx = Number(sourceGrid.dataset.cellPx || 34);
     const gap = 2;
     const { w, h } = getEffectiveSize(def, this.drag.rotated);
@@ -4682,6 +4764,26 @@ export class Hud {
       rows: sb.rows,
       list: this.scene.inventory.getSafeboxItems(),
     });
+    const torsoPocket = this.scene.inventory.getPocketSize("torso");
+    if (torsoPocket) {
+      targets.push({
+        zone: "torso",
+        el: this.pocketTorsoGridEl,
+        cols: torsoPocket.cols,
+        rows: torsoPocket.rows,
+        list: this.scene.inventory.getPocketItems("torso"),
+      });
+    }
+    const legsPocket = this.scene.inventory.getPocketSize("legs");
+    if (legsPocket) {
+      targets.push({
+        zone: "legs",
+        el: this.pocketLegsGridEl,
+        cols: legsPocket.cols,
+        rows: legsPocket.rows,
+        list: this.scene.inventory.getPocketItems("legs"),
+      });
+    }
     if (this.isHomeStorageOpen) {
       const homeTier = this.scene.inventory.getHomeTier();
       targets.push({
@@ -4925,12 +5027,20 @@ export class Hud {
       equipBtn.className = "inspector-btn";
       equipBtn.textContent = "👕 Mặc lên người";
       equipBtn.addEventListener("click", () => {
-        if (!this.selectedItem || this.selectedItem.zone === "container") return;
+        if (
+          !this.selectedItem ||
+          (this.selectedItem.zone !== "backpack" &&
+            this.selectedItem.zone !== "safebox" &&
+            this.selectedItem.zone !== "home")
+        ) {
+          this.showDiscoveryToast("Không thể mặc trực tiếp", "Hãy rút trang bị ra Balo hoặc Safebox trước khi mặc.");
+          return;
+        }
         const res = this.scene.equipGarmentFromInventory(
           this.selectedItem.zone,
           this.selectedItem.uid,
         );
-        this.showDiscoveryToast(res.ok ? "👕 Đã thay đồ" : "Không đủ chỗ đổi đồ", res.message);
+        this.showDiscoveryToast(res.ok ? "👕 Đã thay đồ" : "Không thể đổi đồ", res.message);
         if (res.ok) {
           this.selectedItem = null;
           this.renderLootAndBagModal();
@@ -4950,11 +5060,30 @@ export class Hud {
       actions.appendChild(rotBtn);
     }
 
+    const hasTorsoPocket = this.scene.inventory.getPocketSize("torso") !== null;
+    const hasLegsPocket = this.scene.inventory.getPocketSize("legs") !== null;
     const transferTargets: Array<{ toZone: GridZone; label: string }> = [];
     if (this.selectedItem.zone === "container") {
       if (hasWornBackpack) transferTargets.push({ toZone: "backpack", label: "📥 Cất vào Balo" });
+      if (hasTorsoPocket) transferTargets.push({ toZone: "torso", label: "👕 Cất Túi Áo" });
+      if (hasLegsPocket) transferTargets.push({ toZone: "legs", label: "👖 Cất Túi Quần" });
       transferTargets.push({ toZone: "safebox", label: "🔐 Cất Safebox" });
     } else if (this.selectedItem.zone === "backpack") {
+      if (this.isHomeStorageOpen) {
+        transferTargets.push({ toZone: "home", label: "🏠 Cất vào Kho Nhà" });
+      } else if (this.activeContainer) {
+        transferTargets.push({ toZone: "container", label: "📤 Bỏ lại nơi tìm kiếm" });
+      }
+      if (hasTorsoPocket) transferTargets.push({ toZone: "torso", label: "👕 Cất Túi Áo" });
+      if (hasLegsPocket) transferTargets.push({ toZone: "legs", label: "👖 Cất Túi Quần" });
+      transferTargets.push({ toZone: "safebox", label: "🔐 Cất Safebox" });
+    } else if (this.selectedItem.zone === "torso" || this.selectedItem.zone === "legs") {
+      if (hasWornBackpack) transferTargets.push({ toZone: "backpack", label: "📥 Rút ra Balo" });
+      if (this.selectedItem.zone === "torso" && hasLegsPocket) {
+        transferTargets.push({ toZone: "legs", label: "👖 Chuyển Túi Quần" });
+      } else if (this.selectedItem.zone === "legs" && hasTorsoPocket) {
+        transferTargets.push({ toZone: "torso", label: "👕 Chuyển Túi Áo" });
+      }
       if (this.isHomeStorageOpen) {
         transferTargets.push({ toZone: "home", label: "🏠 Cất vào Kho Nhà" });
       } else if (this.activeContainer) {
@@ -4963,9 +5092,13 @@ export class Hud {
       transferTargets.push({ toZone: "safebox", label: "🔐 Cất Safebox" });
     } else if (this.selectedItem.zone === "safebox") {
       if (hasWornBackpack) transferTargets.push({ toZone: "backpack", label: "📥 Rút ra Balo" });
+      if (hasTorsoPocket) transferTargets.push({ toZone: "torso", label: "👕 Rút ra Túi Áo" });
+      if (hasLegsPocket) transferTargets.push({ toZone: "legs", label: "👖 Rút ra Túi Quần" });
       if (this.isHomeStorageOpen) transferTargets.push({ toZone: "home", label: "🏠 Cất vào Kho Nhà" });
     } else if (this.selectedItem.zone === "home") {
       if (hasWornBackpack) transferTargets.push({ toZone: "backpack", label: "📥 Cất vào Balo" });
+      if (hasTorsoPocket) transferTargets.push({ toZone: "torso", label: "👕 Cất Túi Áo" });
+      if (hasLegsPocket) transferTargets.push({ toZone: "legs", label: "👖 Cất Túi Quần" });
       transferTargets.push({ toZone: "safebox", label: "🔐 Cất Safebox" });
     }
 
@@ -5847,6 +5980,10 @@ export class Hud {
 
   private formatGarmentStatsText(g: GarmentDef): string {
     const parts: string[] = [`⚖️ ${g.weightKg} kg (${g.gridW}×${g.gridH})`];
+    const pocket = getGarmentPocketSize(g);
+    if (pocket) {
+      parts.push(`🧳 Túi ${pocket.cols}×${pocket.rows}`);
+    }
     if (g.warmth !== 0) {
       parts.push(g.warmth > 0 ? `🔥 Giữ ấm +${g.warmth}` : `❄️ Thoáng mát ${Math.abs(g.warmth)}`);
     }
@@ -5937,17 +6074,19 @@ export class Hud {
     for (const [slot, label] of slotDefs) {
       const gId = equipped[slot];
       const def = gId ? GARMENT_BY_ID[gId] : null;
+      const pocket = getGarmentPocketSize(def);
+      const pocketTag = pocket ? ` • Túi ${pocket.cols}×${pocket.rows}` : "";
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "slot-pill-btn";
-      btn.textContent = `${label}: ${def ? `${def.badge} ${def.name}` : "Trống"}`;
+      btn.textContent = `${label}: ${def ? `${def.badge} ${def.name}${pocketTag}` : "Trống"}`;
       btn.disabled = !def;
       if (def) {
         btn.addEventListener("click", () => {
           const destZone = this.scene.inventory.getBackpackTier() ? "backpack" : "safebox";
           const res = this.scene.unequipSlotTo(slot, destZone);
           this.showDiscoveryToast(
-            res.ok ? (destZone === "safebox" ? "🔐 Đã tháo cất Safebox" : "🎒 Đã tháo cất vào Balo") : "Không đủ ô trống",
+            res.ok ? (destZone === "safebox" ? "🔐 Đã tháo cất Safebox" : "🎒 Đã tháo cất vào Balo") : "Không thể tháo",
             res.message,
           );
           this.refreshBagBadge();
@@ -7015,6 +7154,15 @@ export class Hud {
     if (this.scene.getActiveMapId() !== mapId) return;
     const existing = this.scene.inventory.getContainer(containerId);
     if (!existing && !meta) return;
+    const prevRevealed = new Map<string, boolean>();
+    if (existing) {
+      for (const it of existing.items) {
+        if (it.revealed !== undefined) prevRevealed.set(it.uid, it.revealed);
+      }
+    }
+    const mergedItems = items.map((it) =>
+      prevRevealed.has(it.uid) ? { ...it, revealed: prevRevealed.get(it.uid) } : { ...it },
+    );
     const updated = this.scene.inventory.applySharedContainerSnapshot(
       containerId,
       existing?.title ?? meta!.title,
@@ -7022,12 +7170,18 @@ export class Hud {
       existing?.biome ?? meta!.biome,
       existing?.cols ?? 6,
       existing?.rows ?? 5,
-      items,
+      mergedItems,
       openedAt,
       refreshAt,
     );
     if (this.isBagOpen && this.activeContainer?.containerId === containerId) {
       this.activeContainer = updated;
+      const aliveUids = new Set(updated.items.map((it) => it.uid));
+      this.scanQueue = this.scanQueue.filter((uid) => aliveUids.has(uid));
+      if (this.activeScanUid && !aliveUids.has(this.activeScanUid)) {
+        this.activeScanUid = null;
+        this.startNextScanItem();
+      }
       this.renderLootAndBagModal();
     }
   }
