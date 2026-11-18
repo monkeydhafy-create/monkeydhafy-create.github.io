@@ -3437,7 +3437,16 @@ export class InventoryManager {
     items: GridItemInstance[],
     generatedAt: number,
     refreshAt: number,
+    persist = true,
   ): ContainerLootState {
+    const prev = this.state.containers[containerId];
+    const sameCycle = Boolean(prev && Math.abs(prev.generatedAt - generatedAt) < 5000);
+    const revealedSet = new Set<string>();
+    if (sameCycle && prev) {
+      for (const it of prev.items) {
+        if (it.revealed !== false) revealedSet.add(it.uid);
+      }
+    }
     const next: ContainerLootState = {
       containerId,
       title,
@@ -3445,12 +3454,16 @@ export class InventoryManager {
       biome,
       cols,
       rows,
-      items: items.map((it) => ({ ...it })),
+      items: items.map((it) =>
+        revealedSet.has(it.uid) ? { ...it, revealed: true } : { ...it },
+      ),
       generatedAt,
       refreshAt,
     };
     this.state.containers[containerId] = next;
-    this.saveState();
+    if (persist) {
+      this.saveState();
+    }
     return next;
   }
 

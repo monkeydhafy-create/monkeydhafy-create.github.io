@@ -89,7 +89,7 @@ export interface SupabaseSyncCallbacks {
     version: number,
     openedAt: number,
     refreshAt: number,
-    meta?: { title: string; sourceType: LootSourceType; biome: BiomeId },
+    meta?: { title: string; sourceType: LootSourceType; biome: BiomeId; bulkSync?: boolean },
   ) => void;
   onSharedVaultUnlocked?: (payload: {
     mapId: MapId;
@@ -723,7 +723,6 @@ export class SupabaseSync {
     refreshAt: number;
     version: number;
   } | null> {
-    if (!this.user) return null;
     try {
       const { data, error } = await this.client.rpc("claim_or_open_world_container", {
         p_map_id: params.mapId,
@@ -736,10 +735,12 @@ export class SupabaseSync {
         p_refresh_ms: params.refreshMs,
       });
       if (error || !data) return null;
-      const items = Array.isArray(data.items) ? (data.items as GridItemInstance[]) : [];
-      const openedAt = Date.parse(data.opened_at) || Date.now();
-      const refreshAt = Date.parse(data.refresh_at) || Date.now() + params.refreshMs;
-      const version = Number(data.state_version) || 1;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) return null;
+      const items = Array.isArray(row.items) ? (row.items as GridItemInstance[]) : [];
+      const openedAt = Date.parse(row.opened_at) || Date.now();
+      const refreshAt = Date.parse(row.refresh_at) || Date.now() + params.refreshMs;
+      const version = Number(row.state_version) || 1;
       if (this.worldChannel) {
         void this.worldChannel.send({
           type: "broadcast",
@@ -764,7 +765,6 @@ export class SupabaseSync {
     takenItem: GridItemInstance | null;
     items: GridItemInstance[];
   } | null> {
-    if (!this.user) return null;
     try {
       const { data, error } = await this.client.rpc("take_world_container_item", {
         p_map_id: mapId,
@@ -806,7 +806,6 @@ export class SupabaseSync {
     newVersion: number;
     items: GridItemInstance[];
   } | null> {
-    if (!this.user) return null;
     try {
       const { data, error } = await this.client.rpc("deposit_world_container_item", {
         p_map_id: mapId,
@@ -850,7 +849,6 @@ export class SupabaseSync {
     newVersion: number;
     items: GridItemInstance[];
   } | null> {
-    if (!this.user) return null;
     try {
       const { data, error } = await this.client.rpc("move_world_container_item", {
         p_map_id: mapId,
@@ -1074,10 +1072,8 @@ export class SupabaseSync {
             void chan.track({ ...this.latestLocalAppearance, uid });
           }
           broadcastCurrentPos();
-          if (this.user) {
-            const sectorMapId = (sectorKey.split(":")[0] || "vietnam") as MapId;
-            void this.syncActiveWorldContainers(sectorMapId);
-          }
+          const sectorMapId = (sectorKey.split(":")[0] || "vietnam") as MapId;
+          void this.syncActiveWorldContainers(sectorMapId);
         }
       });
 
@@ -1105,7 +1101,6 @@ export class SupabaseSync {
   // ─── AUCTION HOUSE (24H PLAYER MARKET) ─────────────────────────────────────────────────────
 
   public async syncActiveWorldContainers(mapId: MapId): Promise<void> {
-    if (!this.user) return;
     try {
       const { data, error } = await this.client.rpc("sync_active_world_containers", {
         p_map_id: mapId,
@@ -1135,6 +1130,7 @@ export class SupabaseSync {
             title: row.title,
             sourceType: row.source_type,
             biome: row.biome,
+            bulkSync: true,
           },
         );
       }

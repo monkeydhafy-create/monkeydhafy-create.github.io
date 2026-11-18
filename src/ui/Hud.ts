@@ -580,6 +580,7 @@ export class Hud {
   private scanQueue: string[] = [];
   private activeScanUid: string | null = null;
   private containerSyncPending = false;
+  private containerOpenSeq = 0;
   private readonly containerMutationChains = new Map<string, Promise<void>>();
   private scanElapsedMs = 0;
   private scanDurationMs = 0;
@@ -1127,8 +1128,9 @@ export class Hud {
     this.selectedItem = null;
     this.isBagOpen = true;
     this.bagModalEl.classList.add("is-open");
+    const openSeq = ++this.containerOpenSeq;
 
-    if (this.cloudSync?.isAuthenticated()) {
+    if (this.cloudSync) {
       this.resetContainerScan();
       this.containerSyncPending = true;
       this.renderLootAndBagModal();
@@ -1136,6 +1138,15 @@ export class Hud {
       const mapId = this.scene.getActiveMapId();
       const zone = this.scene.getCurrentSecurityZone();
       const refreshMs = Math.max(60_000, container.refreshAt - container.generatedAt);
+      const fallbackTimer = window.setTimeout(() => {
+        if (this.containerOpenSeq !== openSeq || !this.containerSyncPending) return;
+        this.containerSyncPending = false;
+        if (this.isBagOpen && this.activeContainer?.containerId === container.containerId) {
+          this.initContainerScan(container);
+          this.renderLootAndBagModal();
+        }
+      }, 3500);
+
       void this.cloudSync
         .claimOrOpenWorldContainer({
           mapId,
@@ -1148,6 +1159,8 @@ export class Hud {
           refreshMs,
         })
         .then((shared) => {
+          window.clearTimeout(fallbackTimer);
+          if (this.containerOpenSeq !== openSeq) return;
           this.containerSyncPending = false;
           if (!shared) {
             if (this.isBagOpen && this.activeContainer?.containerId === container.containerId) {
@@ -4073,6 +4086,8 @@ export class Hud {
     } else {
       this.cancelDrag();
       this.resetContainerScan();
+      this.containerSyncPending = false;
+      this.containerOpenSeq += 1;
       this.activeContainer = null;
       this.isHomeStorageOpen = false;
       this.scene.setLootingOpen(false);
@@ -7135,13 +7150,13 @@ export class Hud {
     uid: string,
     rollbackItem?: GridItemInstance,
   ): void {
-    if (!this.cloudSync?.isAuthenticated()) return;
+    if (!this.cloudSync) return;
     const mapId = this.scene.getActiveMapId();
     const key = `${mapId}:${containerId}`;
     const prevChain = this.containerMutationChains.get(key) ?? Promise.resolve();
 
     const nextChain = prevChain.then(async () => {
-      if (!this.cloudSync?.isAuthenticated()) return;
+      if (!this.cloudSync) return;
       const expectedVer = this.sharedContainerVersions.get(key) ?? 0;
 
       const applyServerItems = (items: GridItemInstance[]): void => {
@@ -7263,21 +7278,12 @@ export class Hud {
     version: number,
     openedAt: number,
     refreshAt: number,
-    meta?: { title: string; sourceType: LootSourceType; biome: BiomeId },
+    meta?: { title: string; sourceType: LootSourceType; biome: BiomeId; bulkSync?: boolean },
   ): void {
     this.sharedContainerVersions.set(`${mapId}:${containerId}`, version);
     if (this.scene.getActiveMapId() !== mapId) return;
     const existing = this.scene.inventory.getContainer(containerId);
     if (!existing && !meta) return;
-    const prevRevealed = new Map<string, boolean>();
-    if (existing) {
-      for (const it of existing.items) {
-        if (it.revealed !== undefined) prevRevealed.set(it.uid, it.revealed);
-      }
-    }
-    const mergedItems = items.map((it) =>
-      prevRevealed.has(it.uid) ? { ...it, revealed: prevRevealed.get(it.uid) } : { ...it },
-    );
     const updated = this.scene.inventory.applySharedContainerSnapshot(
       containerId,
       existing?.title ?? meta!.title,
@@ -7285,17 +7291,24 @@ export class Hud {
       existing?.biome ?? meta!.biome,
       existing?.cols ?? 6,
       existing?.rows ?? 5,
-      mergedItems,
+      items,
       openedAt,
       refreshAt,
+      !meta?.bulkSync,
     );
     if (this.isBagOpen && this.activeContainer?.containerId === containerId) {
+      const wasPending = this.containerSyncPending;
+      this.containerSyncPending = false;
       this.activeContainer = updated;
-      const aliveUids = new Set(updated.items.map((it) => it.uid));
-      this.scanQueue = this.scanQueue.filter((uid) => aliveUids.has(uid));
-      if (this.activeScanUid && !aliveUids.has(this.activeScanUid)) {
-        this.activeScanUid = null;
-        this.startNextScanItem();
+      if (wasPending) {
+        this.initContainerScan(updated);
+      } else {
+        const aliveUids = new Set(updated.items.map((it) => it.uid));
+        this.scanQueue = this.scanQueue.filter((uid) => aliveUids.has(uid));
+        if (this.activeScanUid && !aliveUids.has(this.activeScanUid)) {
+          this.activeScanUid = null;
+          this.startNextScanItem();
+        }
       }
       this.renderLootAndBagModal();
     }

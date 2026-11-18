@@ -74,12 +74,12 @@ CREATE POLICY "player_saves_owner_all"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- Rương chung: người chơi đã đăng nhập được đọc; mọi thay đổi item đi qua RPC SECURITY DEFINER
+-- Rương chung: tất cả người chơi (kể cả khách) được đọc; mọi thay đổi item đi qua RPC SECURITY DEFINER
 DROP POLICY IF EXISTS "world_containers_read_auth" ON public.world_containers;
 CREATE POLICY "world_containers_read_auth"
   ON public.world_containers
   FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 -- 5. Đồng bộ giờ server cho Cảnh sát tuần tra tất định (0 tốn message)
@@ -133,7 +133,8 @@ DECLARE
   v_refresh_ms bigint := public.get_container_refresh_ms(p_source_type);
 BEGIN
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required';
+    -- Guest players share the same world containers seamlessly
+    NULL;
   END IF;
 
   INSERT INTO public.world_containers (
@@ -194,7 +195,8 @@ DECLARE
   v_next_items jsonb;
 BEGIN
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required';
+    -- Guest players share the same world containers seamlessly
+    NULL;
   END IF;
 
   SELECT * INTO v_row
@@ -257,7 +259,8 @@ DECLARE
   v_next_items jsonb;
 BEGIN
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required';
+    -- Guest players share the same world containers seamlessly
+    NULL;
   END IF;
 
   SELECT * INTO v_row
@@ -320,7 +323,8 @@ DECLARE
   v_next_items jsonb;
 BEGIN
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required';
+    -- Guest players share the same world containers seamlessly
+    NULL;
   END IF;
 
   SELECT * INTO v_row
@@ -387,11 +391,11 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_container_refresh_ms(text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_server_time_ms() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.claim_or_open_world_container(text, text, text, text, text, text, jsonb, bigint) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.take_world_container_item(text, text, text, bigint) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.deposit_world_container_item(text, text, jsonb, bigint) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.move_world_container_item(text, text, text, integer, integer, boolean, bigint) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.sync_active_world_containers(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_or_open_world_container(text, text, text, text, text, text, jsonb, bigint) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.take_world_container_item(text, text, text, bigint) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.deposit_world_container_item(text, text, jsonb, bigint) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.move_world_container_item(text, text, text, integer, integer, boolean, bigint) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_active_world_containers(text) TO anon, authenticated;
 
 -- 9. Bật Supabase Realtime cho đồng bộ đa thiết bị & thế giới chung
 ALTER PUBLICATION supabase_realtime ADD TABLE public.player_live_state;
