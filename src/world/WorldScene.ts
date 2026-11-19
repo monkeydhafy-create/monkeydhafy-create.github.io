@@ -3459,6 +3459,11 @@ export class WorldScene {
       if ((op.prop.kind === "city_collection_hall" || op.prop.kind === "city_home_house") && hasOwnHouse) {
         continue;
       }
+      // Không cho tương tác vào điểm neo nhà biệt thự khi bản thân CHƯA xây nhà
+      // (tránh việc đứng gần nhà của người chơi khác tại lô (13,13) mà vẫn hiện nút bấm tương tác!)
+      if (op.prop.kind === "city_player_estate" && !hasOwnHouse) {
+        continue;
+      }
       if (
         Math.abs(px - op.x) <= op.halfW + 38 &&
         py <= op.bottomY + 42 &&
@@ -3539,26 +3544,15 @@ export class WorldScene {
         };
       }
       if (kind === "city_player_estate") {
+        if (!this.estate.houseId) {
+          return null;
+        }
         const ownerName = this.estate.ownerName || this.getPlayerDisplayName();
-        if (this.estate.houseId) {
-          const m = getHouseModelDef(this.estate.houseId);
-          return {
-            type: "estate_house",
-            name: `Dinh Thự Của ${ownerName} (${m ? m.name : "Dinh Thự"})`,
-            houseId: this.estate.houseId,
-          };
-        }
-        if (this.estate.plotTier > 0) {
-          return {
-            type: "real_estate",
-            name: `Lô Đất Cấp ${this.estate.plotTier} Của ${ownerName} (Bấm [E] Xây Nhà)`,
-            initialTab: "build",
-          };
-        }
+        const m = getHouseModelDef(this.estate.houseId);
         return {
-          type: "real_estate",
-          name: "Khu Đất Biệt Thự Quy Hoạch (Vùng Xanh) (Bấm [E] Mua Đất)",
-          initialTab: "plot",
+          type: "estate_house",
+          name: `Dinh Thự Của ${ownerName} (${m ? m.name : "Dinh Thự"})`,
+          houseId: this.estate.houseId,
         };
       }
       if (meta.tier === "police") {

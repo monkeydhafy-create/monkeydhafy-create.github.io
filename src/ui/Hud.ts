@@ -313,6 +313,12 @@ export class Hud {
   private readonly bagTitleEl: HTMLElement;
   private readonly bagCloseBtn: HTMLButtonElement;
   private readonly bagStatsEl: HTMLElement;
+  private readonly homeModalTabsEl: HTMLElement;
+  private readonly tabHomeStorageBtn: HTMLButtonElement;
+  private readonly tabHomeDisplayBtn: HTMLButtonElement;
+  private readonly homeDisplayViewEl: HTMLElement;
+  private readonly homeDisplayStatsEl: HTMLElement;
+  private readonly homeDisplayGridEl: HTMLElement;
   private readonly bagGridsWrapEl: HTMLElement;
   private readonly containerPanelEl: HTMLElement;
   private readonly containerTitleEl: HTMLElement;
@@ -558,6 +564,7 @@ export class Hud {
 
   private isBagOpen = false;
   private isHomeStorageOpen = false;
+  private homeModalTab: "storage" | "display" = "storage";
   private isShopOpen = false;
   private shopSellZone: "backpack" | "torso" | "legs" | "safebox" = "backpack";
   private isSafeboxModalOpen = false;
@@ -699,7 +706,24 @@ export class Hud {
     this.bagTitleEl = document.getElementById("bag-title")!;
     this.bagCloseBtn = document.getElementById("btn-bag-close") as HTMLButtonElement;
     this.bagStatsEl = document.getElementById("bag-stats")!;
+    this.homeModalTabsEl = document.getElementById("home-modal-tabs")!;
+    this.tabHomeStorageBtn = document.getElementById("tab-home-storage") as HTMLButtonElement;
+    this.tabHomeDisplayBtn = document.getElementById("tab-home-display") as HTMLButtonElement;
+    this.homeDisplayViewEl = document.getElementById("home-display-view")!;
+    this.homeDisplayStatsEl = document.getElementById("home-display-stats")!;
+    this.homeDisplayGridEl = document.getElementById("home-display-grid")!;
     this.bagGridsWrapEl = document.getElementById("bag-grids-wrap")!;
+
+    this.tabHomeStorageBtn.addEventListener("click", () => {
+      if (this.homeModalTab === "storage") return;
+      this.homeModalTab = "storage";
+      this.renderLootAndBagModal();
+    });
+    this.tabHomeDisplayBtn.addEventListener("click", () => {
+      if (this.homeModalTab === "display") return;
+      this.homeModalTab = "display";
+      this.renderLootAndBagModal();
+    });
     this.containerPanelEl = document.getElementById("container-panel")!;
     this.containerTitleEl = document.getElementById("container-panel-title")!;
     this.containerSubEl = document.getElementById("container-panel-sub")!;
@@ -1266,6 +1290,7 @@ export class Hud {
     this.activeContainer = null;
     this.resetContainerScan();
     this.isHomeStorageOpen = true;
+    this.homeModalTab = "storage";
     this.selectedItem = null;
     this.isBagOpen = true;
     this.bagModalEl.classList.add("is-open");
@@ -4839,33 +4864,36 @@ export class Hud {
       this.bagStatsEl.appendChild(s);
     }
 
-    // Nếu đang ở Dinh Thự đã mua (đã ẩn Phòng Sưu Tầm công cộng) -> hiện nút mở Phòng Sưu Tầm ngay trên thanh tiêu đề
-    if (this.isHomeStorageOpen && hasOwnHouse) {
+    // Chuyển đổi giữa 2 tab "📦 Kho Đồ" và "🏛️ Trưng Bày" khi mở Dinh Thự đã mua (tránh kéo dài giao diện trên mobile)
+    const showHomeTabs = this.isHomeStorageOpen && hasOwnHouse;
+    this.homeModalTabsEl.classList.toggle("is-hidden", !showHomeTabs);
+    if (!showHomeTabs) {
+      this.homeModalTab = "storage";
+    } else {
       const slots = this.scene.inventory.getCollectionHallStates();
       let dispCount = 0;
-      let wCount = 0;
-      let gCount = 0;
       for (const def of COLLECTION_RED_ITEMS) {
-        const st = slots[def.id];
-        if (st?.displayed) dispCount++;
-        if (st?.lightLevel === 1) wCount++;
-        if (st?.lightLevel === 2) gCount++;
+        if (slots[def.id]?.displayed) dispCount++;
       }
-      const collBtn = document.createElement("button");
-      collBtn.type = "button";
-      collBtn.className = "bag-stat-pill is-collection-btn";
-      collBtn.textContent = `🏛️ Sưu Tầm Đồ Đỏ (${dispCount}/${COLLECTION_RED_ITEMS.length} • ⚪${wCount} • 🟡${gCount}) ▸`;
-      collBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.openCollectionModal();
-      });
-      this.bagStatsEl.appendChild(collBtn);
+      this.tabHomeStorageBtn.classList.toggle("is-active", this.homeModalTab === "storage");
+      this.tabHomeDisplayBtn.classList.toggle("is-active", this.homeModalTab === "display");
+      this.tabHomeDisplayBtn.textContent = `🏛️ Trưng Bày (${dispCount}/${COLLECTION_RED_ITEMS.length})`;
     }
+
+    const isDisplayTabActive = showHomeTabs && this.homeModalTab === "display";
+    this.bagGridsWrapEl.classList.toggle("is-hidden", isDisplayTabActive);
+    this.inspectorEl.classList.toggle("is-hidden", isDisplayTabActive);
+    this.homeDisplayViewEl.classList.toggle("is-hidden", !isDisplayTabActive);
 
     this.activeScanFillEl = null;
 
-    // Dọn dải sưu tầm cũ trong containerPanelEl trước khi render lại
+    // Dọn dải sưu tầm cũ (nếu có) trong containerPanelEl
     this.containerPanelEl.querySelector("#estate-home-collection-strip")?.remove();
+
+    if (isDisplayTabActive) {
+      this.renderHomeDisplayTab();
+      return;
+    }
 
     if (this.isHomeStorageOpen) {
       const homeTier = this.scene.inventory.getHomeTier();
@@ -4883,63 +4911,6 @@ export class Hud {
         "home",
         true,
       );
-
-      // Hiển thị trực tiếp Danh Sách Sưu Tầm & Cấp Độ Ánh Sáng ngay trong Dinh Thự
-      if (hasOwnHouse) {
-        const slots = this.scene.inventory.getCollectionHallStates();
-        const strip = document.createElement("div");
-        strip.id = "estate-home-collection-strip";
-        strip.className = "home-collection-strip";
-
-        const header = document.createElement("div");
-        header.className = "home-collection-strip-head";
-        header.innerHTML = `
-          <span>🏛️ <strong>Danh Sách Sưu Tầm &amp; Cấp Độ</strong></span>
-          <button type="button" class="btn-home-open-coll">✨ Quản Lý &amp; Nâng Cấp ▸</button>
-        `;
-        header.querySelector(".btn-home-open-coll")?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.openCollectionModal();
-        });
-        strip.appendChild(header);
-
-        const list = document.createElement("div");
-        list.className = "home-collection-strip-list";
-        for (const def of COLLECTION_RED_ITEMS) {
-          const st = slots[def.id] ?? { displayed: false, lightLevel: 0, goldLampProgress: 0 };
-          const chip = document.createElement("button");
-          chip.type = "button";
-          const levelClass =
-            st.lightLevel === 2
-              ? "is-gold"
-              : st.lightLevel === 1
-                ? "is-white"
-                : st.displayed
-                  ? "is-red"
-                  : "is-empty";
-          const levelLabel =
-            st.lightLevel === 2
-              ? "🟡 Đèn Vàng"
-              : st.lightLevel === 1
-                ? "⚪ Đèn Trắng"
-                : st.displayed
-                  ? "🔴 Đang Trưng"
-                  : "Chưa trưng";
-          chip.className = `home-coll-chip ${levelClass}`;
-          chip.title = `${def.name} — ${levelLabel}`;
-          chip.innerHTML = `
-            <img src="${withAssetHash(def.iconSrc)}" alt="${def.name}" class="home-coll-icon" />
-            <span class="home-coll-lvl">${levelLabel}</span>
-          `;
-          chip.addEventListener("click", (e) => {
-            e.stopPropagation();
-            this.openCollectionModal();
-          });
-          list.appendChild(chip);
-        }
-        strip.appendChild(list);
-        this.containerPanelEl.appendChild(strip);
-      }
     } else if (this.activeContainer) {
       this.containerPanelEl.classList.remove("is-hidden");
       this.openHomeUpgradeBtn.classList.add("is-hidden");
@@ -6502,6 +6473,39 @@ export class Hud {
     }
   }
 
+  private renderHomeDisplayTab(): void {
+    const inv = this.scene.inventory;
+    const slots = inv.getCollectionHallStates();
+    const total = COLLECTION_RED_ITEMS.length;
+    let displayedCount = 0;
+    let whiteCount = 0;
+    let goldCount = 0;
+
+    for (const def of COLLECTION_RED_ITEMS) {
+      const slot = slots[def.id];
+      if (!slot) continue;
+      if (slot.displayed) displayedCount += 1;
+      if (slot.lightLevel >= 1) whiteCount += 1;
+      if (slot.lightLevel >= 2) goldCount += 1;
+    }
+
+    this.homeDisplayStatsEl.replaceChildren();
+    for (const txt of [
+      `🖼️ Trưng bày: ${displayedCount}/${total}`,
+      `⚪ Đèn Trắng: ${whiteCount}/${total}`,
+      `🌟 Đèn Vàng: ${goldCount}/${total}`,
+    ]) {
+      const pill = document.createElement("span");
+      pill.className = "bag-stat-pill";
+      pill.textContent = txt;
+      this.homeDisplayStatsEl.appendChild(pill);
+    }
+
+    this.renderCollectionCardsInto(this.homeDisplayGridEl, () => {
+      this.renderLootAndBagModal();
+    });
+  }
+
   private renderCollectionModal(): void {
     const inv = this.scene.inventory;
     const slots = inv.getCollectionHallStates();
@@ -6530,19 +6534,15 @@ export class Hud {
       this.collectionStatsEl.appendChild(pill);
     }
 
-    if (this.scene.isAtHome() || Boolean(this.scene.getEstateState().houseId)) {
-      const backBtn = document.createElement("button");
-      backBtn.type = "button";
-      backBtn.className = "bag-stat-pill is-collection-btn";
-      backBtn.textContent = "⬅️ Quay lại Kho Dinh Thự";
-      backBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.openHomeStorageModal();
-      });
-      this.collectionStatsEl.appendChild(backBtn);
-    }
+    this.renderCollectionCardsInto(this.collectionGridEl, () => {
+      this.renderCollectionModal();
+    });
+  }
 
-    this.collectionGridEl.replaceChildren();
+  private renderCollectionCardsInto(targetGrid: HTMLElement, onChanged: () => void): void {
+    const inv = this.scene.inventory;
+    const slots = inv.getCollectionHallStates();
+    targetGrid.replaceChildren();
     for (const def of COLLECTION_RED_ITEMS) {
       const slot = slots[def.id] ?? { displayed: false, lightLevel: 0, goldLampProgress: 0 };
       const counts = inv.countItemAcrossZones(def.id);
@@ -6618,7 +6618,7 @@ export class Hud {
           this.showDiscoveryToast(res.ok ? "📤 Đã lấy ra" : "Không thể lấy ra", res.message);
           this.refreshBagBadge();
           this.updateSurvivalHud();
-          this.renderCollectionModal();
+          onChanged();
         });
       } else {
         displayBtn.className = "btn-card-primary";
@@ -6629,7 +6629,7 @@ export class Hud {
           this.showDiscoveryToast(res.ok ? "🖼️ Đã trưng bày" : "Chưa có vật phẩm", res.message);
           this.refreshBagBadge();
           this.updateSurvivalHud();
-          this.renderCollectionModal();
+          onChanged();
         });
       }
       actions.appendChild(displayBtn);
@@ -6645,7 +6645,7 @@ export class Hud {
           this.showDiscoveryToast(res.ok ? "⚪ Lên Đèn Trắng" : "Thiếu đồ đỏ", res.message);
           this.refreshBagBadge();
           this.updateSurvivalHud();
-          this.renderCollectionModal();
+          onChanged();
         });
         actions.appendChild(whiteBtn);
       } else if (slot.lightLevel === 1) {
@@ -6662,7 +6662,7 @@ export class Hud {
           );
           this.refreshBagBadge();
           this.updateSurvivalHud();
-          this.renderCollectionModal();
+          onChanged();
         });
         actions.appendChild(goldBtn);
       } else {
@@ -6675,7 +6675,7 @@ export class Hud {
       }
 
       card.appendChild(actions);
-      this.collectionGridEl.appendChild(card);
+      targetGrid.appendChild(card);
     }
   }
 

@@ -6841,3 +6841,64 @@ button {
 }
 
 
+
+/* ─── HOME STORAGE 2-TAB BAR (KHO ĐỒ & TRƯNG BÀY) ─────────────────────────── */
+.home-modal-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 2px;
+  margin-bottom: 10px;
+}
+
+.home-modal-tabs.is-hidden {
+  display: none;
+}
+
+.home-modal-tab {
+  flex: 1;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.65);
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.home-modal-tab:hover {
+  background: rgba(30, 41, 59, 0.85);
+  color: #ffffff;
+}
+
+.home-modal-tab.is-active {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(217, 119, 6, 0.22));
+  border-color: rgba(251, 191, 36, 0.72);
+  color: #fde68a;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.18);
+}
+
+.home-display-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(64vh, 520px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.home-display-view.is-hidden {
+  display: none;
+}
+
+.home-display-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#bag-grids-wrap.is-hidden,
+#item-inspector.is-hidden {
+  display: none !important;
+}
