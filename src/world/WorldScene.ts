@@ -399,6 +399,7 @@ export class WorldScene {
   private estate: PlayerEstateState;
   private collectionHallPropContainer: Container | null = null;
   private collectionHallSprite: Sprite | null = null;
+  private homeHousePropContainer: Container | null = null;
   private estateHouseContainer: Container | null = null;
   private estateHouseSprite: Sprite | null = null;
   private estateHouseShadow: Sprite | null = null;
@@ -1270,6 +1271,14 @@ export class WorldScene {
     }
   }
 
+  private getHouseWorldCenter(originC: number, originR: number, tier: number): { worldX: number; worldY: number } {
+    const yLift = tier === 4 ? 28 : tier === 3 ? 22 : tier === 2 ? 12 : 6;
+    return {
+      worldX: (originC + tier / 2) * TILE_SIZE,
+      worldY: (originR + tier) * TILE_SIZE - yLift,
+    };
+  }
+
   private clearRemoteEstateDisplay(uid: string): void {
     const existing = this.remoteEstateDisplays.get(uid);
     if (!existing) return;
@@ -1284,6 +1293,18 @@ export class WorldScene {
 
   private syncRemoteEstateDisplay(uid: string, estate: RemotePlayerEstateSummary | null): void {
     if (!estate || !estate.houseId) {
+      this.clearRemoteEstateDisplay(uid);
+      return;
+    }
+    // Tránh vẽ đè nhà remote trùng với chính nhà của mình (khi mở nhiều tab cùng tài khoản)
+    if (
+      this.estate.houseId &&
+      this.estate.houseOrigin &&
+      estate.originC === this.estate.houseOrigin.c &&
+      estate.originR === this.estate.houseOrigin.r &&
+      (estate.ownerName || "").trim().toLowerCase() ===
+        (this.estate.ownerName || this.getPlayerDisplayName()).trim().toLowerCase()
+    ) {
       this.clearRemoteEstateDisplay(uid);
       return;
     }
@@ -1302,8 +1323,7 @@ export class WorldScene {
     this.clearRemoteEstateDisplay(uid);
 
     const tier = model.tier;
-    const worldX = (estate.originC + tier / 2) * TILE_SIZE;
-    const worldY = (estate.originR + tier) * TILE_SIZE - 4;
+    const { worldX, worldY } = this.getHouseWorldCenter(estate.originC, estate.originR, tier);
 
     const container = new Container();
     container.position.set(worldX, worldY);
@@ -1314,7 +1334,7 @@ export class WorldScene {
     sprite.anchor.set(0.5, 0.92);
 
     const tag = new Text({
-      text: `🏰 NHÀ CỦA ${(estate.ownerName || "NGƯỜI CHƠI").toUpperCase()} • CHỈ XEM (KHÔNG THỂ LOOT)`,
+      text: `🏰 ${estate.ownerName || "Người Chơi"}`,
       style: {
         fontFamily: "system-ui, -apple-system, sans-serif",
         fontSize: 10,
@@ -3279,7 +3299,9 @@ export class WorldScene {
     let bestBldDist = Number.POSITIVE_INFINITY;
     const hasOwnHouse = Boolean(this.estate.houseId);
     for (const op of this.buildingOccludables) {
-      if (op.prop.kind === "city_collection_hall" && hasOwnHouse) continue;
+      if ((op.prop.kind === "city_collection_hall" || op.prop.kind === "city_home_house") && hasOwnHouse) {
+        continue;
+      }
       if (
         Math.abs(px - op.x) <= op.halfW + 38 &&
         py <= op.bottomY + 42 &&
@@ -4583,6 +4605,13 @@ export class WorldScene {
       }
     }
 
+    if (prop.kind === "city_home_house") {
+      this.homeHousePropContainer = container;
+      if (this.estate.houseId) {
+        container.visible = false;
+      }
+    }
+
     if (prop.kind === "city_collection_hall") {
       this.collectionHallPropContainer = container;
       this.collectionHallSprite = sprite;
@@ -5291,8 +5320,7 @@ export class WorldScene {
           }
         }
 
-        const ghostX = (anchor.c + tier / 2) * TILE_SIZE;
-        const ghostY = (anchor.r + tier) * TILE_SIZE - 4;
+        const { worldX: ghostX, worldY: ghostY } = this.getHouseWorldCenter(anchor.c, anchor.r, tier);
         this.estateGhostSprite.visible = true;
         this.estateGhostSprite.position.set(ghostX, ghostY);
         this.estateGhostSprite.alpha = 0.78;
@@ -5350,9 +5378,12 @@ export class WorldScene {
     const hasHouse = Boolean(this.estate.houseId);
     const houseModel = getHouseModelDef(this.estate.houseId);
 
-    // 1. Public Collection Hall visibility
+    // 1. Public Collection Hall & Old Home House visibility (ẩn cả 2 khi đã dời về Dinh Thự riêng)
     if (this.collectionHallPropContainer) {
       this.collectionHallPropContainer.visible = !hasHouse;
+    }
+    if (this.homeHousePropContainer) {
+      this.homeHousePropContainer.visible = !hasHouse;
     }
 
     // 2. Cập nhật lưới đất đã mua trên toàn Khu Biệt Thự
@@ -5367,8 +5398,7 @@ export class WorldScene {
         const originR = this.estate.houseOrigin?.r ?? LEGACY_DEFAULT_LOT_ROW;
         const tier = houseModel.tier;
 
-        const worldX = (originC + tier / 2) * TILE_SIZE;
-        const worldY = (originR + tier) * TILE_SIZE - 4;
+        const { worldX, worldY } = this.getHouseWorldCenter(originC, originR, tier);
 
         this.estateHouseContainer.visible = true;
         this.estateHouseContainer.position.set(worldX, worldY);
@@ -5404,7 +5434,7 @@ export class WorldScene {
           const fitScale = Math.min(1.0, maxLotW / rawW);
           this.estateHouseSprite.scale.set(fitScale);
           if (this.estateHouseTag) {
-            this.estateHouseTag.position.set(0, -this.estateHouseSprite.height * 0.94 - 8);
+            this.estateHouseTag.position.set(0, -this.estateHouseSprite.height * 0.88 - 4);
           }
         };
 
@@ -5418,11 +5448,11 @@ export class WorldScene {
           });
         }
 
-        // Display Owner Name in Title Tag
+        // Display Owner Name in Title Tag (gọn gàng chỉ hiển thị tên chủ nhà)
         const ownerName = this.estate.ownerName || this.getPlayerDisplayName();
         if (this.estateHouseTag) {
           this.estateHouseTag.visible = true;
-          this.estateHouseTag.text = `🏰 DINH THỰ CỦA ${ownerName.toUpperCase()} • ${houseModel.name.toUpperCase()} (BẢO MẬT)`;
+          this.estateHouseTag.text = `🏰 ${ownerName}`;
           const cfg = HOUSE_TIER_AURA_CONFIG[tier];
           this.estateHouseTag.style.fill = cfg?.highlightColor ?? 0xfbbf24;
         }
@@ -6329,8 +6359,11 @@ export class WorldScene {
 
     const hasOwnHouse = Boolean(this.estate.houseId);
     for (const pn of this.propNodes) {
-      // Sau khi mua/xây nhà: ẩn vĩnh viễn Phòng Sưu Tầm công cộng trên map của người đã mua
-      if (pn.node === this.collectionHallPropContainer && hasOwnHouse) {
+      // Sau khi mua/xây nhà: ẩn vĩnh viễn Phòng Sưu Tầm & Nhà Riêng cũ trên map của người đã mua
+      if (
+        (pn.node === this.collectionHallPropContainer || pn.node === this.homeHousePropContainer) &&
+        hasOwnHouse
+      ) {
         pn.node.visible = false;
         continue;
       }

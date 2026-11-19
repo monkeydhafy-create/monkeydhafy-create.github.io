@@ -4559,6 +4559,7 @@ export class Hud {
     // Highlight Home Storage, Shops & City Hospital clearly
     const mapPoiStyles: Record<string, { color: string; label: string; textColor: string }> = {
       city_home_house: { color: "#10b981", label: isJapanMap ? "🏯 Nhà" : "🏠 Nhà", textColor: "#a7f3d0" },
+      city_player_estate: { color: "#fbbf24", label: "🏰 Dinh Thự", textColor: "#fef08a" },
       city_collection_hall: { color: "#e11d48", label: isJapanMap ? "🗼 Tháp Bảo Tàng" : "🏛️ Sưu Tầm", textColor: "#fecdd3" },
       city_backpack_shop: { color: "#facc15", label: isJapanMap ? "🎒 Akihabara" : "🏪 Shop Balo", textColor: "#fef08a" },
       city_clothing_shop: { color: "#c084fc", label: isJapanMap ? "👘 Kimono" : "👔 Shop Áo", textColor: "#e9d5ff" },
@@ -4586,7 +4587,8 @@ export class Hud {
 
     const hasOwnHouse = Boolean(this.scene.getEstateState().houseId);
     for (const prop of this.scene.data.props) {
-      if (prop.kind === "city_collection_hall" && hasOwnHouse) continue;
+      if ((prop.kind === "city_collection_hall" || prop.kind === "city_home_house") && hasOwnHouse) continue;
+      if (prop.kind === "city_player_estate" && !hasOwnHouse) continue;
       const poi = mapPoiStyles[prop.kind];
       if (!poi) continue;
       const sxp = toX(prop.x);
@@ -4731,8 +4733,14 @@ export class Hud {
     const hasExternalGrid = this.isHomeStorageOpen || this.activeContainer !== null;
     this.bagGridsWrapEl.classList.toggle("is-single", !hasExternalGrid);
 
+    const estateState = this.scene.getEstateState();
+    const hasOwnHouse = Boolean(estateState.houseId);
+    const ownerDisplayName = estateState.ownerName || this.scene.getPlayerDisplayName();
+
     this.bagTitleEl.textContent = this.isHomeStorageOpen
-      ? "🏠 Nhà Riêng (Kho Lưu Trữ Vĩnh Viễn)"
+      ? hasOwnHouse
+        ? `🏰 Dinh Thự ${ownerDisplayName} (Kho Vĩnh Viễn & Phòng Sưu Tầm)`
+        : "🏠 Nhà Riêng (Kho Lưu Trữ Vĩnh Viễn)"
       : this.activeContainer
         ? `🔍 Tìm Kiếm: ${this.activeContainer.title}`
         : bp
@@ -4760,13 +4768,41 @@ export class Hud {
       this.bagStatsEl.appendChild(s);
     }
 
+    // Nếu đang ở Dinh Thự đã mua (đã ẩn Phòng Sưu Tầm công cộng) -> hiện nút mở Phòng Sưu Tầm ngay trên thanh tiêu đề
+    if (this.isHomeStorageOpen && hasOwnHouse) {
+      const slots = this.scene.inventory.getCollectionHallStates();
+      let dispCount = 0;
+      let wCount = 0;
+      let gCount = 0;
+      for (const def of COLLECTION_RED_ITEMS) {
+        const st = slots[def.id];
+        if (st?.displayed) dispCount++;
+        if (st?.lightLevel === 1) wCount++;
+        if (st?.lightLevel === 2) gCount++;
+      }
+      const collBtn = document.createElement("button");
+      collBtn.type = "button";
+      collBtn.className = "bag-stat-pill is-collection-btn";
+      collBtn.textContent = `🏛️ Sưu Tầm Đồ Đỏ (${dispCount}/${COLLECTION_RED_ITEMS.length} • ⚪${wCount} • 🟡${gCount}) ▸`;
+      collBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.openCollectionModal();
+      });
+      this.bagStatsEl.appendChild(collBtn);
+    }
+
     this.activeScanFillEl = null;
+
+    // Dọn dải sưu tầm cũ trong containerPanelEl trước khi render lại
+    this.containerPanelEl.querySelector("#estate-home-collection-strip")?.remove();
 
     if (this.isHomeStorageOpen) {
       const homeTier = this.scene.inventory.getHomeTier();
       this.containerPanelEl.classList.remove("is-hidden");
       this.openHomeUpgradeBtn.classList.remove("is-hidden");
-      this.containerTitleEl.textContent = `🏠 ${homeTier.name}`;
+      this.containerTitleEl.textContent = hasOwnHouse
+        ? `🏰 Kho ${homeTier.name}`
+        : `🏠 ${homeTier.name}`;
       this.updateContainerSubtitle();
       this.renderDeltaGrid(
         this.containerGridEl,
@@ -4776,6 +4812,63 @@ export class Hud {
         "home",
         true,
       );
+
+      // Hiển thị trực tiếp Danh Sách Sưu Tầm & Cấp Độ Ánh Sáng ngay trong Dinh Thự
+      if (hasOwnHouse) {
+        const slots = this.scene.inventory.getCollectionHallStates();
+        const strip = document.createElement("div");
+        strip.id = "estate-home-collection-strip";
+        strip.className = "home-collection-strip";
+
+        const header = document.createElement("div");
+        header.className = "home-collection-strip-head";
+        header.innerHTML = `
+          <span>🏛️ <strong>Danh Sách Sưu Tầm &amp; Cấp Độ</strong></span>
+          <button type="button" class="btn-home-open-coll">✨ Quản Lý &amp; Nâng Cấp ▸</button>
+        `;
+        header.querySelector(".btn-home-open-coll")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.openCollectionModal();
+        });
+        strip.appendChild(header);
+
+        const list = document.createElement("div");
+        list.className = "home-collection-strip-list";
+        for (const def of COLLECTION_RED_ITEMS) {
+          const st = slots[def.id] ?? { displayed: false, lightLevel: 0, goldLampProgress: 0 };
+          const chip = document.createElement("button");
+          chip.type = "button";
+          const levelClass =
+            st.lightLevel === 2
+              ? "is-gold"
+              : st.lightLevel === 1
+                ? "is-white"
+                : st.displayed
+                  ? "is-red"
+                  : "is-empty";
+          const levelLabel =
+            st.lightLevel === 2
+              ? "🟡 Đèn Vàng"
+              : st.lightLevel === 1
+                ? "⚪ Đèn Trắng"
+                : st.displayed
+                  ? "🔴 Đang Trưng"
+                  : "Chưa trưng";
+          chip.className = `home-coll-chip ${levelClass}`;
+          chip.title = `${def.name} — ${levelLabel}`;
+          chip.innerHTML = `
+            <img src="${withAssetHash(def.iconSrc)}" alt="${def.name}" class="home-coll-icon" />
+            <span class="home-coll-lvl">${levelLabel}</span>
+          `;
+          chip.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.openCollectionModal();
+          });
+          list.appendChild(chip);
+        }
+        strip.appendChild(list);
+        this.containerPanelEl.appendChild(strip);
+      }
     } else if (this.activeContainer) {
       this.containerPanelEl.classList.remove("is-hidden");
       this.openHomeUpgradeBtn.classList.add("is-hidden");
@@ -6364,6 +6457,18 @@ export class Hud {
       pill.className = "bag-stat-pill";
       pill.textContent = txt;
       this.collectionStatsEl.appendChild(pill);
+    }
+
+    if (this.scene.isAtHome() || Boolean(this.scene.getEstateState().houseId)) {
+      const backBtn = document.createElement("button");
+      backBtn.type = "button";
+      backBtn.className = "bag-stat-pill is-collection-btn";
+      backBtn.textContent = "⬅️ Quay lại Kho Dinh Thự";
+      backBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.openHomeStorageModal();
+      });
+      this.collectionStatsEl.appendChild(backBtn);
     }
 
     this.collectionGridEl.replaceChildren();
