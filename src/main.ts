@@ -178,6 +178,9 @@ async function bootstrap(): Promise<void> {
       onOpenPetGacha: () => {
         hud?.openPetGachaModal();
       },
+      onOpenRealEstate: (initialTab) => {
+        hud?.openRealEstateModal(initialTab);
+      },
       onMapChanged: () => {
         hud?.handleMapChanged();
       },
@@ -220,6 +223,7 @@ async function bootstrap(): Promise<void> {
       onVaultUnlocked: ({ mapId, containerId, chestId, container }) => {
         cloudSync.broadcastVaultUnlocked(mapId, containerId, chestId, container);
       },
+      getPlayerDisplayName: () => cloudSync.getActiveDisplayName(),
     },
     saveLoadResult.save,
   );
@@ -227,6 +231,8 @@ async function bootstrap(): Promise<void> {
   app.stage.addChild(worldScene.stageLayer);
 
   hud = new Hud(worldScene, cloudSync);
+  (window as unknown as { __WORLD_SCENE__?: WorldScene; __HUD__?: Hud }).__WORLD_SCENE__ = worldScene;
+  (window as unknown as { __WORLD_SCENE__?: WorldScene; __HUD__?: Hud }).__HUD__ = hud;
   if (worldScene.needsOnboarding()) {
     hud.openOnboardingModal();
   } else if (worldScene.isDetained()) {

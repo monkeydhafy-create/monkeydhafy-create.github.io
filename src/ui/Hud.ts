@@ -77,13 +77,30 @@ import {
   type ReputationCategory,
 } from "../world/ReputationSystem.ts";
 import {
+  HOUSE_DISCOUNT_PCT,
+  HOUSE_MODELS,
+  HOUSE_TIER_AURA_CONFIG,
+  TILE_PRICE_GOLD,
+  TOTAL_DISTRICT_TILES,
+  canClaimDailyDividend,
+  getHouseModelDef,
+  getPlotTierDef,
+  type HouseModelDef,
+  type PlayerEstateState,
+} from "../world/EstateCatalog.ts";
+import {
   PET_BY_ID,
   PET_CATALOG,
   PET_GACHA_COST_GOLD,
   formatPetBonusSummary,
   type GachaRollOutcome,
 } from "../world/PetSystem.ts";
-import type { PendingVaultTarget, ShopKind, WorldScene } from "../world/WorldScene.ts";
+import type {
+  EstateInteractSnapshot,
+  PendingVaultTarget,
+  ShopKind,
+  WorldScene,
+} from "../world/WorldScene.ts";
 import type { AuctionListingRow, CloudSyncStatus, SupabaseSync } from "../cloud/SupabaseSync.ts";
 import {
   ArcadeMinigameController,
@@ -504,6 +521,19 @@ export class Hud {
   private readonly auctionStatusMsgEl: HTMLElement;
   private readonly auctionTabBtns: NodeListOf<HTMLButtonElement>;
 
+  private readonly realEstateModalEl: HTMLElement;
+  private readonly estateCloseBtn: HTMLButtonElement;
+  private readonly estateStatsEl: HTMLElement;
+  private readonly estateTabBtns: NodeListOf<HTMLButtonElement>;
+  private readonly estateTierFilterBarEl: HTMLElement;
+  private readonly estateFilterBtns: NodeListOf<HTMLButtonElement>;
+  private readonly estateBodyEl: HTMLElement;
+  private readonly estateStatusMsgEl: HTMLElement;
+  private isRealEstateOpen = false;
+  private realEstateTab: "plot" | "build" | "manage" = "plot";
+  private realEstateFilterTier: "all" | "1" | "2" | "3" | "4" = "all";
+  private readonly estateModeBarEl: HTMLElement;
+
   private readonly onboardModalEl: HTMLElement;
   private readonly onboardMaleBtn: HTMLButtonElement;
   private readonly onboardFemaleBtn: HTMLButtonElement;
@@ -842,6 +872,23 @@ export class Hud {
     this.auctionStatusMsgEl = document.getElementById("auction-status-msg")!;
     this.auctionTabBtns = document.querySelectorAll<HTMLButtonElement>(".auction-tab-btn");
 
+    this.realEstateModalEl = document.getElementById("real-estate-modal")!;
+    this.estateCloseBtn = document.getElementById("btn-estate-close") as HTMLButtonElement;
+    this.estateStatsEl = document.getElementById("estate-stats")!;
+    this.estateTabBtns = document.querySelectorAll<HTMLButtonElement>(".estate-tab-btn");
+    this.estateTierFilterBarEl = document.getElementById("estate-tier-filter-bar")!;
+    this.estateFilterBtns = document.querySelectorAll<HTMLButtonElement>(".estate-filter-btn");
+    this.estateBodyEl = document.getElementById("estate-body")!;
+    this.estateStatusMsgEl = document.getElementById("estate-status-msg")!;
+
+    this.estateModeBarEl = document.createElement("div");
+    this.estateModeBarEl.id = "estate-mode-bar";
+    this.estateModeBarEl.className = "estate-mode-bar";
+    this.estateModeBarEl.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.estateModeBarEl.addEventListener("click", (e) => e.stopPropagation());
+    document.body.appendChild(this.estateModeBarEl);
+    this.scene.subscribeEstateInteract((snap) => this.renderEstateModeBar(snap));
+
     this.onboardModalEl = document.getElementById("onboarding-modal")!;
     this.onboardMaleBtn = document.getElementById("btn-onboard-male") as HTMLButtonElement;
     this.onboardFemaleBtn = document.getElementById("btn-onboard-female") as HTMLButtonElement;
@@ -906,7 +953,8 @@ export class Hud {
       | "reputation"
       | "pet"
       | "guide"
-      | "account",
+      | "account"
+      | "estate",
   ): void {
     if (except !== "bag" && this.isBagOpen) {
       this.setBagOpen(false);
@@ -972,6 +1020,10 @@ export class Hud {
       this.isAuctionOpen = false;
       this.auctionModalEl.classList.remove("is-open");
       void this.cloudSync?.unsubscribeAuctionChannel();
+    }
+    if (except !== "estate" && this.isRealEstateOpen) {
+      this.isRealEstateOpen = false;
+      this.realEstateModalEl.classList.remove("is-open");
     }
     if (except !== "fullmap" && this.isFullmapOpen) {
       this.isFullmapOpen = false;
@@ -2023,6 +2075,473 @@ export class Hud {
     await this.refreshAuctionListings(true);
   }
 
+  public openRealEstateModal(initialTab?: "plot" | "build" | "manage"): void {
+    this.scene.exitEstateInteractMode();
+    this.closeAllModals("estate");
+    this.isRealEstateOpen = true;
+    if (initialTab) {
+      this.realEstateTab = initialTab;
+    }
+    this.setRealEstateStatus("", false);
+    this.realEstateModalEl.classList.add("is-open");
+    this.renderRealEstateModal();
+  }
+
+  private setRealEstateStatus(msg: string, isError = false): void {
+    if (!this.estateStatusMsgEl) return;
+    this.estateStatusMsgEl.textContent = msg;
+    this.estateStatusMsgEl.className = msg
+      ? `estate-status-msg is-visible ${isError ? "is-error" : "is-success"}`
+      : "estate-status-msg";
+  }
+
+  private renderEstateModeBar(snap: EstateInteractSnapshot): void {
+    if (snap.mode === "none") {
+      this.estateModeBarEl.classList.remove("is-open");
+      this.estateModeBarEl.innerHTML = "";
+      return;
+    }
+
+    const gold = this.scene.inventory.getGold();
+    this.estateModeBarEl.classList.add("is-open");
+
+    if (snap.mode === "buy_tiles") {
+      const count = snap.selectedTileKeys.length;
+      const cost = snap.selectedCostGold;
+      const canBuy = count > 0 && gold >= cost;
+      const lotInfo = snap.hoverLotName ? ` • Khu: ${snap.hoverLotName}` : "";
+
+      this.estateModeBarEl.innerHTML = `
+        <div class="estate-bar-top">
+          <div class="estate-bar-title">
+            <span class="estate-bar-pill is-buy">🗺️ MUA ĐẤT TRỰC TIẾP</span>
+            <span class="estate-bar-info">Đã có: <strong>${snap.ownedTileCount}/${TOTAL_DISTRICT_TILES} ô</strong>${lotInfo} • Ví: <strong class="price-gold">${gold.toLocaleString("vi-VN")}🪙</strong></span>
+          </div>
+          <div class="estate-bar-actions">
+            <button id="btn-bar-buy-tiles" class="btn-bar-primary" type="button" ${!canBuy ? "disabled" : ""}>
+              ${count === 0 ? "Click chọn ô đất trên bản đồ" : gold < cost ? `Thiếu ${(cost - gold).toLocaleString("vi-VN")}🪙` : `✅ MUA ${count} Ô (${cost.toLocaleString("vi-VN")}🪙)`}
+            </button>
+            ${count > 0 ? `<button id="btn-bar-clear-tiles" class="btn-bar-ghost" type="button">Bỏ chọn</button>` : ""}
+            <button id="btn-bar-open-build" class="btn-bar-secondary" type="button">🏗️ Chọn nhà</button>
+            <button id="btn-bar-exit" class="btn-bar-close" type="button">✖ Xong</button>
+          </div>
+        </div>
+        ${snap.statusMessage ? `<div class="estate-bar-status ${snap.statusIsError ? "is-error" : ""}">${snap.statusMessage}</div>` : ""}
+      `;
+
+      this.estateModeBarEl.querySelector("#btn-bar-buy-tiles")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.purchaseSelectedEstateTiles();
+      });
+      this.estateModeBarEl.querySelector("#btn-bar-clear-tiles")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.clearSelectedEstateTiles();
+      });
+      this.estateModeBarEl.querySelector("#btn-bar-open-build")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.exitEstateInteractMode();
+        this.openRealEstateModal("build");
+      });
+      this.estateModeBarEl.querySelector("#btn-bar-exit")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.exitEstateInteractMode();
+      });
+    } else if (snap.mode === "place_house") {
+      const missingCount = snap.hoverMissingKeys.length;
+      const missingCost = missingCount * TILE_PRICE_GOLD;
+      const canQuickBuyMissing = missingCount > 0 && snap.hoverBlockedCount === 0 && gold >= missingCost;
+
+      this.estateModeBarEl.innerHTML = `
+        <div class="estate-bar-top">
+          <div class="estate-bar-title">
+            <span class="estate-bar-pill is-build">🏗️ ĐẶT NHÀ (${snap.placingTier}×${snap.placingTier})</span>
+            <span class="estate-bar-info"><strong>${snap.placingModelName ?? ""}</strong> • Giá xây: <strong class="price-gold">${snap.placingCostGold.toLocaleString("vi-VN")}🪙</strong> • Rê chuột vào vùng ô đất xanh rồi <strong>Click</strong> để xây!</span>
+          </div>
+          <div class="estate-bar-actions">
+            ${
+              missingCount > 0 && snap.hoverBlockedCount === 0
+                ? `<button id="btn-bar-quick-buy-missing" class="btn-bar-primary" type="button" ${!canQuickBuyMissing ? "disabled" : ""}>🛒 Mua nhanh ${missingCount} ô thiếu (${missingCost.toLocaleString("vi-VN")}🪙)</button>`
+                : ""
+            }
+            <button id="btn-bar-change-house" class="btn-bar-secondary" type="button">🔄 Đổi mẫu nhà</button>
+            <button id="btn-bar-exit" class="btn-bar-close" type="button">✖ Hủy (ESC)</button>
+          </div>
+        </div>
+        ${snap.statusMessage ? `<div class="estate-bar-status ${snap.statusIsError ? "is-error" : ""}">${snap.statusMessage}</div>` : ""}
+      `;
+
+      this.estateModeBarEl.querySelector("#btn-bar-quick-buy-missing")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const res = this.scene.purchaseWorldTiles(snap.hoverMissingKeys);
+        if (res.ok) {
+          this.scene.refreshEstateOverlays();
+        }
+      });
+      this.estateModeBarEl.querySelector("#btn-bar-change-house")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.exitEstateInteractMode();
+        this.openRealEstateModal("build");
+      });
+      this.estateModeBarEl.querySelector("#btn-bar-exit")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.exitEstateInteractMode();
+      });
+    }
+  }
+
+  private renderRealEstateModal(): void {
+    const estate = this.scene.getEstateState();
+    const inv = this.scene.inventory;
+    const rep = this.scene.getReputationSummary();
+    const gold = inv.getGold();
+    const repPoints = rep.state.points;
+
+    const ownedCount = (estate.ownedWorldTiles ?? []).length;
+    const houseModel = getHouseModelDef(estate.houseId);
+
+    const plotName = ownedCount > 0 ? `Đã mua ${ownedCount}/${TOTAL_DISTRICT_TILES} ô (Tối đa ${estate.plotTier}×${estate.plotTier})` : "Chưa mua ô đất nào";
+    const houseName = houseModel ? houseModel.name : "Chưa xây nhà";
+
+    this.estateStatsEl.textContent = `💰 ${gold.toLocaleString("vi-VN")} Vàng • 🎖️ ${repPoints.toLocaleString("vi-VN")} Danh Vọng • 🏞️ ${plotName} • 🏰 ${houseName}`;
+
+    this.estateTabBtns.forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.estateTab === this.realEstateTab);
+    });
+
+    this.estateTierFilterBarEl.classList.toggle("hidden", this.realEstateTab !== "build");
+    this.estateFilterBtns.forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.filterTier === this.realEstateFilterTier);
+    });
+
+    this.estateBodyEl.innerHTML = "";
+
+    if (this.realEstateTab === "plot") {
+      this.renderEstatePlotTab(estate, gold, repPoints);
+    } else if (this.realEstateTab === "build") {
+      this.renderEstateBuildTab(estate, gold);
+    } else {
+      this.renderEstateManageTab(estate, houseModel);
+    }
+  }
+
+  private renderEstatePlotTab(estate: PlayerEstateState, _gold: number, _repPoints: number): void {
+    const wrap = document.createElement("div");
+    wrap.className = "estate-plot-view";
+
+    const ownedCount = (estate.ownedWorldTiles ?? []).length;
+
+    const hero = document.createElement("div");
+    hero.className = "estate-plot-hero";
+    hero.innerHTML = `
+      <div class="estate-plot-hero-top">
+        <div>
+          <h2 class="plot-banner-title">🗺️ Chọn &amp; Mua Ô Đất Trực Tiếp Trên Khu Biệt Thự Ven Hồ</h2>
+          <p class="plot-banner-desc">
+            Toàn bộ Khu Biệt Thự Vùng Xanh có <strong>15 khu đất lớn (240 ô 1×1)</strong> quanh hồ &amp; công viên.
+            Bạn tự do chọn mua từng ô riêng lẻ (<strong class="price-gold">${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙/ô</strong>) ở bất kỳ vị trí nào bạn thích — ven hồ, gần công viên hay mặt tiền đường!
+          </p>
+        </div>
+        <div class="plot-banner-stats">
+          <div class="banner-stat-box">
+            <span class="stat-num">${ownedCount}</span>
+            <span class="stat-lbl">Ô Đã Mua</span>
+          </div>
+          <div class="banner-stat-box">
+            <span class="stat-num tier-highlight">${estate.plotTier > 0 ? `${estate.plotTier}×${estate.plotTier}` : "0"}</span>
+            <span class="stat-lbl">Cụm Lớn Nhất</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="estate-hero-cta-row">
+        <button id="btn-open-map-buy-tiles" class="btn-card-primary btn-estate-hero-cta" type="button">
+          🗺️ MỞ BẢN ĐỒ CHỌN MUA TỪNG Ô ĐẤT (${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙 / Ô)
+        </button>
+        <button id="btn-goto-build-from-plot" class="btn-card-secondary btn-estate-hero-sub" type="button">
+          🏗️ Sang Chọn Mẫu Nhà Xây Dựng
+        </button>
+      </div>
+    `;
+
+    hero.querySelector("#btn-open-map-buy-tiles")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+      this.scene.startEstateBuyTilesMode();
+    });
+    hero.querySelector("#btn-goto-build-from-plot")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.realEstateTab = "build";
+      this.renderRealEstateModal();
+    });
+
+    wrap.appendChild(hero);
+
+    // 4 thẻ quy chuẩn diện tích siêu gọn
+    const guideEl = document.createElement("div");
+    guideEl.className = "parcel-tier-guide";
+    guideEl.innerHTML = `
+      <div class="guide-header">📐 Cách ghép ô đất để xây nhà (chỉ cần mua đủ cụm vuông liền kề):</div>
+      <div class="guide-cards">
+        <div class="guide-card tier-1">
+          <div class="guide-card-head"><span class="guide-badge tier-1">Tier 1</span> 1×1 (1 ô)</div>
+          <p>Chỉ cần <strong>1 ô</strong> bất kỳ — xây nhà gỗ, nhà tranh ấm cúng.</p>
+        </div>
+        <div class="guide-card tier-2">
+          <div class="guide-card-head"><span class="guide-badge tier-2">Tier 2</span> 2×2 (4 ô liền kề)</div>
+          <p>Ghép vuông <strong>4 ô</strong> — xây biệt thự vườn &amp; đài thiên văn.</p>
+        </div>
+        <div class="guide-card tier-3">
+          <div class="guide-card-head"><span class="guide-badge tier-3">Tier 3</span> 3×3 (9 ô liền kề)</div>
+          <p>Ghép vuông <strong>9 ô</strong> — xây đại dinh thự &amp; cung điện cẩm thạch.</p>
+        </div>
+        <div class="guide-card tier-4">
+          <div class="guide-card-head"><span class="guide-badge tier-4">Tier 4</span> 4×4 (16 ô liền kề)</div>
+          <p>Trọn 1 lô <strong>16 ô</strong> — xây đại pháo đài &amp; lâu đài hoàng gia.</p>
+        </div>
+      </div>
+    `;
+    wrap.appendChild(guideEl);
+
+    this.estateBodyEl.appendChild(wrap);
+  }
+
+  private renderEstateBuildTab(estate: PlayerEstateState, gold: number): void {
+    const wrap = document.createElement("div");
+    wrap.className = "estate-house-grid estate-house-grid-compact";
+
+    let models = Object.values(HOUSE_MODELS);
+    if (this.realEstateFilterTier !== "all") {
+      const targetTier = parseInt(this.realEstateFilterTier, 10);
+      models = models.filter((m) => m.tier === targetTier);
+    }
+
+    for (const model of models) {
+      const card = document.createElement("div");
+      card.className = `estate-house-card estate-house-card-compact tier-${model.tier}`;
+
+      const tier = model.tier;
+      const isCurrentHouse = estate.houseId === model.id;
+      const totalCost = model.blueprintCostGold + model.buildCostGold;
+      const hasEnoughGold = gold >= totalCost;
+      const hasAnotherHouse = Boolean(estate.houseId && estate.houseId !== model.id);
+      const auraCfg = HOUSE_TIER_AURA_CONFIG[tier];
+
+      card.innerHTML = `
+        <div class="estate-card-img-wrap compact">
+          <img src="${withAssetHash(model.assetSrc)}" alt="${model.name}" class="estate-house-preview" />
+          <span class="estate-badge tier-${tier}">Tier ${tier} • ${tier}×${tier} Ô</span>
+        </div>
+        <div class="estate-card-content compact">
+          <h3 class="estate-card-title">${model.name}</h3>
+          <div class="estate-compact-chips">
+            <span class="estate-chip">📦 Kho ${model.storageCols * model.storageRows} ô</span>
+            <span class="estate-chip is-buff">⚡ +${model.staminaRecoveryBonusPct}% lực</span>
+            <span class="estate-chip is-gold">🪙 +${model.dailyDividendGold.toLocaleString("vi-VN")}/ngày</span>
+          </div>
+          <div class="estate-aura-pill tier-${tier}">✨ ${auraCfg ? auraCfg.name : `Tier ${tier}`}</div>
+          <div class="estate-compact-price">
+            <span>🔥 -${HOUSE_DISCOUNT_PCT}% • Vẽ ${model.blueprintCostGold.toLocaleString("vi-VN")} + Xây ${model.buildCostGold.toLocaleString("vi-VN")}</span>
+            <strong class="price-total">${totalCost.toLocaleString("vi-VN")}🪙</strong>
+          </div>
+          <div class="estate-card-actions"></div>
+        </div>
+      `;
+
+      const actionsEl = card.querySelector(".estate-card-actions")!;
+      if (isCurrentHouse) {
+        const badge = document.createElement("span");
+        badge.className = "estate-status-tag is-owned";
+        badge.textContent = "🏰 DINH THỰ HIỆN TẠI";
+        actionsEl.appendChild(badge);
+      } else {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn-card-primary btn-estate-action";
+
+        if (hasAnotherHouse) {
+          btn.textContent = "PHẢI PHÁ NHÀ CŨ TRƯỚC";
+          btn.disabled = true;
+        } else if (!hasEnoughGold) {
+          btn.textContent = `THIẾU VÀNG (${totalCost.toLocaleString("vi-VN")}🪙)`;
+          btn.disabled = true;
+        } else {
+          btn.textContent = `📍 ĐẶT LÊN BẢN ĐỒ (${totalCost.toLocaleString("vi-VN")}🪙)`;
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.closeAllModals();
+            this.scene.startEstatePlaceHouseMode(model.id);
+          });
+        }
+        actionsEl.appendChild(btn);
+      }
+
+      wrap.appendChild(card);
+    }
+
+    this.estateBodyEl.appendChild(wrap);
+  }
+
+  private renderEstateManageTab(estate: PlayerEstateState, houseModel: HouseModelDef | null): void {
+    const wrap = document.createElement("div");
+    wrap.className = "estate-manage-view";
+
+    if (estate.plotTier === 0) {
+      wrap.innerHTML = `
+        <div class="estate-empty-box">
+          <div class="empty-icon">🏞️</div>
+          <h3>Bạn Chưa Sở Hữu Lô Đất Nào</h3>
+          <p>Hãy chuyển sang tab <strong>Mua &amp; Nâng Cấp Đất</strong> để đăng ký sở hữu ô đất từ 1×1 đến 4×4 tại khu dân cư cao cấp ven hồ.</p>
+          <button id="btn-goto-plot-tab" class="btn-card-primary" type="button">Xem Danh Sách Đất Quy Hoạch</button>
+        </div>
+      `;
+      const btn = wrap.querySelector("#btn-goto-plot-tab") as HTMLButtonElement;
+      btn?.addEventListener("click", () => {
+        this.realEstateTab = "plot";
+        this.renderRealEstateModal();
+      });
+      this.estateBodyEl.appendChild(wrap);
+      return;
+    }
+
+    const plotDef = getPlotTierDef(estate.plotTier);
+
+    if (!houseModel) {
+      wrap.innerHTML = `
+        <div class="estate-manage-card">
+          <div class="estate-card-header">
+            <span class="estate-badge tier-${estate.plotTier}">Ô Đất ${plotDef ? plotDef.name : `Tier ${estate.plotTier}`}</span>
+            <h2>Hiện trạng: Đất Trống Đã Cắm Mốc (Chưa Xây Nhà)</h2>
+          </div>
+          <p class="estate-manage-desc">
+            Bạn đã sở hữu lô đất diện tích <strong>${plotDef ? `${plotDef.cols}×${plotDef.rows}` : ""}</strong>.
+            Bảo vật sưu tầm của bạn tạm thời vẫn đang được trưng bày tại Phòng Sưu Tầm công cộng.
+          </p>
+          <div class="estate-manage-actions">
+            <button id="btn-goto-build-tab" class="btn-card-primary" type="button">🏗️ Mở Kho Bản Vẽ &amp; Chọn Mẫu Nhà Xây Ngay</button>
+          </div>
+        </div>
+      `;
+      const btn = wrap.querySelector("#btn-goto-build-tab") as HTMLButtonElement;
+      btn?.addEventListener("click", () => {
+        this.realEstateTab = "build";
+        this.renderRealEstateModal();
+      });
+      this.estateBodyEl.appendChild(wrap);
+      return;
+    }
+
+    const netRefund = houseModel.demolishRefundGold - houseModel.demolishCostGold;
+    const canClaimDividend = canClaimDailyDividend(estate);
+    const ownerName = estate.ownerName || this.scene.getPlayerDisplayName();
+
+    wrap.innerHTML = `
+      <div class="estate-manage-card tier-${houseModel.tier}">
+        <div class="estate-manage-top">
+          <img src="${withAssetHash(houseModel.assetSrc)}" alt="${houseModel.name}" class="estate-manage-thumb" />
+          <div class="estate-manage-info">
+            <span class="estate-badge tier-${houseModel.tier}">Tier ${houseModel.tier} (${houseModel.tier}×${houseModel.tier})</span>
+            <h2>${houseModel.name}</h2>
+            <p class="estate-card-sub">${houseModel.subtitle}</p>
+            <div class="estate-specs-list">
+              <div class="estate-spec-item">
+                <span class="spec-label">👤 Chủ nhân sở hữu:</span>
+                <span class="spec-value owner-highlight">👑 ${ownerName}</span>
+              </div>
+              <div class="estate-spec-item">
+                <span class="spec-label">📦 Sức chứa kho vĩnh viễn:</span>
+                <span class="spec-value">${houseModel.storageCols}×${houseModel.storageRows} (${houseModel.storageCols * houseModel.storageRows} ô)</span>
+              </div>
+              <div class="estate-spec-item">
+                <span class="spec-label">⚡ Hồi phục thể lực:</span>
+                <span class="spec-value buff-value">+${houseModel.staminaRecoveryBonusPct}%</span>
+              </div>
+              <div class="estate-spec-item">
+                <span class="spec-label">🪐 Bảo vật bay quanh:</span>
+                <span class="spec-value">${houseModel.orbitCount} đồ đỏ phát kim quang</span>
+              </div>
+              <div class="estate-spec-item highlight-dividend">
+                <span class="spec-label">💰 Cổ tức mỗi ngày:</span>
+                <span class="spec-value price-dividend">+${houseModel.dailyDividendGold.toLocaleString("vi-VN")}🪙 / ngày</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="estate-security-banner">
+          <span class="security-shield-icon">🛡️</span>
+          <div class="security-info">
+            <h4>Bảo Mật Dinh Thự: Bất Khả Xâm Phạm (Chủ Nhân: ${ownerName})</h4>
+            <p>Dinh thự riêng của <strong>${ownerName}</strong> được bảo vệ an ninh tuyệt đối bởi Luật Hoàng Gia Vùng Xanh. Người chơi khác hoàn toàn <strong>KHÔNG THỂ loot</strong> hay cướp phá bất kỳ vật phẩm nào trong kho đồ của bạn.</p>
+          </div>
+        </div>
+
+        <div class="estate-privileges-box">
+          <div class="privileges-header">
+            <h4>👑 Đặc Quyền Chủ Sở Hữu Dinh Thự</h4>
+            <p>Nhận cổ tức thụ động hàng ngày và sử dụng cổng dịch chuyển nhanh độc quyền về trước cửa nhà.</p>
+          </div>
+          <div class="privileges-actions-row">
+            ${
+              canClaimDividend
+                ? `<button id="btn-claim-dividend" class="btn-card-gold" type="button">
+                    💰 Nhận Cổ Tức Hoàng Gia (+${houseModel.dailyDividendGold.toLocaleString("vi-VN")}🪙)
+                   </button>`
+                : `<button id="btn-claim-dividend" class="btn-card-gold is-claimed" type="button" disabled>
+                    ✅ Đã Nhận Cổ Tức Hôm Nay (+${houseModel.dailyDividendGold.toLocaleString("vi-VN")}🪙)
+                   </button>`
+            }
+            <button id="btn-teleport-estate" class="btn-card-primary btn-teleport-estate" type="button">
+              🏰 Dịch Chuyển Về Dinh Thự
+            </button>
+          </div>
+        </div>
+
+        <div class="estate-demolish-box">
+          <div class="demolish-warning">
+            <h4>💥 Quy Hoạch &amp; Phá Dỡ Dinh Thự</h4>
+            <p>
+              Khi phá dỡ ngôi nhà, công nhân sẽ tiến hành thu hồi vật liệu.
+              Bạn phải trả <strong>${houseModel.demolishCostGold.toLocaleString("vi-VN")}🪙</strong> chi phí phá dỡ và nhận lại <strong>${houseModel.demolishRefundGold.toLocaleString("vi-VN")}🪙</strong> tiền vật liệu hoàn trả
+              (Lợi nhuận ròng: <strong class="price-refund">${netRefund >= 0 ? "+" : ""}${netRefund.toLocaleString("vi-VN")}🪙</strong>).
+              Toàn bộ bảo vật sưu tầm sẽ được chuyển ngược lại Phòng Sưu Tầm công cộng.
+            </p>
+          </div>
+          <button id="btn-demolish-house" class="btn-card-danger btn-demolish" type="button">
+            💥 Phá Dỡ Nhà &amp; Thu Hồi ${houseModel.demolishRefundGold.toLocaleString("vi-VN")}🪙
+          </button>
+        </div>
+      </div>
+    `;
+
+    const claimDividendBtn = wrap.querySelector("#btn-claim-dividend") as HTMLButtonElement;
+    claimDividendBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const res = this.scene.claimDailyEstateDividend();
+      this.setRealEstateStatus(res.message, !res.ok);
+      this.renderRealEstateModal();
+    });
+
+    const teleportBtn = wrap.querySelector("#btn-teleport-estate") as HTMLButtonElement;
+    teleportBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const res = this.scene.teleportToEstate();
+      this.setRealEstateStatus(res.message, !res.ok);
+      if (res.ok) {
+        this.closeAllModals();
+      }
+    });
+
+    const demolishBtn = wrap.querySelector("#btn-demolish-house") as HTMLButtonElement;
+    demolishBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const res = this.scene.demolishHouse();
+      this.setRealEstateStatus(res.message, !res.ok);
+      this.renderRealEstateModal();
+    });
+
+    this.estateBodyEl.appendChild(wrap);
+  }
+
   public openPetGachaModal(tab: "gacha" | "roster" = "gacha"): void {
     this.closeAllModals("pet");
     this.isPetModalOpen = true;
@@ -2909,6 +3428,12 @@ export class Hud {
     } else if (target.type === "gacha") {
       nextClass = "btn-interact is-shop";
       nextText = `🐾 Vào ${target.name} [E]`;
+    } else if (target.type === "real_estate") {
+      nextClass = "btn-interact is-shop";
+      nextText = `🏛️ Vào ${target.name} [E]`;
+    } else if (target.type === "estate_house") {
+      nextClass = "btn-interact is-shop";
+      nextText = `🏰 Vào ${target.name} [E] (Bảo Mật Tuyệt Đối • Không Thể Bị Loot)`;
     } else if (target.type === "auction") {
       nextClass = "btn-interact is-shop";
       nextText = `⚖️ Vào ${target.name} [E]`;
@@ -3799,6 +4324,35 @@ export class Hud {
       void this.refreshAuctionListings();
     });
 
+    this.estateCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+    });
+    this.realEstateModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.realEstateModalEl) this.closeAllModals();
+    });
+    this.estateTabBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const tab = btn.dataset.estateTab as "plot" | "build" | "manage" | undefined;
+        if (tab) {
+          this.realEstateTab = tab;
+          this.renderRealEstateModal();
+        }
+      });
+    });
+    this.estateFilterBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const tier = btn.dataset.filterTier as "all" | "1" | "2" | "3" | "4" | undefined;
+        if (tier) {
+          this.realEstateFilterTier = tier;
+          this.renderRealEstateModal();
+        }
+      });
+    });
+
     this.purchaseModalEl.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
       if (e.target === this.purchaseModalEl) this.closePurchaseConfirm();
@@ -4030,7 +4584,9 @@ export class Hud {
       jp_snow_onsen_temple: { color: "#7dd3fc", label: "♨️ Đền Tuyết", textColor: "#e0f2fe" },
     };
 
+    const hasOwnHouse = Boolean(this.scene.getEstateState().houseId);
     for (const prop of this.scene.data.props) {
+      if (prop.kind === "city_collection_hall" && hasOwnHouse) continue;
       const poi = mapPoiStyles[prop.kind];
       if (!poi) continue;
       const sxp = toX(prop.x);

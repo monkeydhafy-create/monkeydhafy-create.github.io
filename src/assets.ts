@@ -53,6 +53,26 @@ const RAW_ASSETS = [
   { alias: "bld-rural_dutch_barn", src: "assets/world/buildings/rural_dutch_barn.png" },
   { alias: "bld-rural_log_cabin", src: "assets/world/buildings/rural_log_cabin.png" },
 
+  // Real Estate Center & 16 Custom Estate Architecture Models
+  { alias: "bld-city_real_estate_center", src: "assets/world/estates/city_real_estate_center.png" },
+  { alias: "bld-estate_flower_garden", src: "assets/world/estates/estate_flower_garden.png" },
+  { alias: "estate-tier1_01_gable_cottage", src: "assets/world/estates/tier1_01_gable_cottage.png" },
+  { alias: "estate-tier1_02_thatched_cottage", src: "assets/world/estates/tier1_02_thatched_cottage.png" },
+  { alias: "estate-tier1_03_town_house_mini", src: "assets/world/estates/tier1_03_town_house_mini.png" },
+  { alias: "estate-tier1_04_bakery_cozy", src: "assets/world/estates/tier1_04_bakery_cozy.png" },
+  { alias: "estate-tier2_01_courtyard_tree", src: "assets/world/estates/tier2_01_courtyard_tree.png" },
+  { alias: "estate-tier2_02_balcony_villa", src: "assets/world/estates/tier2_02_balcony_villa.png" },
+  { alias: "estate-tier2_03_corner_tower_manor", src: "assets/world/estates/tier2_03_corner_tower_manor.png" },
+  { alias: "estate-tier2_04_observatory_villa", src: "assets/world/estates/tier2_04_observatory_villa.png" },
+  { alias: "estate-tier3_01_grand_mansion_u", src: "assets/world/estates/tier3_01_grand_mansion_u.png" },
+  { alias: "estate-tier3_02_clock_tower_hall", src: "assets/world/estates/tier3_02_clock_tower_hall.png" },
+  { alias: "estate-tier3_03_marble_palace", src: "assets/world/estates/tier3_03_marble_palace.png" },
+  { alias: "estate-tier3_04_crystal_glasshouse", src: "assets/world/estates/tier3_04_crystal_glasshouse.png" },
+  { alias: "estate-tier4_01_concentric_castle", src: "assets/world/estates/tier4_01_concentric_castle.png" },
+  { alias: "estate-tier4_02_octagon_castle", src: "assets/world/estates/tier4_02_octagon_castle.png" },
+  { alias: "estate-tier4_03_cathedral_spire_palace", src: "assets/world/estates/tier4_03_cathedral_spire_palace.png" },
+  { alias: "estate-tier4_04_twin_spired_abbey", src: "assets/world/estates/tier4_04_twin_spired_abbey.png" },
+
   // World-space interactive chests (item PNGs are lazy-loaded by HTML <img> inside UI modals)
   { alias: "chest-closed", src: "assets/world/chest_closed.png" },
   { alias: "chest-open", src: "assets/world/chest_open.png" },

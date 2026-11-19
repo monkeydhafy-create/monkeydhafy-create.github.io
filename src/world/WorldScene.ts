@@ -5,6 +5,7 @@ import { withAssetHash } from "../assetUrl.ts";
 import type {
   LiveStatePayload,
   RemotePlayerAppearance,
+  RemotePlayerEstateSummary,
   RemotePlayerMovePacket,
 } from "../cloud/SupabaseSync.ts";
 import type { PlayerGameSaveV3 } from "../security/SaveVault.ts";
@@ -117,6 +118,26 @@ import {
   type GachaRollOutcome,
   type PetDef,
 } from "./PetSystem.ts";
+import {
+  ALL_PURCHASABLE_ESTATE_TILES,
+  canBuildHouseAtWorld,
+  canClaimDailyDividend,
+  computeMaxOwnedTierWorld,
+  createDefaultPlayerEstateState,
+  findFirstValidHouseAnchorWorld,
+  getEstateTileInfo,
+  getHouseModelDef,
+  getPlotTierDef,
+  HOUSE_TIER_AURA_CONFIG,
+  isPurchasableEstateTile,
+  LEGACY_DEFAULT_LOT_COL,
+  LEGACY_DEFAULT_LOT_ROW,
+  makeWorldTileKey,
+  normalizeEstateOwnedTiles,
+  parseWorldTileKey,
+  TILE_PRICE_GOLD,
+  type PlayerEstateState,
+} from "./EstateCatalog.ts";
 import { WeatherParticles } from "./WeatherParticles.ts";
 
 interface RippleEffect {
@@ -218,6 +239,16 @@ export type NearbyInteraction =
       name: string;
     }
   | {
+      type: "real_estate";
+      name: string;
+      initialTab?: "plot" | "build" | "manage";
+    }
+  | {
+      type: "estate_house";
+      name: string;
+      houseId: string;
+    }
+  | {
       type: "jail_minigame";
       stationId: string;
       kind: ArcadeMinigameKind;
@@ -238,6 +269,26 @@ export type NearbyInteraction =
       y: number;
     };
 
+export type EstateInteractMode = "none" | "buy_tiles" | "place_house";
+
+export interface EstateInteractSnapshot {
+  mode: EstateInteractMode;
+  selectedTileKeys: string[];
+  selectedCostGold: number;
+  ownedTileCount: number;
+  placingModelId: string | null;
+  placingModelName: string | null;
+  placingTier: number;
+  placingCostGold: number;
+  hoverOrigin: { c: number; r: number } | null;
+  hoverCanBuild: boolean;
+  hoverMissingKeys: string[];
+  hoverBlockedCount: number;
+  hoverLotName: string | null;
+  statusMessage: string;
+  statusIsError: boolean;
+}
+
 export interface WorldCallbacks {
   onLandmarkDiscovered?: (landmark: WorldLandmark) => void;
   onOpenContainer?: (container: ContainerLootState) => void;
@@ -251,6 +302,9 @@ export interface WorldCallbacks {
   onOpenQuestBoard?: () => void;
   onOpenReputationShop?: () => void;
   onOpenPetGacha?: () => void;
+  onOpenRealEstate?: (initialTab?: "plot" | "build" | "manage") => void;
+  onEstateInteractStateChanged?: (snapshot: EstateInteractSnapshot) => void;
+  getPlayerDisplayName?: () => string;
   onMapChanged?: (activeMapId: MapId) => void;
   onConsumeCompleted?: (title: string, message: string) => void;
   onPoliceChallenge?: (officer: { id: string; name: string; biome: BiomeId; zone: SecurityZone }) => void;
@@ -277,6 +331,7 @@ export interface WorldCallbacks {
     hairId: string;
     equipped: EquippedGear;
     equippedPetId: string | null;
+    estate?: RemotePlayerEstateSummary | null;
   }) => void;
   onPoliceChaseStarted?: (officerId: string, x: number, y: number) => void;
   onVaultUnlocked?: (info: {
@@ -333,7 +388,59 @@ export class WorldScene {
   private readonly ripples: RippleEffect[] = [];
   private readonly waterWakes: WaterWake[] = [];
   private readonly waterDroplets: WaterDroplet[] = [];
-  private collectionOrbitHost: { x: number; y: number; height: number; depthY: number } | null = null;
+  private collectionOrbitHost: {
+    x: number;
+    y: number;
+    height: number;
+    depthY: number;
+    rx?: number;
+    ry?: number;
+  } | null = null;
+  private estate: PlayerEstateState;
+  private collectionHallPropContainer: Container | null = null;
+  private collectionHallSprite: Sprite | null = null;
+  private estateHouseContainer: Container | null = null;
+  private estateHouseSprite: Sprite | null = null;
+  private estateHouseShadow: Sprite | null = null;
+  private estateHouseTag: Text | null = null;
+  private estateHouseAura: Graphics | null = null;
+  private estateProp: WorldProp | null = null;
+  private readonly stadiumMarkingsLayer = new Graphics();
+  private readonly estateGroundOverlay = new Graphics();
+  private readonly estateGhostContainer = new Container();
+  private readonly estateGhostGrid = new Graphics();
+  private readonly estateGhostSprite = new Sprite();
+  private estateGhostLabel: Text | null = null;
+  private estateInteractMode: EstateInteractMode = "none";
+  private readonly estateSelectedTileKeys = new Set<string>();
+  private estateHoverTile: { c: number; r: number } | null = null;
+  private estatePlacingModelId: string | null = null;
+  private estateStatusMsg = "";
+  private estateStatusIsError = false;
+  private readonly estateInteractListeners = new Set<(snapshot: EstateInteractSnapshot) => void>();
+  private readonly remoteEstateDisplays = new Map<
+    string,
+    {
+      sig: string;
+      tier: number;
+      worldX: number;
+      worldY: number;
+      height: number;
+      container: Container;
+      aura: Graphics;
+      sprite: Sprite;
+      tag: Text;
+      orbitItems: Array<{
+        node: Container;
+        glow: Graphics;
+        lightLevel: 0 | 1 | 2;
+        phaseOffset: number;
+        radiusX: number;
+        radiusY: number;
+        speed: number;
+      }>;
+    }
+  >();
   private readonly remotePlayers = new Map<
     string,
     {
@@ -520,6 +627,16 @@ export class WorldScene {
         ? initialSave.hairId
         : HAIR_OPTIONS[0].id;
     this.gender = initialSave?.profile?.gender === "female" ? "female" : "male";
+    this.estate = initialSave?.estate
+      ? { ...initialSave.estate }
+      : createDefaultPlayerEstateState();
+    normalizeEstateOwnedTiles(this.estate);
+    if (this.estate.houseId) {
+      const model = getHouseModelDef(this.estate.houseId);
+      if (model) {
+        this.inventory.setEstateStorageBonus(model.storageCols, model.storageRows);
+      }
+    }
     this.onboardingDone = initialSave?.profile?.onboardingDone ?? true;
     this.cachedEquipStats = computeEquipmentStats(this.equipment);
     this.inventory.setEquippedGear(this.equipment);
@@ -635,12 +752,38 @@ export class WorldScene {
 
     this.entityLayer.addChild(this.player);
 
+    this.estateGhostSprite.anchor.set(0.5, 0.92);
+    this.estateGhostSprite.visible = false;
+    this.estateGhostLabel = new Text({
+      text: "",
+      style: {
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontSize: 12,
+        fontWeight: "800",
+        fill: 0xf8fafc,
+        stroke: { color: 0x0f172a, width: 4 },
+        align: "center",
+      },
+    });
+    this.estateGhostLabel.anchor.set(0.5, 1);
+    this.estateGhostLabel.visible = false;
+    this.estateGhostContainer.addChild(
+      this.estateGhostGrid,
+      this.estateGhostSprite,
+      this.estateGhostLabel,
+    );
+    this.estateGhostContainer.visible = false;
+    this.drawSportsComplexMarkings();
+
     this.worldContainer.addChild(
       this.groundLayer,
+      this.stadiumMarkingsLayer,
       this.waterAnimLayer,
       this.waterWakeLayer,
       this.pathOverlayLayer,
+      this.estateGroundOverlay,
       this.entityLayer,
+      this.estateGhostContainer,
       this.atmosphere.cloudShadowLayer,
       this.weatherParticles.worldShadedLayer,
     );
@@ -721,6 +864,7 @@ export class WorldScene {
       },
       ownedPetIds: Array.from(this.ownedPetIds),
       equippedPetId: this.equippedPetId,
+      estate: { ...this.estate },
     };
   }
 
@@ -987,6 +1131,12 @@ export class WorldScene {
           rp.petNode.destroy({ children: true });
         }
         this.remotePlayers.delete(uid);
+        this.clearRemoteEstateDisplay(uid);
+      }
+    }
+    for (const uid of Array.from(this.remoteEstateDisplays.keys())) {
+      if (!appearances.has(uid)) {
+        this.clearRemoteEstateDisplay(uid);
       }
     }
 
@@ -1114,7 +1264,162 @@ export class WorldScene {
         entry.isMoving = move.m;
         entry.lastPacketAt = performance.now();
       }
+
+      // Hiển thị dinh thự + vật phẩm trưng bày của người chơi khác (100% CHỈ XEM, KHÔNG THỂ TƯƠNG TÁC / LOOT)
+      this.syncRemoteEstateDisplay(uid, appData.estate ?? null);
     }
+  }
+
+  private clearRemoteEstateDisplay(uid: string): void {
+    const existing = this.remoteEstateDisplays.get(uid);
+    if (!existing) return;
+    existing.container.removeFromParent();
+    existing.container.destroy({ children: true });
+    for (const item of existing.orbitItems) {
+      item.node.removeFromParent();
+      item.node.destroy({ children: true });
+    }
+    this.remoteEstateDisplays.delete(uid);
+  }
+
+  private syncRemoteEstateDisplay(uid: string, estate: RemotePlayerEstateSummary | null): void {
+    if (!estate || !estate.houseId) {
+      this.clearRemoteEstateDisplay(uid);
+      return;
+    }
+    const model = getHouseModelDef(estate.houseId);
+    if (!model) {
+      this.clearRemoteEstateDisplay(uid);
+      return;
+    }
+
+    const sig = JSON.stringify(estate);
+    const existing = this.remoteEstateDisplays.get(uid);
+    if (existing && existing.sig === sig) {
+      return;
+    }
+
+    this.clearRemoteEstateDisplay(uid);
+
+    const tier = model.tier;
+    const worldX = (estate.originC + tier / 2) * TILE_SIZE;
+    const worldY = (estate.originR + tier) * TILE_SIZE - 4;
+
+    const container = new Container();
+    container.position.set(worldX, worldY);
+    container.zIndex = worldY;
+
+    const aura = new Graphics();
+    const sprite = new Sprite();
+    sprite.anchor.set(0.5, 0.92);
+
+    const tag = new Text({
+      text: `🏰 NHÀ CỦA ${(estate.ownerName || "NGƯỜI CHƠI").toUpperCase()} • CHỈ XEM (KHÔNG THỂ LOOT)`,
+      style: {
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontSize: 10,
+        fontWeight: "800",
+        fill: 0xcbd5e1,
+        stroke: { color: 0x020617, width: 3 },
+      },
+    });
+    tag.anchor.set(0.5, 1);
+
+    container.addChild(aura, sprite, tag);
+    this.entityLayer.addChild(container);
+
+    const maxLotW = tier === 4 ? 172 : tier === 3 ? 132 : tier === 2 ? 92 : 64;
+    const displayRecord = {
+      sig,
+      tier,
+      worldX,
+      worldY,
+      height: 110,
+      container,
+      aura,
+      sprite,
+      tag,
+      orbitItems: [] as Array<{
+        node: Container;
+        glow: Graphics;
+        lightLevel: 0 | 1 | 2;
+        phaseOffset: number;
+        radiusX: number;
+        radiusY: number;
+        speed: number;
+      }>,
+    };
+
+    const applyTex = (tex: Texture): void => {
+      if (sprite.destroyed) return;
+      sprite.texture = tex;
+      const rawW = tex.width || 100;
+      sprite.scale.set(Math.min(1.0, maxLotW / rawW));
+      displayRecord.height = sprite.height || 110;
+      tag.position.set(0, -displayRecord.height * 0.94 - 8);
+    };
+    const cachedTex = Assets.get<Texture>("estate-" + model.id);
+    if (cachedTex) {
+      applyTex(cachedTex);
+    } else {
+      void Assets.load<Texture>(withAssetHash(model.assetSrc)).then(applyTex);
+    }
+
+    // Dựng toàn bộ vật phẩm đang trưng bày xoay quanh nóc nhà người chơi khác
+    const displayed = Array.isArray(estate.displayedItems) ? estate.displayedItems : [];
+    const total = displayed.length;
+    const baseRx = Math.min(80, model.orbitRadiusX * 0.65);
+    const baseRy = Math.min(45, model.orbitRadiusY * 0.65);
+
+    displayed.forEach((slot, idx) => {
+      const def = ITEM_BY_ID[slot.itemId];
+      if (!def) return;
+
+      const node = new Container();
+      const glow = new Graphics();
+      if (slot.lightLevel === 2) {
+        glow
+          .circle(0, 0, 20)
+          .fill({ color: 0xfacc15, alpha: 0.24 })
+          .circle(0, 0, 14)
+          .fill({ color: 0xfef08a, alpha: 0.36 });
+      } else if (slot.lightLevel === 1) {
+        glow
+          .circle(0, 0, 16)
+          .fill({ color: 0xffffff, alpha: 0.22 })
+          .circle(0, 0, 11)
+          .fill({ color: 0xf8fafc, alpha: 0.34 });
+      } else {
+        glow.circle(0, 0, 11).fill({ color: 0xf43f5e, alpha: 0.16 });
+      }
+
+      const iconSprite = new Sprite();
+      iconSprite.anchor.set(0.5, 0.5);
+      iconSprite.alpha = slot.lightLevel === 0 ? 0.88 : 1;
+      void this.getOrbitTexture(def.iconSrc).then((tex) => {
+        if (iconSprite.destroyed) return;
+        iconSprite.texture = tex;
+        const maxSide = Math.max(tex.width || 32, tex.height || 32);
+        const targetPx = slot.lightLevel === 2 ? 25 : slot.lightLevel === 1 ? 22 : 19;
+        iconSprite.scale.set(targetPx / Math.max(1, maxSide));
+      });
+
+      node.addChild(glow, iconSprite);
+      this.entityLayer.addChild(node);
+
+      const ring = idx % 2;
+      displayRecord.orbitItems.push({
+        node,
+        glow,
+        lightLevel: slot.lightLevel,
+        phaseOffset: (idx / Math.max(1, total)) * Math.PI * 2,
+        radiusX: baseRx + ring * 22,
+        radiusY: baseRy + ring * 8,
+        speed: slot.lightLevel === 2 ? 0.78 : slot.lightLevel === 1 ? 0.65 : 0.52,
+      });
+    });
+
+    this.remoteEstateDisplays.set(uid, displayRecord);
   }
 
   private stepRemotePlayers(dt: number): void {
@@ -1223,6 +1528,17 @@ export class WorldScene {
         this.ownedPetIds.add(pid);
       }
       this.equippedPetId = save.equippedPetId ?? null;
+      if (save.estate) {
+        this.estate = { ...save.estate };
+        normalizeEstateOwnedTiles(this.estate);
+        if (this.estate.houseId) {
+          const m = getHouseModelDef(this.estate.houseId);
+          this.inventory.setEstateStorageBonus(m ? m.storageCols : 0, m ? m.storageRows : 0);
+        } else {
+          this.inventory.setEstateStorageBonus(0, 0);
+        }
+        this.syncEstateAndCollectionDisplay();
+      }
 
       const targetMap: MapId = save.profile.activeMapId === "japan" ? "japan" : "vietnam";
       if (targetMap !== this.activeMapId) {
@@ -1507,12 +1823,19 @@ export class WorldScene {
 
   public isAtHome(): boolean {
     if (this.isInJail) return false;
-    return this.getNearbyInteraction()?.type === "home";
+    const t = this.getNearbyInteraction()?.type;
+    return t === "home" || t === "estate_house";
   }
 
   public isAtCollectionHall(): boolean {
     if (this.isInJail) return false;
-    return this.getNearbyInteraction()?.type === "collection";
+    const t = this.getNearbyInteraction()?.type;
+    return t === "collection" || (t === "estate_house" && Boolean(this.estate.houseId));
+  }
+
+  public isAtRealEstate(): boolean {
+    if (this.isInJail) return false;
+    return this.getNearbyInteraction()?.type === "real_estate";
   }
 
   public isAtAuctionHouse(): boolean {
@@ -1546,7 +1869,10 @@ export class WorldScene {
   public getTotalPermanentStaminaBonusPct(): number {
     const gymPct = this.inventory.getPermanentStaminaBonusPct();
     const petPct = this.getEquippedPet()?.bonuses.staminaPct ?? 0;
-    return gymPct + petPct;
+    const estatePct = this.estate.houseId
+      ? (getHouseModelDef(this.estate.houseId)?.staminaRecoveryBonusPct ?? 0)
+      : 0;
+    return gymPct + petPct + estatePct;
   }
 
   public equipPet(petId: string | null): { ok: boolean; message: string } {
@@ -2951,7 +3277,9 @@ export class WorldScene {
 
     let closestBuilding: OccludableProp | null = null;
     let bestBldDist = Number.POSITIVE_INFINITY;
+    const hasOwnHouse = Boolean(this.estate.houseId);
     for (const op of this.buildingOccludables) {
+      if (op.prop.kind === "city_collection_hall" && hasOwnHouse) continue;
       if (
         Math.abs(px - op.x) <= op.halfW + 38 &&
         py <= op.bottomY + 42 &&
@@ -3017,6 +3345,43 @@ export class WorldScene {
           name: meta.name,
         };
       }
+      if (meta.tier === "real_estate") {
+        return {
+          type: "real_estate",
+          name: meta.name,
+          initialTab: "plot",
+        };
+      }
+      if (kind === "estate_flower_garden") {
+        return {
+          type: "real_estate",
+          name: "Vườn Hoa Hoàng Gia (Bấm [E] Để Đến Sàn BĐS Mua & Nâng Cấp)",
+          initialTab: "plot",
+        };
+      }
+      if (kind === "city_player_estate") {
+        const ownerName = this.estate.ownerName || this.getPlayerDisplayName();
+        if (this.estate.houseId) {
+          const m = getHouseModelDef(this.estate.houseId);
+          return {
+            type: "estate_house",
+            name: `Dinh Thự Của ${ownerName} (${m ? m.name : "Dinh Thự"})`,
+            houseId: this.estate.houseId,
+          };
+        }
+        if (this.estate.plotTier > 0) {
+          return {
+            type: "real_estate",
+            name: `Lô Đất Cấp ${this.estate.plotTier} Của ${ownerName} (Bấm [E] Xây Nhà)`,
+            initialTab: "build",
+          };
+        }
+        return {
+          type: "real_estate",
+          name: "Khu Đất Biệt Thự Quy Hoạch (Vùng Xanh) (Bấm [E] Mua Đất)",
+          initialTab: "plot",
+        };
+      }
       if (meta.tier === "police") {
         return null;
       }
@@ -3032,7 +3397,7 @@ export class WorldScene {
         propId: closestBuilding.prop.id,
         kind,
         name: meta.name,
-        tier: meta.tier,
+        tier: meta.tier as "standard" | "landmark",
         isVault: Boolean(meta.isVault),
         biome: this.data.biomes[row * this.data.cols + col],
         searched: Boolean(existing),
@@ -3107,6 +3472,18 @@ export class WorldScene {
     if (target.type === "gacha") {
       this.playPressSfx();
       this.callbacks.onOpenPetGacha?.();
+      return true;
+    }
+
+    if (target.type === "real_estate") {
+      this.playPressSfx();
+      this.callbacks.onOpenRealEstate?.(target.initialTab);
+      return true;
+    }
+
+    if (target.type === "estate_house") {
+      this.playPressSfx();
+      this.callbacks.onOpenHomeStorage?.();
       return true;
     }
 
@@ -3288,6 +3665,7 @@ export class WorldScene {
       hairId: this.hairId,
       equipped: this.equipment,
       equippedPetId: this.equippedPetId,
+      estate: this.buildLocalEstateSummary(),
     });
 
     const camLerp = 1 - Math.exp(-8.5 * dt);
@@ -4116,6 +4494,9 @@ export class WorldScene {
       city_quest_guild: { text: "📜 HỘI SỞ NHIỆM VỤ", color: 0xfde047 },
       city_reputation_hall: { text: "🏛️ SẢNH DANH VỌNG", color: 0xf43f5e },
       city_pet_gacha: { text: "🐾 NHÀ NHẬN NUÔI THÚ CƯNG", color: 0xf472b6 },
+      city_real_estate_center: { text: "🏛️ SÀN BẤT ĐỘNG SẢN", color: 0x38bdf8 },
+      city_player_estate: { text: "🏡 KHU ĐẤT QUY HOẠCH", color: 0xf59e0b },
+      estate_flower_garden: { text: "🌷 VƯỜN HOA HOÀNG GIA", color: 0x34d399 },
       city_hospital: { text: "🏥 BỆNH VIỆN", color: 0xfecdd3 },
       city_police_station: { text: "🚓 CÔNG AN PHƯỜNG", color: 0x93c5fd },
     };
@@ -4134,6 +4515,9 @@ export class WorldScene {
       city_quest_guild: { text: "📜 BẢNG ỦY THÁC TOKYO", color: 0xfde047 },
       city_reputation_hall: { text: "🏛️ SẢNH DANH VỌNG TOKYO", color: 0xf43f5e },
       city_pet_gacha: { text: "🐾 NHÀ NHẬN NUÔI THÚ CƯNG", color: 0xf472b6 },
+      city_real_estate_center: { text: "🏛️ SÀN BẤT ĐỘNG SẢN TOKYO", color: 0x38bdf8 },
+      city_player_estate: { text: "🏯 KHU ĐẤT QUY HOẠCH TOKYO", color: 0xf59e0b },
+      estate_flower_garden: { text: "🌷 VƯỜN HOA HOÀNG GIA TOKYO", color: 0x34d399 },
       city_hospital: { text: "🏥 BỆNH VIỆN TOKYO", color: 0xfecdd3 },
       city_police_station: { text: "🚓 ĐỒN CẢNH SÁT KOBAN", color: 0x93c5fd },
     };
@@ -4153,8 +4537,12 @@ export class WorldScene {
       tag.anchor.set(0.5, 1);
       tag.position.set(0, -sprite.height * 0.94 - 4);
       container.addChild(tag);
+      if (prop.kind === "city_player_estate") {
+        this.estateHouseTag = tag;
+      }
     }
 
+    let entry: OccludableProp | null = null;
     if (
       isBld ||
       prop.kind === "oak_warm" ||
@@ -4175,7 +4563,7 @@ export class WorldScene {
       prop.kind === "watchtower" ||
       prop.kind === "shrine_ruin"
     ) {
-      const entry: OccludableProp = {
+      entry = {
         container,
         prop,
         x: prop.x,
@@ -4184,6 +4572,11 @@ export class WorldScene {
         depthY,
         halfW: sprite.width * 0.44,
       };
+      if (prop.kind === "city_player_estate") {
+        entry.halfW = 96;
+        entry.topY = prop.y - 144;
+        entry.bottomY = prop.y + 48;
+      }
       this.occludableProps.push(entry);
       if (isBld) {
         this.buildingOccludables.push(entry);
@@ -4191,13 +4584,29 @@ export class WorldScene {
     }
 
     if (prop.kind === "city_collection_hall") {
-      this.collectionOrbitHost = {
-        x: prop.x,
-        y: prop.y,
-        height: sprite.height,
-        depthY,
-      };
-      this.refreshCollectionOrbitSprites();
+      this.collectionHallPropContainer = container;
+      this.collectionHallSprite = sprite;
+      if (!this.estate.houseId) {
+        this.collectionOrbitHost = {
+          x: prop.x,
+          y: prop.y,
+          height: sprite.height,
+          depthY,
+        };
+        this.refreshCollectionOrbitSprites();
+      } else {
+        container.visible = false;
+      }
+    }
+
+    if (prop.kind === "city_player_estate") {
+      this.estateProp = prop;
+      this.estateHouseContainer = container;
+      this.estateHouseSprite = sprite;
+      this.estateHouseShadow = shadow;
+      this.estateHouseAura = new Graphics();
+      container.addChildAt(this.estateHouseAura, 0);
+      this.syncEstateAndCollectionDisplay();
     }
 
     return container;
@@ -4218,7 +4627,8 @@ export class WorldScene {
       entry.node.destroy({ children: true });
     }
     this.collectionOrbitItems.length = 0;
-    if (!this.collectionOrbitHost) return;
+    const host = this.collectionOrbitHost;
+    if (!host) return;
 
     const slots = this.inventory.getCollectionHallStates();
     const displayedEntries = Object.entries(slots).filter(([, slot]) => slot.displayed);
@@ -4287,13 +4697,15 @@ export class WorldScene {
       this.entityLayer.addChild(node);
 
       const ring = idx % 2;
+      const baseRx = host.rx ?? 82;
+      const baseRy = host.ry ?? 30;
       this.collectionOrbitItems.push({
         node,
         glow,
         lightLevel: slot.lightLevel,
         phaseOffset: (idx / total) * Math.PI * 2,
-        radiusX: 82 + ring * 24,
-        radiusY: 30 + ring * 10,
+        radiusX: baseRx + ring * 22,
+        radiusY: baseRy + ring * 8,
         speed: slot.lightLevel === 2 ? 0.78 : slot.lightLevel === 1 ? 0.65 : 0.52,
       });
     });
@@ -4301,8 +4713,59 @@ export class WorldScene {
     this.updateCollectionOrbit();
   }
 
+  private buildLocalEstateSummary(): RemotePlayerEstateSummary | null {
+    if (!this.estate.houseId) return null;
+    const originC = this.estate.houseOrigin?.c ?? LEGACY_DEFAULT_LOT_COL;
+    const originR = this.estate.houseOrigin?.r ?? LEGACY_DEFAULT_LOT_ROW;
+    const slots = this.inventory.getCollectionHallStates();
+    const displayedItems: Array<{ itemId: string; lightLevel: 0 | 1 | 2 }> = [];
+    for (const [itemId, slot] of Object.entries(slots)) {
+      if (slot.displayed) {
+        displayedItems.push({ itemId, lightLevel: slot.lightLevel });
+      }
+    }
+    return {
+      houseId: this.estate.houseId,
+      originC,
+      originR,
+      ownerName: this.estate.ownerName || this.getPlayerDisplayName(),
+      displayedItems,
+    };
+  }
+
   private updateCollectionOrbit(): void {
     const host = this.collectionOrbitHost;
+    if (this.estateHouseAura && this.estate.houseId && this.estateHouseContainer?.visible) {
+      const model = getHouseModelDef(this.estate.houseId);
+      if (model) {
+        this.estateHouseAura.alpha = 1;
+        this.drawTierHouseAura(this.estateHouseAura, model.tier, 0, 0, this.elapsed);
+      }
+    }
+
+    // Cập nhật hào quang + quỹ đạo vật phẩm đang trưng bày quanh nhà của các người chơi khác
+    for (const remote of this.remoteEstateDisplays.values()) {
+      this.drawTierHouseAura(remote.aura, remote.tier, 0, 0, this.elapsed);
+      const rCenterY = remote.worldY - remote.height * 0.46;
+      for (const item of remote.orbitItems) {
+        const angle = this.elapsed * item.speed + item.phaseOffset;
+        const sinA = Math.sin(angle);
+        const bob = Math.sin(this.elapsed * 2.8 + item.phaseOffset) * 4;
+        item.node.position.set(
+          remote.worldX + Math.cos(angle) * item.radiusX,
+          rCenterY + sinA * item.radiusY + bob,
+        );
+        item.node.zIndex = sinA >= 0 ? remote.worldY + 40 : remote.worldY - 40;
+        if (item.lightLevel === 2) {
+          item.glow.rotation = this.elapsed * 1.1;
+          item.glow.scale.set(1 + Math.sin(this.elapsed * 4.2 + item.phaseOffset) * 0.14);
+        } else if (item.lightLevel === 1) {
+          item.glow.rotation = -this.elapsed * 0.65;
+          item.glow.scale.set(1 + Math.sin(this.elapsed * 2.8 + item.phaseOffset) * 0.08);
+        }
+      }
+    }
+
     if (!host || this.collectionOrbitItems.length === 0) return;
 
     const centerY = host.y - host.height * 0.46;
@@ -4326,6 +4789,905 @@ export class WorldScene {
         item.glow.scale.set(pulse);
       }
     }
+  }
+
+  private drawTierHouseAura(
+    graphics: Graphics,
+    tier: number,
+    hx: number,
+    hy: number,
+    time = 0,
+  ): void {
+    graphics.clear();
+
+    if (tier === 1) {
+      // Tier 1 (1x1): Ánh đèn hiên ấm áp mềm mại — 4 lớp chuyển sắc không viền
+      const glow = 0.88 + Math.sin(time * 2.0) * 0.12;
+      graphics
+        .ellipse(hx, hy - 5, 36, 14)
+        .fill({ color: 0xd97706, alpha: 0.05 * glow })
+        .ellipse(hx, hy - 5, 27, 11)
+        .fill({ color: 0xf59e0b, alpha: 0.08 * glow })
+        .ellipse(hx, hy - 4, 19, 8)
+        .fill({ color: 0xfde68a, alpha: 0.13 * glow })
+        .ellipse(hx, hy - 3, 11, 5)
+        .fill({ color: 0xfffbeb, alpha: 0.20 * glow });
+    } else if (tier === 2) {
+      // Tier 2 (2x2): Ánh sáng sân vườn ngọc bích — 5 lớp chuyển sắc không viền + đom đóm nhẹ
+      const pulse = 0.85 + Math.sin(time * 2.4) * 0.15;
+      const scale = 1 + Math.sin(time * 2.4) * 0.03;
+      graphics
+        .ellipse(hx, hy - 10, 66 * scale, 26 * scale)
+        .fill({ color: 0x047857, alpha: 0.05 * pulse })
+        .ellipse(hx, hy - 10, 52 * scale, 21 * scale)
+        .fill({ color: 0x059669, alpha: 0.08 * pulse })
+        .ellipse(hx, hy - 9, 40 * scale, 16 * scale)
+        .fill({ color: 0x10b981, alpha: 0.12 * pulse })
+        .ellipse(hx, hy - 8, 28 * scale, 11 * scale)
+        .fill({ color: 0x6ee7b7, alpha: 0.16 * pulse })
+        .ellipse(hx, hy - 7, 16 * scale, 7 * scale)
+        .fill({ color: 0xd1fae5, alpha: 0.22 * pulse });
+
+      for (let i = 0; i < 4; i++) {
+        const a = time * 0.7 + (i * Math.PI) / 2;
+        const twinkle = 0.45 + Math.sin(time * 3.6 + i * 1.7) * 0.45;
+        const sx = hx + Math.cos(a) * 42;
+        const sy = hy - 14 + Math.sin(a) * 14 - Math.sin(time * 2 + i) * 3;
+        graphics.circle(sx, sy, 2.2).fill({ color: 0xa7f3d0, alpha: twinkle });
+      }
+    } else if (tier === 3) {
+      // Tier 3 (3x3): Hào quang Lam Ngọc – Bạch Kim — 7 lớp chuyển sắc không viền, nhấp nháy sáng bừng
+      const wave = 0.5 + Math.sin(time * 3.2) * 0.5;
+      const flash = Math.pow(wave, 2); // tạo nhịp sáng bừng sắc nét
+      const scale = 1 + wave * 0.055;
+      const bright = 0.78 + flash * 0.52;
+
+      graphics
+        .ellipse(hx, hy - 16, 108 * scale, 41 * scale)
+        .fill({ color: 0x0369a1, alpha: 0.05 * bright })
+        .ellipse(hx, hy - 16, 92 * scale, 35 * scale)
+        .fill({ color: 0x0284c7, alpha: 0.08 * bright })
+        .ellipse(hx, hy - 15, 76 * scale, 29 * scale)
+        .fill({ color: 0x0ea5e9, alpha: 0.12 * bright })
+        .ellipse(hx, hy - 14, 60 * scale, 23 * scale)
+        .fill({ color: 0x38bdf8, alpha: 0.16 * bright })
+        .ellipse(hx, hy - 13, 44 * scale, 17 * scale)
+        .fill({ color: 0x7dd3fc, alpha: 0.22 * bright })
+        .ellipse(hx, hy - 12, 29 * scale, 11 * scale)
+        .fill({ color: 0xe0f2fe, alpha: 0.28 * bright })
+        .ellipse(hx, hy - 11, 16 * scale, 6 * scale)
+        .fill({ color: 0xffffff, alpha: (0.26 + flash * 0.34) });
+
+      // 6 tinh thể ánh sáng lam ngọc – bạch kim nhấp nháy
+      for (let i = 0; i < 6; i++) {
+        const a = time * 0.85 + (i * Math.PI) / 3;
+        const twinkle = 0.3 + Math.pow(0.5 + Math.sin(time * 4.8 + i * 1.4) * 0.5, 2) * 0.7;
+        const sx = hx + Math.cos(a) * (66 + Math.sin(time * 2 + i) * 6);
+        const sy = hy - 18 + Math.sin(a) * 23;
+        graphics
+          .circle(sx, sy, 3.4)
+          .fill({ color: 0x38bdf8, alpha: twinkle * 0.4 })
+          .circle(sx, sy, 1.8)
+          .fill({ color: 0xffffff, alpha: twinkle });
+      }
+    } else {
+      // Tier 4 (4x4): Hào quang Hoàng Kim Đế Vương — 8 lớp chuyển sắc không viền, nhấp nháy sáng rực rỡ!
+      const wave = 0.5 + Math.sin(time * 3.8) * 0.5;
+      const shimmer = 0.5 + Math.sin(time * 6.2 + 0.9) * 0.5;
+      const flash = Math.pow(wave, 2) * 0.7 + Math.pow(shimmer, 3) * 0.3;
+      const scale = 1 + wave * 0.065;
+      const bright = 0.80 + flash * 0.65;
+
+      graphics
+        .ellipse(hx, hy - 22, 144 * scale, 54 * scale)
+        .fill({ color: 0xb45309, alpha: 0.05 * bright })
+        .ellipse(hx, hy - 22, 124 * scale, 46 * scale)
+        .fill({ color: 0xd97706, alpha: 0.08 * bright })
+        .ellipse(hx, hy - 21, 104 * scale, 39 * scale)
+        .fill({ color: 0xf59e0b, alpha: 0.12 * bright })
+        .ellipse(hx, hy - 20, 86 * scale, 32 * scale)
+        .fill({ color: 0xfbbf24, alpha: 0.16 * bright })
+        .ellipse(hx, hy - 19, 68 * scale, 25 * scale)
+        .fill({ color: 0xfde047, alpha: 0.21 * bright })
+        .ellipse(hx, hy - 18, 50 * scale, 19 * scale)
+        .fill({ color: 0xfef08a, alpha: 0.26 * bright })
+        .ellipse(hx, hy - 17, 34 * scale, 13 * scale)
+        .fill({ color: 0xfef9c3, alpha: 0.32 * bright })
+        .ellipse(hx, hy - 16, 20 * scale, 8 * scale)
+        .fill({ color: 0xffffff, alpha: (0.30 + flash * 0.45) });
+
+      // 10 hạt tinh tú hoàng kim nhấp nháy và dâng nhẹ lên quanh tòa lâu đài
+      for (let i = 0; i < 10; i++) {
+        const phase = (time * 0.42 + i * 0.37) % 1;
+        const angle = i * 0.628 + time * 0.55;
+        const radiusX = 52 + (i % 3) * 24;
+        const radiusY = 18 + (i % 3) * 8;
+        const sx = hx + Math.cos(angle) * radiusX;
+        const sy = hy - 16 + Math.sin(angle) * radiusY - phase * 68;
+        const fade = Math.sin(phase * Math.PI);
+        const twinkle = fade * (0.45 + Math.pow(0.5 + Math.sin(time * 7 + i * 2.1) * 0.5, 2) * 0.55);
+        graphics
+          .circle(sx, sy, 4.0)
+          .fill({ color: 0xfde047, alpha: twinkle * 0.38 })
+          .circle(sx, sy, 2.0)
+          .fill({ color: 0xffffff, alpha: twinkle });
+      }
+    }
+  }
+
+  public subscribeEstateInteract(listener: (snapshot: EstateInteractSnapshot) => void): () => void {
+    this.estateInteractListeners.add(listener);
+    return () => {
+      this.estateInteractListeners.delete(listener);
+    };
+  }
+
+  private emitEstateInteractState(): void {
+    const snap = this.getEstateInteractSnapshot();
+    this.callbacks.onEstateInteractStateChanged?.(snap);
+    for (const listener of this.estateInteractListeners) {
+      listener(snap);
+    }
+  }
+
+  private getPlacingAnchorFromHover(): { c: number; r: number } | null {
+    if (!this.estateHoverTile || !this.estatePlacingModelId) return null;
+    const model = getHouseModelDef(this.estatePlacingModelId);
+    if (!model) return null;
+    const halfOffset = Math.floor((model.tier - 1) / 2);
+    return {
+      c: this.estateHoverTile.c - halfOffset,
+      r: this.estateHoverTile.r - halfOffset,
+    };
+  }
+
+  public getEstateInteractSnapshot(): EstateInteractSnapshot {
+    const ownedWorld = this.estate.ownedWorldTiles ?? [];
+    const selectedKeys = Array.from(this.estateSelectedTileKeys).sort();
+    const model = this.estatePlacingModelId ? getHouseModelDef(this.estatePlacingModelId) : null;
+    let hoverOrigin: { c: number; r: number } | null = null;
+    let hoverCanBuild = false;
+    let hoverMissingKeys: string[] = [];
+    let hoverBlockedCount = 0;
+    let hoverLotName: string | null = null;
+
+    if (this.estateHoverTile) {
+      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r);
+      hoverLotName = info?.lotName ?? null;
+    }
+
+    if (this.estateInteractMode === "place_house" && model) {
+      hoverOrigin = this.getPlacingAnchorFromHover();
+      if (hoverOrigin) {
+        const check = canBuildHouseAtWorld(ownedWorld, model.tier, hoverOrigin.c, hoverOrigin.r);
+        hoverCanBuild = check.ok;
+        hoverMissingKeys = check.missingKeys;
+        hoverBlockedCount = check.blockedKeys.length;
+      }
+    }
+
+    return {
+      mode: this.estateInteractMode,
+      selectedTileKeys: selectedKeys,
+      selectedCostGold: selectedKeys.length * TILE_PRICE_GOLD,
+      ownedTileCount: ownedWorld.length,
+      placingModelId: model?.id ?? null,
+      placingModelName: model?.name ?? null,
+      placingTier: model?.tier ?? 0,
+      placingCostGold: model ? model.blueprintCostGold + model.buildCostGold : 0,
+      hoverOrigin,
+      hoverCanBuild,
+      hoverMissingKeys,
+      hoverBlockedCount,
+      hoverLotName,
+      statusMessage: this.estateStatusMsg,
+      statusIsError: this.estateStatusIsError,
+    };
+  }
+
+  public startEstateBuyTilesMode(preselectKeys?: string[]): void {
+    this.estateInteractMode = "buy_tiles";
+    this.estatePlacingModelId = null;
+    this.estateSelectedTileKeys.clear();
+    const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
+    if (preselectKeys) {
+      for (const k of preselectKeys) {
+        const parsed = parseWorldTileKey(k);
+        if (parsed && isPurchasableEstateTile(parsed.c, parsed.r) && !ownedSet.has(k)) {
+          this.estateSelectedTileKeys.add(k);
+        }
+      }
+    }
+    this.estateStatusMsg = "Click trực tiếp vào các ô đất 1×1 trên bản đồ để chọn mua.";
+    this.estateStatusIsError = false;
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.refreshEstateOverlays();
+    this.emitEstateInteractState();
+  }
+
+  public startEstatePlaceHouseMode(modelId: string): void {
+    const model = getHouseModelDef(modelId);
+    if (!model) return;
+    this.estateInteractMode = "place_house";
+    this.estatePlacingModelId = model.id;
+    this.estateSelectedTileKeys.clear();
+    this.estateStatusMsg = `Rê chuột lên vùng đất đã mua đủ ${model.tier}×${model.tier} ô rồi click để xây ${model.name}.`;
+    this.estateStatusIsError = false;
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+
+    // Preload ghost sprite texture
+    const assetHashed = withAssetHash(model.assetSrc);
+    const maxLotW = model.tier === 4 ? 172 : model.tier === 3 ? 132 : model.tier === 2 ? 92 : 64;
+    const applyGhostTex = (tex: Texture): void => {
+      if (this.estateGhostSprite.destroyed) return;
+      this.estateGhostSprite.texture = tex;
+      const rawW = tex.width || 100;
+      this.estateGhostSprite.scale.set(Math.min(1.0, maxLotW / rawW));
+    };
+    const cachedTex = Assets.get<Texture>("estate-" + model.id);
+    if (cachedTex) {
+      applyGhostTex(cachedTex);
+    } else {
+      void Assets.load<Texture>(assetHashed).then(applyGhostTex);
+    }
+
+    this.refreshEstateOverlays();
+    this.emitEstateInteractState();
+  }
+
+  public exitEstateInteractMode(): void {
+    if (this.estateInteractMode === "none") return;
+    this.estateInteractMode = "none";
+    this.estatePlacingModelId = null;
+    this.estateSelectedTileKeys.clear();
+    this.estateHoverTile = null;
+    this.estateStatusMsg = "";
+    this.estateStatusIsError = false;
+    this.refreshEstateOverlays();
+    this.emitEstateInteractState();
+  }
+
+  public clearSelectedEstateTiles(): void {
+    this.estateSelectedTileKeys.clear();
+    this.refreshEstateOverlays();
+    this.emitEstateInteractState();
+  }
+
+  public purchaseSelectedEstateTiles(): { ok: boolean; message: string } {
+    const keys = Array.from(this.estateSelectedTileKeys);
+    const res = this.purchaseWorldTiles(keys);
+    this.estateStatusMsg = res.message;
+    this.estateStatusIsError = !res.ok;
+    if (res.ok) {
+      this.estateSelectedTileKeys.clear();
+    }
+    this.refreshEstateOverlays();
+    this.emitEstateInteractState();
+    return res;
+  }
+
+  private drawSportsComplexMarkings(): void {
+    const g = this.stadiumMarkingsLayer;
+    g.clear();
+
+    // ─── 1. SÂN VẬN ĐỘNG BÓNG ĐÁ + ĐƯỜNG CHẠY ĐIỀN KINH (col 57..68, row 3..10) ───
+    const sx = 57 * TILE_SIZE;
+    const sy = 3 * TILE_SIZE;
+    const sw = 12 * TILE_SIZE; // 576px
+    const sh = 8 * TILE_SIZE;  // 384px
+
+    // Đường chạy điền kinh đỏ gạch bo tròn bao ngoài sân
+    g.roundRect(sx - 18, sy - 16, sw + 36, sh + 32, 44)
+      .fill({ color: 0xb45309, alpha: 0.92 })
+      .stroke({ color: 0xfef3c7, width: 1.5, alpha: 0.55 });
+    g.roundRect(sx - 10, sy - 9, sw + 20, sh + 18, 36)
+      .stroke({ color: 0xfef3c7, width: 1, alpha: 0.4 });
+
+    // Mặt cỏ sân bóng cắt sọc 2 tông xanh chuyên nghiệp (10 dải dọc)
+    const pad = 16;
+    const fx = sx + pad;
+    const fy = sy + pad;
+    const fw = sw - pad * 2;
+    const fh = sh - pad * 2;
+    const stripes = 10;
+    const stripeW = fw / stripes;
+    for (let i = 0; i < stripes; i++) {
+      g.rect(fx + i * stripeW, fy, stripeW + 0.5, fh).fill({
+        color: i % 2 === 0 ? 0x16a34a : 0x15803d,
+        alpha: 0.95,
+      });
+    }
+
+    // Vạch vôi trắng chuẩn FIFA
+    const lineW = 2.5;
+    const white = 0xf8fafc;
+    const midX = fx + fw / 2;
+    const midY = fy + fh / 2;
+
+    // Đường biên ngoài + vạch giữa sân + vòng tròn giao bóng
+    g.rect(fx, fy, fw, fh).stroke({ color: white, width: lineW, alpha: 0.92 });
+    g.moveTo(midX, fy).lineTo(midX, fy + fh).stroke({ color: white, width: lineW, alpha: 0.92 });
+    g.circle(midX, midY, 44).stroke({ color: white, width: lineW, alpha: 0.92 });
+    g.circle(midX, midY, 4).fill({ color: white, alpha: 0.95 });
+
+    // 2 Khu cấm địa (16m50) + Khu 5m50 + Chấm phạt đền (Tây & Đông)
+    const boxW = 74;
+    const boxH = 168;
+    const smallW = 28;
+    const smallH = 84;
+    // Đầu Tây
+    g.rect(fx, midY - boxH / 2, boxW, boxH).stroke({ color: white, width: lineW, alpha: 0.92 });
+    g.rect(fx, midY - smallH / 2, smallW, smallH).stroke({ color: white, width: lineW, alpha: 0.92 });
+    g.circle(fx + 52, midY, 3.2).fill({ color: white, alpha: 0.95 });
+    // Đầu Đông
+    g.rect(fx + fw - boxW, midY - boxH / 2, boxW, boxH).stroke({ color: white, width: lineW, alpha: 0.92 });
+    g.rect(fx + fw - smallW, midY - smallH / 2, smallW, smallH).stroke({ color: white, width: lineW, alpha: 0.92 });
+    g.circle(fx + fw - 52, midY, 3.2).fill({ color: white, alpha: 0.95 });
+
+    // 2 Khung thành lưới trắng 2 đầu Tây & Đông
+    const goalW = 14;
+    const goalH = 52;
+    // Khung thành Tây
+    g.rect(fx - goalW, midY - goalH / 2, goalW, goalH)
+      .fill({ color: 0xe2e8f0, alpha: 0.32 })
+      .stroke({ color: 0xffffff, width: 2.5, alpha: 0.98 });
+    // Khung thành Đông
+    g.rect(fx + fw, midY - goalH / 2, goalW, goalH)
+      .fill({ color: 0xe2e8f0, alpha: 0.32 })
+      .stroke({ color: 0xffffff, width: 2.5, alpha: 0.98 });
+
+    // ─── 2. SÂN BÓNG RỔ NGOÀI TRỜI (col 57..62, row 12..15) ───
+    const bx = 57 * TILE_SIZE + 8;
+    const by = 12 * TILE_SIZE + 8;
+    const bw = 6 * TILE_SIZE - 16; // 272px
+    const bh = 4 * TILE_SIZE - 16; // 176px
+    const bMidX = bx + bw / 2;
+    const bMidY = by + bh / 2;
+
+    g.roundRect(bx - 6, by - 6, bw + 12, bh + 12, 8).fill({ color: 0x1e3a8a, alpha: 0.94 });
+    g.rect(bx, by, bw, bh)
+      .fill({ color: 0xd97706, alpha: 0.94 })
+      .stroke({ color: white, width: 2, alpha: 0.95 });
+    // Vạch giữa sân & vòng tròn trung tâm xanh biển
+    g.moveTo(bMidX, by).lineTo(bMidX, by + bh).stroke({ color: white, width: 2, alpha: 0.95 });
+    g.circle(bMidX, bMidY, 22)
+      .fill({ color: 0x1d4ed8, alpha: 0.9 })
+      .stroke({ color: white, width: 2, alpha: 0.95 });
+    // 2 Khu vực ném phạt (Paint) màu xanh dương đậm
+    const keyW = 54;
+    const keyH = 60;
+    g.rect(bx, bMidY - keyH / 2, keyW, keyH)
+      .fill({ color: 0x1d4ed8, alpha: 0.9 })
+      .stroke({ color: white, width: 2, alpha: 0.95 });
+    g.rect(bx + bw - keyW, bMidY - keyH / 2, keyW, keyH)
+      .fill({ color: 0x1d4ed8, alpha: 0.9 })
+      .stroke({ color: white, width: 2, alpha: 0.95 });
+    // 2 Bảng rổ & vành rổ cam hai đầu
+    g.moveTo(bx + 12, bMidY - 14).lineTo(bx + 12, bMidY + 14).stroke({ color: 0xffffff, width: 3 });
+    g.circle(bx + 17, bMidY, 4.5).stroke({ color: 0xf97316, width: 2 });
+    g.moveTo(bx + bw - 12, bMidY - 14).lineTo(bx + bw - 12, bMidY + 14).stroke({ color: 0xffffff, width: 3 });
+    g.circle(bx + bw - 17, bMidY, 4.5).stroke({ color: 0xf97316, width: 2 });
+
+    // ─── 3. SÂN TENNIS CHUYÊN NGHIỆP (col 64..68, row 12..15) ───
+    const tx = 64 * TILE_SIZE + 8;
+    const ty = 12 * TILE_SIZE + 8;
+    const tw = 5 * TILE_SIZE - 16; // 224px
+    const th = 4 * TILE_SIZE - 16; // 176px
+    const tMidX = tx + tw / 2;
+    const tMidY = ty + th / 2;
+
+    // Viền ngoài sân xanh lá đậm (US Open style) + lòng sân xanh lam
+    g.roundRect(tx - 6, ty - 6, tw + 12, th + 12, 8).fill({ color: 0x047857, alpha: 0.94 });
+    const tPadX = 16;
+    const tPadY = 14;
+    const tInX = tx + tPadX;
+    const tInY = ty + tPadY;
+    const tInW = tw - tPadX * 2;
+    const tInH = th - tPadY * 2;
+    g.rect(tInX, tInY, tInW, tInH)
+      .fill({ color: 0x0284c7, alpha: 0.95 })
+      .stroke({ color: white, width: 2, alpha: 0.95 });
+    // Đường biên đơn (Singles sidelines)
+    const alleyH = 16;
+    g.moveTo(tInX, tInY + alleyH).lineTo(tInX + tInW, tInY + alleyH).stroke({ color: white, width: 1.5, alpha: 0.9 });
+    g.moveTo(tInX, tInY + tInH - alleyH).lineTo(tInX + tInW, tInY + tInH - alleyH).stroke({ color: white, width: 1.5, alpha: 0.9 });
+    // 2 Đường giao bóng (Service lines) & đường trục giữa
+    const srvOffset = 46;
+    g.moveTo(tInX + srvOffset, tInY + alleyH).lineTo(tInX + srvOffset, tInY + tInH - alleyH).stroke({ color: white, width: 1.5, alpha: 0.9 });
+    g.moveTo(tInX + tInW - srvOffset, tInY + alleyH).lineTo(tInX + tInW - srvOffset, tInY + tInH - alleyH).stroke({ color: white, width: 1.5, alpha: 0.9 });
+    g.moveTo(tInX + srvOffset, tMidY).lineTo(tInX + tInW - srvOffset, tMidY).stroke({ color: white, width: 1.5, alpha: 0.9 });
+    // Lưới Tennis trắng vắt dọc giữa sân + 2 cột lưới
+    g.moveTo(tMidX, tInY - 6).lineTo(tMidX, tInY + tInH + 6).stroke({ color: 0xffffff, width: 3.5, alpha: 0.98 });
+    g.circle(tMidX, tInY - 6, 3.2).fill({ color: 0x0f172a });
+    g.circle(tMidX, tInY + tInH + 6, 3.2).fill({ color: 0x0f172a });
+  }
+
+  public refreshEstateOverlays(): void {
+    const g = this.estateGroundOverlay;
+    g.clear();
+
+    // Không vẽ khung xanh chia các ô đất khi không ở chế độ Mua Đất hoặc Đặt Nhà
+    if (this.estateInteractMode === "none") {
+      this.estateGhostContainer.visible = false;
+      return;
+    }
+
+    const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
+
+    // 1. Vẽ lưới quy hoạch 240 ô chỉ khi đang ở chế độ Mua Đất hoặc Đặt Nhà
+    for (const tile of ALL_PURCHASABLE_ESTATE_TILES) {
+      const px = tile.c * TILE_SIZE;
+      const py = tile.r * TILE_SIZE;
+      const isOwned = ownedSet.has(tile.key);
+      const isSelected = this.estateSelectedTileKeys.has(tile.key);
+      const isHovered =
+        this.estateHoverTile !== null &&
+        this.estateHoverTile.c === tile.c &&
+        this.estateHoverTile.r === tile.r;
+
+      if (isSelected) {
+        g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+          .fill({ color: 0xf59e0b, alpha: 0.34 })
+          .stroke({ color: 0xfde047, width: 2.5, alpha: 0.95 });
+      } else if (isOwned) {
+        g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+          .fill({ color: 0x10b981, alpha: 0.22 })
+          .stroke({ color: 0x34d399, width: 1.8, alpha: 0.85 });
+      } else {
+        g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+          .fill({ color: isHovered ? 0xfbbf24 : 0x0f172a, alpha: isHovered ? 0.22 : 0.06 })
+          .stroke({
+            color: isHovered ? 0xfde047 : 0xf8fafc,
+            width: isHovered ? 2.2 : 1,
+            alpha: isHovered ? 0.95 : 0.28,
+          });
+      }
+    }
+
+    // 2. Ghost preview khi đang ở chế độ đặt nhà
+    if (this.estateInteractMode === "place_house" && this.estatePlacingModelId) {
+      const model = getHouseModelDef(this.estatePlacingModelId);
+      const anchor = this.getPlacingAnchorFromHover();
+      this.estateGhostGrid.clear();
+
+      if (model && anchor) {
+        this.estateGhostContainer.visible = true;
+        const tier = model.tier;
+        const check = canBuildHouseAtWorld(this.estate.ownedWorldTiles ?? [], tier, anchor.c, anchor.r);
+        const missingSet = new Set(check.missingKeys);
+        const blockedSet = new Set(check.blockedKeys);
+
+        for (let dr = 0; dr < tier; dr++) {
+          for (let dc = 0; dc < tier; dc++) {
+            const c = anchor.c + dc;
+            const r = anchor.r + dr;
+            const key = makeWorldTileKey(c, r);
+            const px = c * TILE_SIZE;
+            const py = r * TILE_SIZE;
+
+            if (blockedSet.has(key)) {
+              this.estateGhostGrid
+                .rect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4)
+                .fill({ color: 0x991b1b, alpha: 0.62 })
+                .stroke({ color: 0xf87171, width: 2, alpha: 0.95 })
+                .moveTo(px + 10, py + 10)
+                .lineTo(px + TILE_SIZE - 10, py + TILE_SIZE - 10)
+                .moveTo(px + TILE_SIZE - 10, py + 10)
+                .lineTo(px + 10, py + TILE_SIZE - 10)
+                .stroke({ color: 0xfecaca, width: 2, alpha: 0.9 });
+            } else if (missingSet.has(key)) {
+              this.estateGhostGrid
+                .rect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4)
+                .fill({ color: 0xef4444, alpha: 0.48 })
+                .stroke({ color: 0xfca5a5, width: 2.2, alpha: 0.98 });
+            } else {
+              this.estateGhostGrid
+                .rect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4)
+                .fill({ color: 0x10b981, alpha: 0.45 })
+                .stroke({ color: 0x6ee7b7, width: 2.2, alpha: 0.98 });
+            }
+          }
+        }
+
+        const ghostX = (anchor.c + tier / 2) * TILE_SIZE;
+        const ghostY = (anchor.r + tier) * TILE_SIZE - 4;
+        this.estateGhostSprite.visible = true;
+        this.estateGhostSprite.position.set(ghostX, ghostY);
+        this.estateGhostSprite.alpha = 0.78;
+        this.estateGhostSprite.tint = check.ok ? 0xd1fae5 : 0xfecaca;
+
+        if (this.estateGhostLabel) {
+          this.estateGhostLabel.visible = true;
+          const totalCost = model.blueprintCostGold + model.buildCostGold;
+          if (check.ok) {
+            this.estateGhostLabel.text = `✅ ĐỦ ${tier}×${tier} Ô ĐẤT • CLICK ĐỂ XÂY (${totalCost.toLocaleString("vi-VN")}🪙)`;
+            this.estateGhostLabel.style.fill = 0x6ee7b7;
+          } else if (check.blockedKeys.length > 0) {
+            this.estateGhostLabel.text = `⛔ VƯỚNG ĐƯỜNG / HỒ / CÔNG VIÊN — HÃY DI CHUỘT VÀO Ô ĐẤT`;
+            this.estateGhostLabel.style.fill = 0xfca5a5;
+          } else {
+            this.estateGhostLabel.text = `⚠️ THIẾU ${check.missingKeys.length} Ô ĐẤT ĐỎ TẠI ĐÂY`;
+            this.estateGhostLabel.style.fill = 0xfde047;
+          }
+          this.estateGhostLabel.position.set(ghostX, ghostY - (this.estateGhostSprite.height || 64) - 8);
+        }
+      } else {
+        this.estateGhostContainer.visible = false;
+      }
+    } else if (this.estateInteractMode === "buy_tiles" && this.estateHoverTile) {
+      // Hiện nhãn giá nhẹ ngay trên ô đang rê chuột khi mua đất
+      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r);
+      this.estateGhostGrid.clear();
+      this.estateGhostSprite.visible = false;
+      if (info && this.estateGhostLabel) {
+        const key = info.key;
+        const isOwned = ownedSet.has(key);
+        const isSelected = this.estateSelectedTileKeys.has(key);
+        this.estateGhostContainer.visible = true;
+        this.estateGhostLabel.visible = true;
+        this.estateGhostLabel.text = isOwned
+          ? `✅ ĐÃ SỞ HỮU (${info.lotName})`
+          : isSelected
+            ? `🛒 ĐÃ CHỌN • CLICK ĐỂ BỎ CHỌN (${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙)`
+            : `🏞️ CLICK CHỌN Ô NÀY • ${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙 (${info.lotName})`;
+        this.estateGhostLabel.style.fill = isOwned ? 0x34d399 : isSelected ? 0xfde047 : 0xf8fafc;
+        this.estateGhostLabel.position.set(
+          (info.c + 0.5) * TILE_SIZE,
+          info.r * TILE_SIZE - 6,
+        );
+      } else {
+        this.estateGhostContainer.visible = false;
+      }
+    } else {
+      this.estateGhostContainer.visible = false;
+    }
+  }
+
+  public syncEstateAndCollectionDisplay(): void {
+    normalizeEstateOwnedTiles(this.estate);
+    const hasHouse = Boolean(this.estate.houseId);
+    const houseModel = getHouseModelDef(this.estate.houseId);
+
+    // 1. Public Collection Hall visibility
+    if (this.collectionHallPropContainer) {
+      this.collectionHallPropContainer.visible = !hasHouse;
+    }
+
+    // 2. Cập nhật lưới đất đã mua trên toàn Khu Biệt Thự
+    this.refreshEstateOverlays();
+
+    // 3. Manage Player Estate Architecture & Position in World Coordinates
+    if (this.estateHouseContainer && this.estateHouseSprite && this.estateHouseAura) {
+      this.estateHouseAura.clear();
+
+      if (hasHouse && houseModel) {
+        const originC = this.estate.houseOrigin?.c ?? LEGACY_DEFAULT_LOT_COL;
+        const originR = this.estate.houseOrigin?.r ?? LEGACY_DEFAULT_LOT_ROW;
+        const tier = houseModel.tier;
+
+        const worldX = (originC + tier / 2) * TILE_SIZE;
+        const worldY = (originR + tier) * TILE_SIZE - 4;
+
+        this.estateHouseContainer.visible = true;
+        this.estateHouseContainer.position.set(worldX, worldY);
+        this.estateHouseContainer.zIndex = worldY;
+        if (this.estateProp) {
+          this.estateProp.x = worldX;
+          this.estateProp.y = worldY;
+          const bldOcc = this.buildingOccludables.find((o) => o.prop === this.estateProp);
+          if (bldOcc) {
+            bldOcc.x = worldX;
+            bldOcc.depthY = worldY;
+            bldOcc.halfW = Math.max(48, (tier * TILE_SIZE) / 2);
+            bldOcc.topY = worldY - tier * TILE_SIZE;
+            bldOcc.bottomY = worldY + 24;
+          }
+        }
+        this.forceCullUpdate = true;
+
+        this.estateHouseSprite.visible = true;
+        this.estateHouseSprite.alpha = 1;
+        this.estateHouseSprite.position.set(0, 0);
+        if (this.estateHouseShadow) {
+          this.estateHouseShadow.visible = true;
+          this.estateHouseShadow.position.set(0, -2);
+        }
+
+        // Constrain house sprite strictly within its tier footprint (Tier 1 enlarged to 64px for crisp readability)
+        const maxLotW = tier === 4 ? 172 : tier === 3 ? 132 : tier === 2 ? 92 : 64;
+        const applySpriteTextureAndScale = (tex: Texture): void => {
+          if (!this.estateHouseSprite || this.estateHouseSprite.destroyed) return;
+          this.estateHouseSprite.texture = tex;
+          const rawW = tex.width || 100;
+          const fitScale = Math.min(1.0, maxLotW / rawW);
+          this.estateHouseSprite.scale.set(fitScale);
+          if (this.estateHouseTag) {
+            this.estateHouseTag.position.set(0, -this.estateHouseSprite.height * 0.94 - 8);
+          }
+        };
+
+        const assetHashed = withAssetHash(houseModel.assetSrc);
+        const cachedTex = Assets.get<Texture>("estate-" + houseModel.id);
+        if (cachedTex) {
+          applySpriteTextureAndScale(cachedTex);
+        } else {
+          void Assets.load<Texture>(assetHashed).then((tex) => {
+            applySpriteTextureAndScale(tex);
+          });
+        }
+
+        // Display Owner Name in Title Tag
+        const ownerName = this.estate.ownerName || this.getPlayerDisplayName();
+        if (this.estateHouseTag) {
+          this.estateHouseTag.visible = true;
+          this.estateHouseTag.text = `🏰 DINH THỰ CỦA ${ownerName.toUpperCase()} • ${houseModel.name.toUpperCase()} (BẢO MẬT)`;
+          const cfg = HOUSE_TIER_AURA_CONFIG[tier];
+          this.estateHouseTag.style.fill = cfg?.highlightColor ?? 0xfbbf24;
+        }
+
+        // Draw the distinctive Tier aura centered at (0, 0) of the house container
+        this.drawTierHouseAura(this.estateHouseAura, tier, 0, 0);
+
+        this.collectionOrbitHost = {
+          x: worldX,
+          y: worldY,
+          height: this.estateHouseSprite.height || 110,
+          depthY: this.estateHouseContainer.zIndex,
+          rx: Math.min(80, houseModel.orbitRadiusX * 0.65),
+          ry: Math.min(45, houseModel.orbitRadiusY * 0.65),
+        };
+        this.refreshCollectionOrbitSprites();
+      } else {
+        // Khi chưa xây nhà: Ẩn toàn bộ sprite nhà để người chơi đi lại tự do trên đất trống
+        this.estateHouseContainer.visible = false;
+        this.estateHouseSprite.visible = false;
+        this.estateHouseSprite.alpha = 0;
+        if (this.estateHouseShadow) this.estateHouseShadow.visible = false;
+        if (this.estateHouseTag) this.estateHouseTag.visible = false;
+
+        this.restoreCollectionHallOrbit();
+      }
+    }
+  }
+
+  private restoreCollectionHallOrbit(): void {
+    const chProp = this.data.props.find((p) => p.kind === "city_collection_hall");
+    if (chProp && this.collectionHallPropContainer) {
+      this.collectionOrbitHost = {
+        x: chProp.x,
+        y: chProp.y,
+        height: this.collectionHallSprite ? this.collectionHallSprite.height : 120,
+        depthY: this.collectionHallPropContainer.zIndex,
+      };
+      this.refreshCollectionOrbitSprites();
+    }
+  }
+
+  public getEstateState(): PlayerEstateState {
+    normalizeEstateOwnedTiles(this.estate);
+    return {
+      ...this.estate,
+      ownedTileIndices: [...(this.estate.ownedTileIndices ?? [])],
+      ownedWorldTiles: [...(this.estate.ownedWorldTiles ?? [])],
+      houseOrigin: this.estate.houseOrigin ? { ...this.estate.houseOrigin } : undefined,
+    };
+  }
+
+  public getPlayerDisplayName(): string {
+    return this.callbacks.getPlayerDisplayName?.() || "Người Chơi";
+  }
+
+  public purchaseWorldTiles(tileKeys: string[]): { ok: boolean; message: string; purchasedCount?: number } {
+    normalizeEstateOwnedTiles(this.estate);
+    if (!tileKeys || tileKeys.length === 0) {
+      return { ok: false, message: "Vui lòng chọn ít nhất một ô đất để mua." };
+    }
+    const currentOwned = new Set(this.estate.ownedWorldTiles ?? []);
+    const validToBuy: string[] = [];
+    for (const rawKey of tileKeys) {
+      const pt = parseWorldTileKey(rawKey);
+      if (!pt) continue;
+      const normKey = makeWorldTileKey(pt.c, pt.r);
+      if (isPurchasableEstateTile(pt.c, pt.r) && !currentOwned.has(normKey)) {
+        validToBuy.push(normKey);
+      }
+    }
+    if (validToBuy.length === 0) {
+      return { ok: false, message: "Tất cả các ô đất bạn chọn đều đã được sở hữu." };
+    }
+
+    const totalCost = validToBuy.length * TILE_PRICE_GOLD;
+    if (this.inventory.getGold() < totalCost) {
+      return {
+        ok: false,
+        message: `Không đủ vàng! Mua ${validToBuy.length} ô đất cần ${totalCost.toLocaleString("vi-VN")}🪙 (hiện có ${this.inventory.getGold().toLocaleString("vi-VN")}🪙).`,
+      };
+    }
+
+    const spent = this.inventory.trySpendGold(totalCost);
+    if (!spent) return { ok: false, message: "Giao dịch trừ vàng thất bại." };
+
+    for (const k of validToBuy) {
+      currentOwned.add(k);
+    }
+    this.estate.ownedWorldTiles = Array.from(currentOwned).sort();
+    this.estate.plotTier = computeMaxOwnedTierWorld(this.estate.ownedWorldTiles);
+    this.estate.purchasedAt = Date.now();
+    this.estate.ownerName = this.getPlayerDisplayName();
+    this.syncEstateAndCollectionDisplay();
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+
+    return {
+      ok: true,
+      message: `Đã mua thành công ${validToBuy.length} ô đất (${totalCost.toLocaleString("vi-VN")}🪙)! Tổng sở hữu: ${this.estate.ownedWorldTiles.length} ô.`,
+      purchasedCount: validToBuy.length,
+    };
+  }
+
+  public purchaseTiles(tileIndices: number[]): { ok: boolean; message: string; purchasedCount?: number } {
+    const keys = tileIndices
+      .filter((idx) => idx >= 0 && idx < 16)
+      .map((idx) => makeWorldTileKey(LEGACY_DEFAULT_LOT_COL + (idx % 4), LEGACY_DEFAULT_LOT_ROW + Math.floor(idx / 4)));
+    return this.purchaseWorldTiles(keys);
+  }
+
+  public purchasePlot(tier: number): { ok: boolean; message: string } {
+    const plotDef = getPlotTierDef(tier);
+    if (!plotDef) return { ok: false, message: "Cấp độ đất không hợp lệ." };
+    const targetKeys: string[] = [];
+    for (let r = 0; r < tier; r++) {
+      for (let c = 0; c < tier; c++) {
+        targetKeys.push(makeWorldTileKey(LEGACY_DEFAULT_LOT_COL + c, LEGACY_DEFAULT_LOT_ROW + r));
+      }
+    }
+    return this.purchaseWorldTiles(targetKeys);
+  }
+
+  public buildHouse(modelId: string, originC?: number, originR?: number): { ok: boolean; message: string } {
+    normalizeEstateOwnedTiles(this.estate);
+    const model = getHouseModelDef(modelId);
+    if (!model) return { ok: false, message: "Mẫu nhà không tồn tại." };
+    if (this.estate.houseId) {
+      return {
+        ok: false,
+        message: "Bạn đang có một ngôi nhà đã xây. Vui lòng phá dỡ nhà cũ trước khi xây nhà mới!",
+      };
+    }
+
+    const ownedWorld = this.estate.ownedWorldTiles ?? [];
+    let chosenC = originC;
+    let chosenR = originR;
+
+    if (chosenC === undefined || chosenR === undefined) {
+      const found = findFirstValidHouseAnchorWorld(ownedWorld, model.tier);
+      if (!found) {
+        return {
+          ok: false,
+          message: `Bạn chưa sở hữu đủ cụm ${model.tier}×${model.tier} ô đất liền kề để xây ${model.name}! Hãy mua thêm các ô đất xung quanh trên bản đồ.`,
+        };
+      }
+      chosenC = found.c;
+      chosenR = found.r;
+    }
+
+    const check = canBuildHouseAtWorld(ownedWorld, model.tier, chosenC, chosenR);
+    if (!check.ok) {
+      if (check.blockedKeys.length > 0) {
+        return {
+          ok: false,
+          message: `Vị trí này vướng đường đi / hồ / công viên. Hãy chọn vùng nằm hoàn toàn trong các ô đất biệt thự!`,
+        };
+      }
+      return {
+        ok: false,
+        message: `Khu vực này còn thiếu ${check.missingKeys.length} ô đất để đủ diện tích ${model.tier}×${model.tier}! Hãy mua đủ các ô còn thiếu trước khi xây.`,
+      };
+    }
+
+    const totalCost = model.blueprintCostGold + model.buildCostGold;
+    if (this.inventory.getGold() < totalCost) {
+      return {
+        ok: false,
+        message: `Không đủ vàng! Cần ${totalCost.toLocaleString("vi-VN")}🪙 (Bản vẽ ${model.blueprintCostGold.toLocaleString("vi-VN")}🪙 + Xây dựng ${model.buildCostGold.toLocaleString("vi-VN")}🪙).`,
+      };
+    }
+
+    const spent = this.inventory.trySpendGold(totalCost);
+    if (!spent) return { ok: false, message: "Giao dịch trừ vàng thất bại." };
+
+    this.estate.houseId = model.id;
+    this.estate.houseOrigin = { c: chosenC, r: chosenR };
+    this.estate.ownerName = this.getPlayerDisplayName();
+    this.inventory.setEstateStorageBonus(model.storageCols, model.storageRows);
+    this.syncEstateAndCollectionDisplay();
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+    return {
+      ok: true,
+      message: `Xây dựng thành công ${model.name}! Toàn bộ bảo vật sưu tầm đã được chuyển về dinh thự mới của bạn.`,
+    };
+  }
+
+  public demolishHouse(): { ok: boolean; message: string } {
+    if (!this.estate.houseId) {
+      return { ok: false, message: "Bạn chưa xây nhà trên ô đất này." };
+    }
+    const model = getHouseModelDef(this.estate.houseId);
+    if (!model) {
+      this.estate.houseId = null;
+      this.syncEstateAndCollectionDisplay();
+      return { ok: true, message: "Đã dọn sạch ô đất." };
+    }
+
+    if (this.inventory.getGold() < model.demolishCostGold) {
+      return {
+        ok: false,
+        message: `Không đủ vàng trả chi phí công nhân phá dỡ (${model.demolishCostGold.toLocaleString("vi-VN")}🪙)! Hiện có: ${this.inventory.getGold().toLocaleString("vi-VN")}🪙`,
+      };
+    }
+
+    this.inventory.trySpendGold(model.demolishCostGold);
+    this.inventory.addGoldDirect(model.demolishRefundGold);
+
+    this.estate.houseId = null;
+    this.inventory.setEstateStorageBonus(0, 0);
+    this.syncEstateAndCollectionDisplay();
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+
+    const netRefund = model.demolishRefundGold - model.demolishCostGold;
+    return {
+      ok: true,
+      message: `Đã phá dỡ nhà thành công! Hoàn trả lại ${model.demolishRefundGold.toLocaleString("vi-VN")}🪙 tiền vật liệu (Lợi nhuận ròng: ${netRefund >= 0 ? "+" : ""}${netRefund.toLocaleString("vi-VN")}🪙). Phòng sưu tầm công cộng đã được kích hoạt lại.`,
+    };
+  }
+
+  public claimDailyEstateDividend(): { ok: boolean; message: string; amount?: number } {
+    if (!this.estate.houseId) {
+      return { ok: false, message: "Bạn cần xây dựng một dinh thự trước khi có thể nhận cổ tức hàng ngày." };
+    }
+    const model = getHouseModelDef(this.estate.houseId);
+    if (!model || !model.dailyDividendGold) {
+      return { ok: false, message: "Mẫu dinh thự này không có khoản chi trả cổ tức." };
+    }
+    if (!canClaimDailyDividend(this.estate)) {
+      return { ok: false, message: "Hôm nay bạn đã nhận cổ tức hoàng gia rồi! Vui lòng quay lại vào ngày mai." };
+    }
+
+    const currentDay = Math.floor(Date.now() / 86_400_000);
+    this.estate.lastDividendDay = currentDay;
+    const amount = model.dailyDividendGold;
+    this.inventory.addGoldDirect(amount);
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+
+    return {
+      ok: true,
+      amount,
+      message: `Chúc mừng bạn đã nhận +${amount.toLocaleString("vi-VN")}🪙 cổ tức hoàng gia từ dinh thự ${model.name}!`,
+    };
+  }
+
+  public teleportToEstate(): { ok: boolean; message: string } {
+    if (!this.estateProp) {
+      return { ok: false, message: "Không tìm thấy vị trí khu đất biệt thự trên bản đồ." };
+    }
+    // Dịch chuyển người chơi tới trước cổng dinh thự (khoảng y + 48)
+    const targetX = this.estateProp.x;
+    const targetY = this.estateProp.y + 48;
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.player.position.set(targetX, targetY);
+    this.camX = targetX;
+    this.camY = targetY;
+    this.playPressSfx();
+    return {
+      ok: true,
+      message: "Đã dịch chuyển tức thời về trước cửa dinh thự của bạn!",
+    };
   }
 
   private refreshPetFollower(): void {
@@ -4965,7 +6327,23 @@ export class WorldScene {
       }
     }
 
+    const hasOwnHouse = Boolean(this.estate.houseId);
     for (const pn of this.propNodes) {
+      // Sau khi mua/xây nhà: ẩn vĩnh viễn Phòng Sưu Tầm công cộng trên map của người đã mua
+      if (pn.node === this.collectionHallPropContainer && hasOwnHouse) {
+        pn.node.visible = false;
+        continue;
+      }
+      if (pn.node === this.estateHouseContainer) {
+        if (!hasOwnHouse) {
+          pn.node.visible = false;
+          continue;
+        }
+        if (this.estateProp) {
+          pn.x = this.estateProp.x;
+          pn.y = this.estateProp.y;
+        }
+      }
       pn.node.visible =
         pn.x >= propMinX && pn.x <= propMaxX && pn.y >= propMinY && pn.y <= propMaxY;
     }
@@ -5021,9 +6399,62 @@ export class WorldScene {
   }
 
   private readonly onPointerDown = (e: FederatedPointerEvent): void => {
-    this.isPointerDown = true;
     const targetContainer = this.isInJail ? this.jailRoom.container : this.worldContainer;
     const worldPos = targetContainer.toLocal(e.global);
+
+    if (!this.isInJail && this.estateInteractMode !== "none") {
+      const col = Math.floor(worldPos.x / TILE_SIZE);
+      const row = Math.floor(worldPos.y / TILE_SIZE);
+      this.estateHoverTile = { c: col, r: row };
+
+      if (this.estateInteractMode === "buy_tiles") {
+        const key = makeWorldTileKey(col, row);
+        const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
+        if (!isPurchasableEstateTile(col, row)) {
+          this.estateStatusMsg = "Ô này là đường đi, hồ hoặc công viên — hãy chọn các ô đất trong Khu Biệt Thự!";
+          this.estateStatusIsError = true;
+        } else if (ownedSet.has(key)) {
+          this.estateStatusMsg = "Ô đất này đã thuộc quyền sở hữu của bạn.";
+          this.estateStatusIsError = false;
+        } else {
+          if (this.estateSelectedTileKeys.has(key)) {
+            this.estateSelectedTileKeys.delete(key);
+          } else {
+            this.estateSelectedTileKeys.add(key);
+          }
+          this.playPressSfx();
+          const count = this.estateSelectedTileKeys.size;
+          this.estateStatusMsg =
+            count > 0
+              ? `Đang chọn ${count} ô đất (${(count * TILE_PRICE_GOLD).toLocaleString("vi-VN")}🪙). Bấm nút MUA bên dưới để xác nhận!`
+              : "Click trực tiếp vào các ô đất 1×1 trên bản đồ để chọn mua.";
+          this.estateStatusIsError = false;
+        }
+        this.refreshEstateOverlays();
+        this.emitEstateInteractState();
+        return;
+      }
+
+      if (this.estateInteractMode === "place_house" && this.estatePlacingModelId) {
+        const anchor = this.getPlacingAnchorFromHover();
+        if (anchor) {
+          const res = this.buildHouse(this.estatePlacingModelId, anchor.c, anchor.r);
+          if (res.ok) {
+            this.estateStatusMsg = res.message;
+            this.estateStatusIsError = false;
+            this.exitEstateInteractMode();
+            return;
+          }
+          this.estateStatusMsg = res.message;
+          this.estateStatusIsError = true;
+          this.refreshEstateOverlays();
+          this.emitEstateInteractState();
+        }
+        return;
+      }
+    }
+
+    this.isPointerDown = true;
     if (this.isInJail && !this.isMovementLocked()) {
       const st = this.jailRoom.getStationAtPoint(worldPos.x, worldPos.y, 40);
       if (st) {
@@ -5043,13 +6474,25 @@ export class WorldScene {
   };
 
   private readonly onPointerMove = (e: FederatedPointerEvent): void => {
+    const targetContainer = this.isInJail ? this.jailRoom.container : this.worldContainer;
+    const worldPos = targetContainer.toLocal(e.global);
+
+    if (!this.isInJail && this.estateInteractMode !== "none") {
+      const col = Math.floor(worldPos.x / TILE_SIZE);
+      const row = Math.floor(worldPos.y / TILE_SIZE);
+      if (!this.estateHoverTile || this.estateHoverTile.c !== col || this.estateHoverTile.r !== row) {
+        this.estateHoverTile = { c: col, r: row };
+        this.refreshEstateOverlays();
+        this.emitEstateInteractState();
+      }
+      return;
+    }
+
     if (!this.isPointerDown) return;
     const now = performance.now();
     if (now - this.lastDragPathAt < 85) return;
     this.lastDragPathAt = now;
 
-    const targetContainer = this.isInJail ? this.jailRoom.container : this.worldContainer;
-    const worldPos = targetContainer.toLocal(e.global);
     this.moveToWorldPoint(worldPos.x, worldPos.y, false);
   };
 
@@ -5073,6 +6516,10 @@ export class WorldScene {
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (this.isTextInputFocused(e.target)) {
       this.keysDown.clear();
+      return;
+    }
+    if (e.code === "Escape" && this.estateInteractMode !== "none") {
+      this.exitEstateInteractMode();
       return;
     }
     this.keysDown.add(e.code);

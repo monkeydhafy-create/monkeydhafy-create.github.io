@@ -80,6 +80,9 @@ const BUILDING_ASSET_ALIAS: Partial<Record<BuildingKind, string>> = {
   city_quest_guild: "bld-city_mansion_block",
   city_reputation_hall: "bld-city_twin_towers",
   city_pet_gacha: "bld-city_flower_shop",
+  city_real_estate_center: "bld-city_real_estate_center",
+  city_player_estate: "bld-estate_flower_garden",
+  estate_flower_garden: "bld-estate_flower_garden",
 };
 
 const LPC_WALK_KEYS = [

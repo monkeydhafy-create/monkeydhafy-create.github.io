@@ -5,6 +5,14 @@ import type { EquippedGear } from "../world/EquipmentCatalog.ts";
 import type { ContainerLootState, GridItemInstance, LootSourceType } from "../world/LootSystem.ts";
 import { MAP_COLS, MAP_ROWS, TILE_SIZE, type BiomeId, type CharacterGender, type CharacterSkinId, type FacingDir, type MapId, type SecurityZone } from "../world/types.ts";
 
+export interface RemotePlayerEstateSummary {
+  houseId: string;
+  originC: number;
+  originR: number;
+  ownerName: string;
+  displayedItems: Array<{ itemId: string; lightLevel: 0 | 1 | 2 }>;
+}
+
 export interface RemotePlayerAppearance {
   uid: string;
   name: string;
@@ -13,6 +21,7 @@ export interface RemotePlayerAppearance {
   hairId: string;
   equipped: EquippedGear;
   equippedPetId: string | null;
+  estate?: RemotePlayerEstateSummary | null;
   x?: number;
   y?: number;
   facing?: FacingDir;
@@ -570,6 +579,7 @@ export class SupabaseSync {
     hairId: string;
     equipped: EquippedGear;
     equippedPetId: string | null;
+    estate?: RemotePlayerEstateSummary | null;
   }): void {
     const uid = this.getActiveWorldPlayerId();
     const now = performance.now();
@@ -599,6 +609,7 @@ export class SupabaseSync {
       hairId: params.hairId,
       equipped: params.equipped,
       equippedPetId: params.equippedPetId,
+      estate: params.estate ?? null,
       x: nextLive.x,
       y: nextLive.y,
       facing: nextLive.facing,
@@ -612,7 +623,7 @@ export class SupabaseSync {
       this.subscribeWorldSector(sectorKey);
     }
 
-    // 2. Update Presence when appearance or name changes
+    // 2. Update Presence when appearance, name, or estate/displayed items changes
     const appSig = JSON.stringify([
       nextAppearance.uid,
       nextAppearance.name,
@@ -621,6 +632,7 @@ export class SupabaseSync {
       nextAppearance.hairId,
       nextAppearance.equipped,
       nextAppearance.equippedPetId,
+      nextAppearance.estate ?? null,
     ]);
     if (appSig !== this.lastAppearanceSig && this.worldChannel) {
       this.lastAppearanceSig = appSig;

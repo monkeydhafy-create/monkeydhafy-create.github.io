@@ -328,21 +328,21 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   const roadNetwork: RoadNetworkMeta = {
     horizontalRoads: isJapan
       ? [
-          { row: 16, startCol: 4, endCol: 54 },
+          { row: 18, startCol: 4, endCol: 65 },
           { row: 39, startCol: 4, endCol: 139 }, // Grand Avenue connecting Tokyo -> Samurai Plains East
           { row: 62, startCol: 4, endCol: 54 },
         ]
       : [
-          { row: 16, startCol: 4, endCol: 54 },
+          { row: 18, startCol: 4, endCol: 65 },
           { row: 39, startCol: 4, endCol: 83 }, // West Grand Avenue ending at Sông Hồng West Bank
           { row: 39, startCol: 104, endCol: 139 }, // East Boulevard resuming past Sông Hồng
           { row: 62, startCol: 4, endCol: 54 },
         ],
     verticalRoads: [
-      { col: 12, startRow: 6, endRow: 75 },
-      { col: 25, startRow: 6, endRow: 75 },
-      { col: 38, startRow: 6, endRow: 75 },
-      { col: 52, startRow: 6, endRow: 75 }, // Yellow Urban East Street
+      { col: 12, startRow: 18, endRow: 75 },
+      { col: 25, startRow: 18, endRow: 75 },
+      { col: 38, startRow: 18, endRow: 75 },
+      { col: 52, startRow: 18, endRow: 75 }, // Yellow Urban East Street
     ],
   };
 
@@ -430,18 +430,346 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     }
   }
 
-  // Plains dirt patrol corridors (+50% expanded Yellow Plains col 55..140)
+  // ── Lakeside Villa Estate & Central Park District (100% NẰM TRỌN TRONG VÙNG XANH col 2..31, row 1..17) ──
+  // 1. Nền thảm cỏ xanh mướt toàn khu biệt thự & Safe Green Zone (col 2..31, row 1..17)
+  for (let r = 1; r <= 17; r++) {
+    for (let c = 2; c <= 31; c++) {
+      if (c <= 1 || r <= 1 || c >= cols - 2 || r >= rows - 2) continue;
+      const idx = r * cols + c;
+      if (tiles[idx] !== "water" && tiles[idx] !== "road") {
+        tiles[idx] = "grass";
+        collision[idx] = 0;
+      }
+      securityZones[idx] = "green";
+      reserved[idx] = 1;
+    }
+  }
+
+  // 2. Mạng lưới đường đi dạo vỉa hè kết nối thoáng đãng (Passable 100%)
+  // Đường viền Bắc (North Border Walkway - row 1)
+  for (let c = 2; c <= 31; c++) {
+    const idx = 1 * cols + c;
+    tiles[idx] = "sidewalk";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+  // Đường đi dạo Bắc hồ (North Lake Promenade - row 6)
+  for (let c = 2; c <= 31; c++) {
+    const idx = 6 * cols + c;
+    tiles[idx] = "sidewalk";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+  // Đường đi dạo Nam hồ (South Lake Promenade - row 12)
+  for (let c = 2; c <= 31; c++) {
+    const idx = 12 * cols + c;
+    tiles[idx] = "sidewalk";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+  // Đường dạo Nam giáp Đại lộ thành phố (South Avenue Promenade - row 17)
+  for (let c = 2; c <= 31; c++) {
+    const idx = 17 * cols + c;
+    tiles[idx] = "sidewalk";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+  // Đại lộ phía Tây (West Avenue - col 2)
+  for (let r = 1; r <= 17; r++) {
+    const idx = r * cols + 2;
+    tiles[idx] = "sidewalk";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+  // Đại lộ phía Đông (East Avenue - col 31, dọc ranh giới Vùng Xanh)
+  for (let r = 1; r <= 17; r++) {
+    const idx = r * cols + 31;
+    tiles[idx] = "sidewalk";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+  // Các lối dạo bộ Bắc - Nam chia lô biệt thự (cols 7, 12, 21, 26)
+  for (const c of [7, 12, 21, 26]) {
+    for (let r = 1; r <= 17; r++) {
+      const idx = r * cols + c;
+      if (tiles[idx] !== "water" && tiles[idx] !== "bridge") {
+        tiles[idx] = "sidewalk";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+  }
+
+  // 3. Hồ Nước Cảnh Quan & Đảo Vọng Cảnh Trung Tâm (Scenic Lake & Central Island)
+  const lakeCx = 16.5;
+  const lakeCy = 9.0;
+  // Mặt nước hồ cảnh quan uốn lượn tự nhiên giữa col 13..20, row 7..11
+  for (let r = 7; r <= 11; r++) {
+    for (let c = 13; c <= 20; c++) {
+      const norm = Math.hypot((c - lakeCx) / 3.9, (r - lakeCy) / 2.2);
+      const idx = r * cols + c;
+      if (norm <= 0.85) {
+        tiles[idx] = "water";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      } else if (norm <= 1.05) {
+        tiles[idx] = "sand";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+  }
+
+  // Đảo Vọng Cảnh Trung Tâm (Central Pavilion Island c = 16..17, r = 9)
+  for (let r = 8; r <= 10; r++) {
+    for (let c = 16; c <= 17; c++) {
+      const idx = r * cols + c;
+      tiles[idx] = "stone";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+
+  // Cầu Gỗ Chữ Thập (Grand Cross Boardwalk Bridges)
+  // Cầu Bắc - Nam: col 16 từ row 6 đến row 12
+  for (let r = 6; r <= 12; r++) {
+    const idx = r * cols + 16;
+    if (r !== 9) {
+      tiles[idx] = "bridge";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+  // Cầu Đông - Tây: row 9 từ col 13 đến col 20
+  for (let c = 13; c <= 20; c++) {
+    const idx = 9 * cols + c;
+    if (c !== 16 && c !== 17) {
+      tiles[idx] = "bridge";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+
+  // Quảng trường Đá Hoa Cương Sàn Bất Động Sản (Real Estate Grand Plaza at col 3..6, row 8..10)
+  for (let r = 8; r <= 10; r++) {
+    for (let c = 3; c <= 6; c++) {
+      const idx = r * cols + c;
+      tiles[idx] = "stone";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+
+  // 4. Vẽ 12 Lô Đất Biệt Thự 4×4 Nghệ Thuật (Artisan Courtyards, Passable 100%)
+  const LOT_COLS = [3, 8, 13, 17, 22, 27];
+  for (const c0 of LOT_COLS) {
+    // 6 Lô Hàng Bắc (rows 2..5) — Mặt tiền mở ra Nam đón gió hồ (row 5)
+    for (let r = 2; r <= 5; r++) {
+      for (let c = c0; c <= c0 + 3; c++) {
+        if (c <= 1 || r <= 1 || c >= cols - 2 || r >= rows - 2) continue;
+        const idx = r * cols + c;
+        const isEntranceGate = (r === 5 && (c === c0 + 1 || c === c0 + 2));
+        const isCenterPath = (r === 4 && (c === c0 + 1 || c === c0 + 2));
+        const isEdge = (r === 2 || c === c0 || c === c0 + 3 || r === 5);
+
+        if (isEntranceGate || isCenterPath) {
+          tiles[idx] = "stone";
+        } else if (isEdge) {
+          tiles[idx] = "stone";
+        } else {
+          tiles[idx] = "meadow";
+        }
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    // 6 Lô Hàng Nam (rows 13..16) — Mặt tiền mở ra Bắc đón gió hồ (row 13)
+    for (let r = 13; r <= 16; r++) {
+      for (let c = c0; c <= c0 + 3; c++) {
+        if (c <= 1 || r <= 1 || c >= cols - 2 || r >= rows - 2) continue;
+        const idx = r * cols + c;
+        const isEntranceGate = (r === 13 && (c === c0 + 1 || c === c0 + 2));
+        const isCenterPath = (r === 14 && (c === c0 + 1 || c === c0 + 2));
+        const isEdge = (r === 16 || c === c0 || c === c0 + 3 || r === 13);
+
+        if (isEntranceGate || isCenterPath) {
+          tiles[idx] = "stone";
+        } else if (isEdge) {
+          tiles[idx] = "stone";
+        } else {
+          tiles[idx] = "meadow";
+        }
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+  }
+
+  // 5. Công Viên Sinh Thái & Kho Báu Đông Hồ (col 32..55, row 1..17 — ngay bên phải Khu Biệt Thự)
+  for (let r = 1; r <= 17; r++) {
+    for (let c = 32; c <= 55; c++) {
+      if (c <= 1 || r <= 1 || c >= cols - 2 || r >= rows - 2) continue;
+      const idx = r * cols + c;
+      if (tiles[idx] !== "road") {
+        tiles[idx] = "grass";
+        collision[idx] = 0;
+      }
+      reserved[idx] = 1;
+    }
+  }
+
+  // 4 thảm vườn hoa cỏ công viên (meadow) ở 4 khu vực quanh lối dạo
+  const parkMeadowRects = [
+    { c0: 34, c1: 38, r0: 3, r1: 8 },
+    { c0: 34, c1: 38, r0: 10, r1: 15 },
+    { c0: 50, c1: 53, r0: 3, r1: 8 },
+    { c0: 50, c1: 53, r0: 10, r1: 15 },
+  ];
+  for (const rect of parkMeadowRects) {
+    for (let r = rect.r0; r <= rect.r1; r++) {
+      for (let c = rect.c0; c <= rect.c1; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "meadow";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+  }
+
+  // Mạng lưới đường dạo bộ Công Viên (Sidewalk & Stone nối liền từ Khu Biệt Thự col 31 sang Đông col 55)
+  for (const r of [2, 9, 16]) {
+    for (let c = 32; c <= 55; c++) {
+      const idx = r * cols + c;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+  for (const c of [33, 39, 49, 54]) {
+    for (let r = 2; r <= 17; r++) {
+      const idx = r * cols + c;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+  // Lối trục giữa Bắc - Nam nối thẳng vào Hồ Sen & Chùa Công Viên (col 44)
+  for (let r = 2; r <= 17; r++) {
+    const idx = r * cols + 44;
+    tiles[idx] = "sidewalk";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+
+  // Hồ Sen Cảnh Quan giữa Công Viên (col 41..47, row 6..12)
+  const parkLakeCx = 44;
+  const parkLakeCy = 9;
+  for (let r = 6; r <= 12; r++) {
+    for (let c = 41; c <= 47; c++) {
+      const norm = Math.hypot((c - parkLakeCx) / 3.2, (r - parkLakeCy) / 2.6);
+      const idx = r * cols + c;
+      if (norm <= 0.88) {
+        tiles[idx] = "water";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      } else if (norm <= 1.08) {
+        tiles[idx] = "sand";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+  }
+  // Đảo Đá Hoa Cương giữa Hồ Sen (col 43..45, row 8..10)
+  for (let r = 8; r <= 10; r++) {
+    for (let c = 43; c <= 45; c++) {
+      const idx = r * cols + c;
+      tiles[idx] = "stone";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+  // 4 Cầu Gỗ Chữ Thập nối bờ ra Đảo Sen
+  for (const r of [6, 7, 11, 12]) {
+    const idx = r * cols + 44;
+    tiles[idx] = "bridge";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+  for (const c of [41, 42, 46, 47]) {
+    const idx = 9 * cols + c;
+    tiles[idx] = "bridge";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+  // Quảng trường đá phía Nam hồ công viên (col 42..46, row 13..15)
+  for (let r = 13; r <= 15; r++) {
+    for (let c = 42; c <= 46; c++) {
+      const idx = r * cols + c;
+      tiles[idx] = "stone";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+
+  // 6. Khu Liên Hợp Thể Thao & Sân Vận Động (col 56..76, row 2..16 — ngay bên phải Công Viên Đông Hồ)
+  for (let r = 2; r <= 16; r++) {
+    for (let c = 56; c <= 76; c++) {
+      const idx = r * cols + c;
+      if (tiles[idx] === "water" || tiles[idx] === "shallow") continue;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+  // Nền cỏ Sân Vận Động Bóng Đá (col 57..68, row 3..10)
+  for (let r = 3; r <= 10; r++) {
+    for (let c = 57; c <= 68; c++) {
+      const idx = r * cols + c;
+      tiles[idx] = "grass";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+  // Nền đá phẳng cho Sân Bóng Rổ (col 57..62, row 12..15) & Sân Tennis (col 64..68, row 12..15)
+  for (let r = 12; r <= 15; r++) {
+    for (let c = 57; c <= 68; c++) {
+      if (c === 63) continue; // Lối đi giữa 2 sân
+      const idx = r * cols + c;
+      tiles[idx] = "stone";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+  // Quảng trường đá khu Nhà Thi Đấu Thể Thao phía Đông (col 70..75, row 3..15)
+  for (let r = 3; r <= 15; r++) {
+    for (let c = 70; c <= 75; c++) {
+      const idx = r * cols + c;
+      if (tiles[idx] === "water" || tiles[idx] === "shallow") continue;
+      tiles[idx] = "stone";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+  }
+  // Kết nối lối đi từ Khu Sân Vận Động xuống đường đất phía Nam (row 16..17)
+  for (const c of [56, 63, 70]) {
+    const idx = 16 * cols + c;
+    tiles[idx] = "sidewalk";
+    collision[idx] = 0;
+    reserved[idx] = 1;
+  }
+
+  // Plains dirt patrol corridors (+50% expanded Yellow Plains col 67..140, clear of Lakeside Villa col 13..66)
   if (isJapan) {
-    carveHorizontalDirtTrail(17, 55, 140); // North Samurai Trail
+    carveHorizontalDirtTrail(17, 67, 140); // North Samurai Trail
     carveHorizontalDirtTrail(65, 55, 140); // South Samurai Trail
-    carveVerticalDirtTrail(68, 12, 75);    // West Kyoto Trail
+    carveVerticalDirtTrail(68, 18, 75);    // West Kyoto Trail
     carveVerticalDirtTrail(94, 12, 75);    // Central Samurai Trail
     carveVerticalDirtTrail(116, 12, 75);   // East Kyoto Trail
     carveVerticalDirtTrail(135, 12, 75);   // Yellow-Red Foothill Road
   } else {
     // Hanoi Yellow Plains: 2 widely separated East-West bridge corridors across Sông Hồng
     // Bridge 1 (Cầu Bắc): row 14..16 (3-tile wide grand bridge), Bridge 2 (Cầu Nam): row 67..69 (53 tiles apart!)
-    carveHorizontalDirtTrail(15, 55, 140);
+    carveHorizontalDirtTrail(15, 67, 140);
     carveHorizontalDirtTrail(68, 55, 140);
     // Widen both grand river bridges to 3 tiles thick across the Main River water span
     for (const [bridgeRowTop, minC, maxC] of [
@@ -465,7 +793,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
       }
     }
     // Dry-land N-S connectors staying completely clear of both river branches (ZERO accidental 3rd bridge!)
-    carveVerticalDirtTrail(56, 14, 72);    // West Plains Ring Road (West of Branch 1 cove)
+    carveVerticalDirtTrail(56, 18, 72);    // West Plains Ring Road (South of Lakeside Villa row 17)
     carveVerticalDirtTrail(78, 14, 41);    // North-West Riverside Connector (Cầu Bắc <-> Grand Ave)
     carveVerticalDirtTrail(76, 58, 71);    // South-West Riverside Connector (South of Branch 1 <-> Cầu Nam)
     carveVerticalDirtTrail(106, 39, 71);   // Central-East Riverside Connector (East Blvd <-> Cầu Nam)
@@ -501,6 +829,16 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   // 5. Discoverable Landmarks spanning Green, Yellow & Red Zones
   const landmarks: WorldLandmark[] = isJapan
     ? [
+        {
+          id: "jp-lakeside-villas",
+          name: "Khu Biệt Thự & Hồ Cảnh Quan Tokyo",
+          subtitle: "Quần thể 20 lô biệt thự cao cấp ven hồ, công viên sinh thái & vườn hoa",
+          x: 40 * TILE_SIZE,
+          y: 9 * TILE_SIZE,
+          radius: 420,
+          accentColor: 0x38bdf8,
+          discovered: true,
+        },
         {
           id: "jp-tokyo-plaza",
           name: "Đại Đô Thị Tokyo (Vùng Xanh)",
@@ -553,6 +891,16 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
         },
       ]
     : [
+        {
+          id: "city-lakeside-villas",
+          name: "Khu Biệt Thự & Hồ Cảnh Quan Hoàng Gia",
+          subtitle: "Quần thể 20 lô biệt thự cao cấp ven hồ, công viên sinh thái & vườn hoa",
+          x: 40 * TILE_SIZE,
+          y: 9 * TILE_SIZE,
+          radius: 420,
+          accentColor: 0x38bdf8,
+          discovered: true,
+        },
         {
           id: "city-central-park",
           name: "Quảng Trường Vùng Xanh",
@@ -656,6 +1004,101 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   };
 
   // === ZONE 1: GREEN SAFE ZONE (col 2..31) — Home, ALL Shops, Airport, Hospital, Police (NO loot houses/chests, Trash Bins only!) ===
+  const buildLakesideVillaEstateProps = (): void => {
+    // Sàn Giao Dịch Bất Động Sản đặt tại quảng trường phía Tây Vùng Xanh (col 4, row 9)
+    placeProp("city_real_estate_center", 4, 9, 3, 2);
+    // Tượng Cóc Vàng chiêu tài phong thủy trước sảnh BĐS (col 6, row 10)
+    placeProp("frog_statue", 6, 10, 1, 1, 0.5, 0.92, false);
+
+    // Lô Đất Biệt Thự của Người Chơi (Lô 9 mặt tiền hồ tại col 14, row 15)
+    // Đặt blocking = false để khi chưa xây nhà, người chơi đi lại hoàn toàn tự do trên mặt đất!
+    placeProp("city_player_estate", 14, 15, 4, 3, 0.5, 0.92, false);
+
+    // Đảo Vọng Cảnh Trung Tâm Vùng Xanh (Central Pavilion Island tại col 16..17, row 9)
+    // Quán Trà / Đình Trà cổ kính tọa lạc giữa lòng hồ nước sinh thái
+    placeProp("plains_tea_house", 16, 9, 3, 2, 0.5, 0.92, false);
+    // Cây hoa anh đào & phong đỏ nhỏ trang trí trên Đảo
+    placeProp("sakura_small", 15, 8, 1, 1, 0.5, 0.92, false);
+    placeProp("momiji_small", 18, 8, 1, 1, 0.5, 0.92, false);
+    // Đèn lồng đá Nhật Bản thắp sáng lối cầu dẫn vào Đảo Vọng Cảnh
+    placeProp("jp_stone_lantern", 15, 10, 1, 1, 0.5, 0.92, false);
+    placeProp("jp_stone_lantern", 18, 10, 1, 1, 0.5, 0.92, false);
+
+    // Ghế đá nghỉ dưỡng ven hồ (hàng 6 và hàng 12)
+    placeProp("bench", 14, 6, 1, 1, 0.5, 0.92, false);
+    placeProp("bench", 19, 6, 1, 1, 0.5, 0.92, false);
+    placeProp("bench", 14, 12, 1, 1, 0.5, 0.92, false);
+    placeProp("bench", 19, 12, 1, 1, 0.5, 0.92, false);
+
+    // Đèn công viên ven cầu và đèn đường đại lộ Vùng Xanh
+    placeProp("park_lantern", 12, 9, 1, 1, 0.5, 0.92, false);
+    placeProp("park_lantern", 21, 9, 1, 1, 0.5, 0.92, false);
+    placeProp("street_lamp", 2, 6, 1, 2, 0.5, 0.92, false);
+    placeProp("street_lamp", 2, 12, 1, 2, 0.5, 0.92, false);
+    placeProp("street_lamp", 31, 6, 1, 2, 0.5, 0.92, false);
+    placeProp("street_lamp", 31, 12, 1, 2, 0.5, 0.92, false);
+
+    // ── Công Viên Sinh Thái & Kho Báu Đông Hồ (col 32..55, row 1..17) ──
+    // 5 Model nhà công viên phù hợp (tất cả đều có thể tương tác LOOT vật phẩm!)
+    placeProp("city_flower_shop", 36, 6, 3, 2);        // Tiệm Hoa Nhà Kính (Tây Bắc)
+    placeProp("plains_tea_house", 36, 14, 3, 2);       // Quán Trà Công Viên (Tây Nam)
+    placeProp("plains_pagoda", 44, 5, 4, 2);           // Chùa Cổ 5 Tầng (Điểm nhấn Bắc Hồ - Có Két Kho Báu!)
+    placeProp("plains_riverside_tavern", 52, 6, 3, 2); // Quán Thủy Tạ Ven Hồ (Đông Bắc)
+    placeProp("plains_parasol_market", 52, 14, 3, 2);  // Khu Chợ Dù Công Viên (Đông Nam)
+
+    // Cây cảnh anh đào & phong đỏ rải đẹp quanh hồ & công viên
+    placeProp("sakura_small", 40, 5, 1, 1, 0.5, 0.92, false);
+    placeProp("momiji_small", 48, 5, 1, 1, 0.5, 0.92, false);
+    placeProp("sakura_small", 40, 13, 1, 1, 0.5, 0.92, false);
+    placeProp("momiji_small", 48, 13, 1, 1, 0.5, 0.92, false);
+    placeProp("sakura_small", 34, 8, 1, 1, 0.5, 0.92, false);
+    placeProp("momiji_small", 53, 8, 1, 1, 0.5, 0.92, false);
+    placeProp("tree_small_warm", 34, 11, 1, 1, 0.5, 0.92, false);
+    placeProp("tree_small_warm", 53, 11, 1, 1, 0.5, 0.92, false);
+
+    // Đèn lồng đá trên Đảo Sen & ghế đá công viên quanh quảng trường
+    placeProp("jp_stone_lantern", 43, 8, 1, 1, 0.5, 0.92, false);
+    placeProp("jp_stone_lantern", 45, 8, 1, 1, 0.5, 0.92, false);
+    placeProp("jp_stone_lantern", 43, 10, 1, 1, 0.5, 0.92, false);
+    placeProp("jp_stone_lantern", 45, 10, 1, 1, 0.5, 0.92, false);
+
+    placeProp("bench", 42, 14, 1, 1, 0.5, 0.92, false);
+    placeProp("bench", 46, 14, 1, 1, 0.5, 0.92, false);
+    placeProp("bench", 38, 8, 1, 1, 0.5, 0.92, false);
+    placeProp("bench", 50, 8, 1, 1, 0.5, 0.92, false);
+
+    // Đèn công viên dọc các lối dạo
+    placeProp("park_lantern", 33, 2, 1, 1, 0.5, 0.92, false);
+    placeProp("park_lantern", 39, 9, 1, 1, 0.5, 0.92, false);
+    placeProp("park_lantern", 49, 9, 1, 1, 0.5, 0.92, false);
+    placeProp("park_lantern", 54, 2, 1, 1, 0.5, 0.92, false);
+    placeProp("park_lantern", 39, 16, 1, 1, 0.5, 0.92, false);
+    placeProp("park_lantern", 49, 16, 1, 1, 0.5, 0.92, false);
+
+    // ── Khu Liên Hợp Thể Thao & Sân Vận Động (col 56..76, row 2..16) ──
+    // Nhà Thi Đấu Trung Tâm & Trung Tâm Thể Thao (có thể loot vật phẩm)
+    placeProp("city_museum", 73, 7, 4, 2);
+    placeProp("city_arcade_house", 73, 14, 3, 2);
+
+    // 4 Cột đèn pha sân vận động tại 4 góc sân bóng đá (col 57..68, row 3..10)
+    placeProp("street_lamp", 56, 3, 1, 2, 0.5, 0.92, false);
+    placeProp("street_lamp", 69, 3, 1, 2, 0.5, 0.92, false);
+    placeProp("street_lamp", 56, 10, 1, 2, 0.5, 0.92, false);
+    placeProp("street_lamp", 69, 10, 1, 2, 0.5, 0.92, false);
+
+    // Hàng ghế khán đài dọc biên Bắc (row 2) và biên Nam (row 11) của Sân Bóng Đá
+    for (const bc of [59, 61, 64, 66]) {
+      placeProp("bench", bc, 2, 1, 1, 0.5, 0.92, false);
+      placeProp("bench", bc, 11, 1, 1, 0.5, 0.92, false);
+    }
+
+    // Cây xanh & đèn chiếu sáng khu sân bóng rổ / tennis
+    placeProp("park_lantern", 63, 12, 1, 1, 0.5, 0.92, false);
+    placeProp("park_lantern", 63, 15, 1, 1, 0.5, 0.92, false);
+    placeProp("tree_small_warm", 70, 3, 1, 1, 0.5, 0.92, false);
+    placeProp("tree_small_warm", 70, 15, 1, 1, 0.5, 0.92, false);
+  };
+
   if (isJapan) {
     // Tokyo Shibuya / Harajuku / Ginza Japanese Safe Zone Layout
     // West Block (col 5..10)
@@ -664,55 +1107,57 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("city_pet_gacha", 7, 60, 4, 2);
     placeProp("city_police_station", 7, 72, 4, 2);
 
-    // Center Block (col 15..23) — Ryokan Home, Auction House right beside it, Kimono Pavilion, Narita Airport & Harajuku Hair
-    placeProp("city_home_house", 16, 13, 3, 2);
-    placeProp("city_auction_house", 21, 13, 4, 2);
+    // Center Block (col 15..23) — Master Lakeside Villa District (20 Lots) + Ryokan Home, Auction House
+    buildLakesideVillaEstateProps();
+    placeProp("city_home_house", 16, 22, 3, 2);
+    placeProp("city_auction_house", 21, 22, 4, 2);
     placeProp("city_clothing_shop", 19, 36, 4, 2);
     placeProp("city_airport", 19, 52, 5, 3);
     placeProp("city_hair_salon", 19, 60, 4, 2);
 
     // East Safe Block (col 28..31) — Kanpo Apothecary, Collection Hall moved up near Home, Tokyo Ramen, Reputation Hall, Ginza Omakase & Quest Guild
-    placeProp("city_pharmacy", 29, 13, 4, 2);
-    placeProp("city_collection_hall", 29, 23, 4, 2);
+    placeProp("city_pharmacy", 29, 22, 4, 2);
+    placeProp("city_collection_hall", 29, 27, 4, 2);
     placeProp("city_butcher_shop", 29, 36, 4, 2);
     placeProp("city_reputation_hall", 29, 48, 4, 2);
     placeProp("plains_garden_inn", 29, 60, 5, 2);
     placeProp("city_quest_guild", 29, 72, 4, 2);
   } else {
     // West Block (col 5..10)
-    placeProp("city_pharmacy", 7, 13, 4, 2);
     placeProp("city_hospital", 7, 23, 5, 3);
     placeProp("city_clothing_shop", 7, 36, 4, 2);
     placeProp("city_pet_gacha", 7, 60, 4, 2);
     placeProp("city_police_station", 7, 72, 4, 2);
 
-    // Center Safe Block (col 15..23) — Home + Auction House right beside it
-    placeProp("city_home_house", 16, 13, 3, 2);
-    placeProp("city_auction_house", 21, 13, 4, 2);
+    // Center Safe Block (col 15..23) — Master Lakeside Villa District (20 Lots) + Home + Auction House right beside it
+    buildLakesideVillaEstateProps();
+    placeProp("city_home_house", 16, 22, 3, 2);
+    placeProp("city_auction_house", 21, 22, 4, 2);
     placeProp("city_backpack_shop", 19, 36, 4, 2);
     placeProp("city_airport", 19, 52, 5, 3);
     placeProp("plains_garden_inn", 19, 60, 5, 2);
     placeProp("city_hair_salon", 19, 72, 4, 2);
 
-    // East Safe Strip (col 28..31) — Collection Hall moved up near Home!
-    placeProp("city_collection_hall", 29, 13, 4, 2);
-    placeProp("city_quest_guild", 29, 24, 4, 2);
-    placeProp("city_butcher_shop", 29, 36, 4, 2);
-    placeProp("city_reputation_hall", 29, 48, 4, 2);
+    // East Safe Strip (col 28..31)
+    placeProp("city_pharmacy", 29, 22, 4, 2);
+    placeProp("city_collection_hall", 29, 27, 4, 2);
+    placeProp("city_quest_guild", 29, 36, 4, 2);
+    placeProp("city_butcher_shop", 29, 48, 4, 2);
+    placeProp("city_reputation_hall", 29, 60, 4, 2);
   }
 
   // === ZONE 2: YELLOW ZONE (col 32..141, +50.7% larger — 21 loot buildings = +40%) ===
   if (isJapan) {
     // Region 1 East: Grand Tokyo Metropolis (col 32..55)
-    placeProp("jp_ryokan_inn", 34, 13, 4, 2);
-    placeProp("jp_shinto_shrine", 45, 13, 4, 2);
-    placeProp("jp_tokyo_tower", 45, 28, 5, 3);
+    placeProp("jp_ryokan_inn", 35, 22, 4, 2);
+    placeProp("jp_shinto_shrine", 45, 22, 4, 2);
+    placeProp("jp_tokyo_tower", 45, 31, 5, 3);
     placeProp("jp_akihabara_arcade", 34, 36, 4, 2);
     placeProp("jp_shinkansen_station", 45, 52, 5, 3);
     placeProp("jp_ryokan_inn", 34, 60, 4, 2);
     placeProp("jp_akihabara_arcade", 45, 72, 4, 2);
     // Region 2: Expanded Feudal Samurai Countryside & Estates (col 56..141)
-    placeProp("jp_samurai_manor", 62, 13, 5, 3);
+    placeProp("jp_samurai_manor", 62, 22, 5, 3);
     placeProp("jp_village_machiya", 61, 35, 4, 2);
     placeProp("jp_village_machiya", 62, 54, 4, 2);
     placeProp("jp_ryokan_inn", 63, 75, 4, 2);
@@ -728,15 +1173,15 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("jp_ninja_dojo", 131, 75, 4, 2);
   } else {
     // Urban East Streets (col 32..55)
-    placeProp("city_fire_station", 34, 13, 4, 2);
-    placeProp("city_post_office", 45, 13, 4, 2);
-    placeProp("city_courtyard_apt", 45, 28, 5, 3);
+    placeProp("city_fire_station", 35, 22, 4, 2);
+    placeProp("city_post_office", 45, 22, 4, 2);
+    placeProp("city_courtyard_apt", 45, 31, 5, 3);
     placeProp("city_arcade_house", 34, 36, 4, 2);
     placeProp("city_green_terrace", 45, 52, 5, 3);
     placeProp("city_terrace_houses", 34, 60, 4, 2);
     placeProp("city_flower_shop", 45, 72, 4, 2);
     // West Bank of Sông Hồng & Branch 1 Surroundings (col 58..86)
-    placeProp("plains_tea_house", 65, 12, 4, 2);
+    placeProp("plains_tea_house", 65, 22, 4, 2);
     placeProp("plains_archway", 65, 35, 4, 2);
     placeProp("plains_parasol_market", 74, 26, 5, 2);
     placeProp("city_courtyard_apt", 83, 35, 5, 3);
@@ -1086,6 +1531,20 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           { id: "chest-red-lake-5", name: "Rương Trôi Dạt Đảo Hồ Sâu", kind: "wooden", col: 186, row: 61 },
           { id: "trash-rural-trail", name: "Thùng Rác Đầu Vùng Đỏ", kind: "trash", col: 143, row: 41 },
         ];
+
+  // 4 điểm loot gọn cân đối cho Công Viên Đông Hồ + 3 điểm loot cho Khu Liên Hợp Sân Vận Động
+  const parkPrefix = isJapan ? "jp_" : "";
+  chestSpots.push(
+    // Công Viên Đông Hồ (4 điểm — đã giảm gọn)
+    { id: `${parkPrefix}park-east-royal-island`, name: "Rương Hoàng Kim Đảo Sen Công Viên", kind: "royal", col: 44, row: 9 },
+    { id: `${parkPrefix}park-east-wood-tea`, name: "Rương Quán Trà Công Viên", kind: "wooden", col: 38, row: 14 },
+    { id: `${parkPrefix}park-east-wood-tavern`, name: "Rương Thủy Tạ Đông Bắc", kind: "wooden", col: 50, row: 6 },
+    { id: `${parkPrefix}park-east-trash-south`, name: "Thùng Rác Lối Dạo Nam Công Viên", kind: "trash", col: 40, row: 16 },
+    // Khu Liên Hợp Sân Vận Động (3 điểm)
+    { id: `${parkPrefix}stadium-royal-trophy`, name: "Rương Cúp Vô Địch Sân Vận Động", kind: "royal", col: 70, row: 9 },
+    { id: `${parkPrefix}stadium-wood-locker`, name: "Rương Phòng Thay Đồ Sân Bóng", kind: "wooden", col: 63, row: 13 },
+    { id: `${parkPrefix}stadium-trash-gate`, name: "Thùng Rác Cổng Khán Đài", kind: "trash", col: 56, row: 11 },
+  );
 
   // Reserve chest coordinates before procedural flora so trees/rocks never cover chests
   for (const spot of chestSpots) {

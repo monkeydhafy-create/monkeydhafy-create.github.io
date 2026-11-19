@@ -1761,6 +1761,13 @@ export class InventoryManager {
   }
 
   private equippedGear: EquippedGear | null = null;
+  private estateStorageCols = 0;
+  private estateStorageRows = 0;
+
+  public setEstateStorageBonus(cols: number, rows: number): void {
+    this.estateStorageCols = Math.max(0, cols);
+    this.estateStorageRows = Math.max(0, rows);
+  }
 
   public setEquippedGear(gear: EquippedGear | null): void {
     this.equippedGear = gear ? { ...gear } : null;
@@ -1799,7 +1806,15 @@ export class InventoryManager {
 
   public getHomeTier(): SafeboxTierDef {
     const id = this.state.homeStorageId ?? "home_4x4";
-    return HOME_STORAGE_BY_ID[id] ?? HOME_STORAGE_CATALOG[0];
+    const base = HOME_STORAGE_BY_ID[id] ?? HOME_STORAGE_CATALOG[0];
+    if (this.estateStorageCols > 0 || this.estateStorageRows > 0) {
+      return {
+        ...base,
+        cols: Math.max(base.cols, this.estateStorageCols),
+        rows: Math.max(base.rows, this.estateStorageRows),
+      };
+    }
+    return base;
   }
 
   public getHomeContract(): HomeUpgradeContract | null {

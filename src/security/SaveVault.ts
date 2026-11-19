@@ -64,6 +64,16 @@ import {
   type ReputationState,
 } from "../world/ReputationSystem.ts";
 import { PET_BY_ID } from "../world/PetSystem.ts";
+import {
+  HOUSE_MODELS,
+  LEGACY_DEFAULT_LOT_COL,
+  LEGACY_DEFAULT_LOT_ROW,
+  createDefaultPlayerEstateState,
+  isPurchasableEstateTile,
+  makeWorldTileKey,
+  parseWorldTileKey,
+  type PlayerEstateState,
+} from "../world/EstateCatalog.ts";
 
 export interface SavedPlayerProfile {
   x: number;
@@ -98,6 +108,7 @@ export interface PlayerGameSaveV3 {
   reputation?: ReputationState;
   ownedPetIds?: string[];
   equippedPetId?: string | null;
+  estate?: PlayerEstateState;
 }
 
 export interface SaveLoadResult {
@@ -207,6 +218,7 @@ export function createDefaultGameSave(spawnX: number, spawnY: number): PlayerGam
       globalIgnoreUntil: 0,
       pendingArrestOfficerId: null,
     },
+    estate: createDefaultPlayerEstateState(),
   };
 }
 
@@ -1536,6 +1548,122 @@ export function validateSavePayload(
     };
   }
 
+  let validatedEstate: PlayerEstateState;
+  if (obj.estate && typeof obj.estate === "object" && !Array.isArray(obj.estate)) {
+    const rawEstate = obj.estate as Partial<PlayerEstateState>;
+    const plotTier =
+      typeof rawEstate.plotTier === "number" &&
+      Number.isInteger(rawEstate.plotTier) &&
+      rawEstate.plotTier >= 0 &&
+      rawEstate.plotTier <= 4
+        ? rawEstate.plotTier
+        : strict
+          ? (() => {
+              throw new TamperError("Invalid estate.plotTier");
+            })()
+          : 0;
+
+    let houseId: string | null = null;
+    if (typeof rawEstate.houseId === "string" && HOUSE_MODELS[rawEstate.houseId]) {
+      const model = HOUSE_MODELS[rawEstate.houseId];
+      if (strict && model.tier > plotTier) {
+        throw new TamperError("House model tier exceeds owned plot tier");
+      }
+      if (model.tier <= plotTier) {
+        houseId = rawEstate.houseId;
+      }
+    } else if (rawEstate.houseId !== null && rawEstate.houseId !== undefined && strict) {
+      throw new TamperError("Invalid estate.houseId");
+    }
+
+    const purchasedAt =
+      typeof rawEstate.purchasedAt === "number" && Number.isFinite(rawEstate.purchasedAt) && rawEstate.purchasedAt >= 0
+        ? rawEstate.purchasedAt
+        : 0;
+
+    const lastDividendDay =
+      typeof rawEstate.lastDividendDay === "number" && Number.isFinite(rawEstate.lastDividendDay) && rawEstate.lastDividendDay >= 0
+        ? rawEstate.lastDividendDay
+        : 0;
+
+    const ownerName =
+      typeof rawEstate.ownerName === "string" ? rawEstate.ownerName.trim().slice(0, 40) : undefined;
+
+    let ownedTileIndices: number[] = [];
+    if (Array.isArray(rawEstate.ownedTileIndices)) {
+      const tileSet = new Set<number>();
+      for (const item of rawEstate.ownedTileIndices) {
+        if (typeof item === "number" && Number.isInteger(item) && item >= 0 && item <= 15) {
+          tileSet.add(item);
+        } else if (strict) {
+          throw new TamperError("Invalid estate.ownedTileIndices entry");
+        }
+      }
+      ownedTileIndices = Array.from(tileSet).sort((a, b) => a - b);
+    } else if (plotTier > 0) {
+      if (plotTier === 1) ownedTileIndices = [0];
+      else if (plotTier === 2) ownedTileIndices = [0, 1, 4, 5];
+      else if (plotTier === 3) ownedTileIndices = [0, 1, 2, 4, 5, 6, 8, 9, 10];
+      else if (plotTier === 4) ownedTileIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    }
+
+    let ownedWorldTiles: string[] = [];
+    if (Array.isArray(rawEstate.ownedWorldTiles)) {
+      const worldTileSet = new Set<string>();
+      for (const item of rawEstate.ownedWorldTiles) {
+        if (typeof item === "string") {
+          const parsed = parseWorldTileKey(item);
+          if (parsed && isPurchasableEstateTile(parsed.c, parsed.r)) {
+            worldTileSet.add(makeWorldTileKey(parsed.c, parsed.r));
+          } else if (strict) {
+            throw new TamperError("Invalid estate.ownedWorldTiles entry");
+          }
+        } else if (strict) {
+          throw new TamperError("Invalid estate.ownedWorldTiles type");
+        }
+      }
+      ownedWorldTiles = Array.from(worldTileSet).sort();
+    } else if (ownedTileIndices.length > 0) {
+      const migrated = new Set<string>();
+      for (const idx of ownedTileIndices) {
+        const c = LEGACY_DEFAULT_LOT_COL + (idx % 4);
+        const r = LEGACY_DEFAULT_LOT_ROW + Math.floor(idx / 4);
+        if (isPurchasableEstateTile(c, r)) {
+          migrated.add(makeWorldTileKey(c, r));
+        }
+      }
+      ownedWorldTiles = Array.from(migrated).sort();
+    }
+
+    let houseOrigin: { c: number; r: number } = { c: LEGACY_DEFAULT_LOT_COL, r: LEGACY_DEFAULT_LOT_ROW };
+    if (rawEstate.houseOrigin && typeof rawEstate.houseOrigin === "object") {
+      const rawC = (rawEstate.houseOrigin as { c?: unknown; r?: unknown }).c;
+      const rawR = (rawEstate.houseOrigin as { c?: unknown; r?: unknown }).r;
+      const c =
+        typeof rawC === "number" && Number.isInteger(rawC) && rawC >= 0 && rawC <= 35
+          ? rawC
+          : LEGACY_DEFAULT_LOT_COL;
+      const r =
+        typeof rawR === "number" && Number.isInteger(rawR) && rawR >= 0 && rawR <= 20
+          ? rawR
+          : LEGACY_DEFAULT_LOT_ROW;
+      houseOrigin = { c, r };
+    }
+
+    validatedEstate = {
+      plotTier,
+      houseId,
+      purchasedAt,
+      lastDividendDay,
+      ownerName,
+      ownedTileIndices,
+      ownedWorldTiles,
+      houseOrigin,
+    };
+  } else {
+    validatedEstate = createDefaultPlayerEstateState();
+  }
+
   return {
     schemaVersion: 3,
     inventory: {
@@ -1586,6 +1714,7 @@ export function validateSavePayload(
     ...(reputation ? { reputation } : {}),
     ownedPetIds: Array.from(ownedPetSet),
     equippedPetId,
+    estate: validatedEstate,
   };
 }
 

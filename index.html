@@ -167,6 +167,7 @@
           <div class="bag-footer fullmap-footer">
             <div id="fullmap-quick-nav" class="fullmap-quick-nav" aria-label="Đi nhanh tới địa điểm">
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_home_house">🏠 Nhà</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="city_real_estate_center">🏛️ Bất Động Sản</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_collection_hall">🏛️ Sưu Tầm</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_auction_house">⚖️ Đấu Giá</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_backpack_shop">🏪 Shop Balo</button>
@@ -724,6 +725,34 @@
           </div>
           <div id="auction-body" class="auction-body"></div>
           <div id="auction-status-msg" class="auction-status-msg" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <!-- Real Estate Center & Trading Floor Modal -->
+      <div id="real-estate-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="estate-title">
+        <div class="bag-card estate-card-shell">
+          <div class="bag-header">
+            <div>
+              <h2 id="estate-title" class="bag-title">🏛️ Sàn Giao Dịch Bất Động Sản &amp; Quy Hoạch</h2>
+              <div id="estate-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-estate-close" class="bag-close" type="button" aria-label="Đóng sàn bất động sản">✕</button>
+          </div>
+          <div class="estate-tabs" role="tablist">
+            <button id="btn-estate-tab-plot" class="estate-tab-btn is-active" type="button" data-estate-tab="plot">🏞️ Mua &amp; Nâng Cấp Đất (1×1 - 4×4)</button>
+            <button id="btn-estate-tab-build" class="estate-tab-btn" type="button" data-estate-tab="build">🏗️ Bản Vẽ &amp; Xây Nhà (16 Mẫu)</button>
+            <button id="btn-estate-tab-manage" class="estate-tab-btn" type="button" data-estate-tab="manage">🛠️ Quản Lý Dinh Thự &amp; Phá Dỡ</button>
+          </div>
+          <div id="estate-tier-filter-bar" class="estate-tier-filter-bar hidden">
+            <span class="estate-filter-label">Khuôn viên:</span>
+            <button class="estate-filter-btn is-active" type="button" data-filter-tier="all">Tất cả mẫu</button>
+            <button class="estate-filter-btn" type="button" data-filter-tier="1">Tier 1 (1×1)</button>
+            <button class="estate-filter-btn" type="button" data-filter-tier="2">Tier 2 (2×2)</button>
+            <button class="estate-filter-btn" type="button" data-filter-tier="3">Tier 3 (3×3)</button>
+            <button class="estate-filter-btn" type="button" data-filter-tier="4">Tier 4 (4×4)</button>
+          </div>
+          <div id="estate-body" class="estate-body"></div>
+          <div id="estate-status-msg" class="estate-status-msg" aria-live="polite"></div>
         </div>
       </div>
 
