@@ -6384,6 +6384,12 @@ button {
   color: #6ee7b7;
 }
 
+.estate-bar-pill.is-sell {
+  background: rgba(239, 68, 68, 0.24);
+  border: 1px solid rgba(248, 113, 113, 0.65);
+  color: #fca5a5;
+}
+
 .estate-bar-info {
   font-size: 13px;
   color: #e2e8f0;
@@ -6419,6 +6425,46 @@ button {
   cursor: not-allowed;
   background: rgba(51, 65, 85, 0.8);
   border-color: rgba(148, 163, 184, 0.3);
+}
+
+.btn-bar-danger {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid #f87171;
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-bar-danger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
+}
+
+.btn-bar-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: rgba(51, 65, 85, 0.8);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.btn-bar-danger-outline {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  background: rgba(185, 28, 28, 0.28);
+  color: #fecaca;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-bar-danger-outline:hover {
+  background: rgba(220, 38, 38, 0.55);
+  color: #ffffff;
 }
 
 .btn-bar-secondary {
@@ -6527,6 +6573,27 @@ button {
 .btn-estate-hero-sub:hover {
   background: rgba(2, 132, 199, 0.45);
   color: #ffffff;
+}
+
+.btn-estate-hero-sell {
+  padding: 13px 18px;
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  background: rgba(185, 28, 28, 0.28);
+  color: #fecaca;
+  cursor: pointer;
+}
+
+.btn-estate-hero-sell:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.58);
+  color: #ffffff;
+}
+
+.btn-estate-hero-sell:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .estate-house-grid-compact {

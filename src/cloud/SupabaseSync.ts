@@ -6,10 +6,11 @@ import type { ContainerLootState, GridItemInstance, LootSourceType } from "../wo
 import { MAP_COLS, MAP_ROWS, TILE_SIZE, type BiomeId, type CharacterGender, type CharacterSkinId, type FacingDir, type MapId, type SecurityZone } from "../world/types.ts";
 
 export interface RemotePlayerEstateSummary {
-  houseId: string;
+  houseId: string | null;
   originC: number;
   originR: number;
   ownerName: string;
+  ownedWorldTiles?: string[];
   displayedItems: Array<{ itemId: string; lightLevel: 0 | 1 | 2 }>;
 }
 

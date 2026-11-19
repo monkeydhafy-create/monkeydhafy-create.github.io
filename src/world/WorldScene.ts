@@ -127,6 +127,7 @@ import {
   findFirstValidHouseAnchorWorld,
   getEstateTileInfo,
   getHouseModelDef,
+  getHouseOccupiedWorldTileSet,
   getPlotTierDef,
   HOUSE_TIER_AURA_CONFIG,
   isPurchasableEstateTile,
@@ -136,6 +137,7 @@ import {
   normalizeEstateOwnedTiles,
   parseWorldTileKey,
   TILE_PRICE_GOLD,
+  TILE_SELL_REFUND_GOLD,
   type PlayerEstateState,
 } from "./EstateCatalog.ts";
 import { WeatherParticles } from "./WeatherParticles.ts";
@@ -269,12 +271,13 @@ export type NearbyInteraction =
       y: number;
     };
 
-export type EstateInteractMode = "none" | "buy_tiles" | "place_house";
+export type EstateInteractMode = "none" | "buy_tiles" | "sell_tiles" | "place_house";
 
 export interface EstateInteractSnapshot {
   mode: EstateInteractMode;
   selectedTileKeys: string[];
   selectedCostGold: number;
+  selectedRefundGold: number;
   ownedTileCount: number;
   placingModelId: string | null;
   placingModelName: string | null;
@@ -418,7 +421,19 @@ export class WorldScene {
   private estatePlacingModelId: string | null = null;
   private estateStatusMsg = "";
   private estateStatusIsError = false;
+  private estateCamX = 16 * TILE_SIZE;
+  private estateCamY = 10 * TILE_SIZE;
+  private estatePanStartScreenX = 0;
+  private estatePanStartScreenY = 0;
+  private estatePanStartCamX = 0;
+  private estatePanStartCamY = 0;
+  private isEstatePanning = false;
+  private estatePointerDownActive = false;
   private readonly estateInteractListeners = new Set<(snapshot: EstateInteractSnapshot) => void>();
+  private readonly remoteOwnedTilesByUid = new Map<
+    string,
+    { ownerName: string; tiles: Set<string> }
+  >();
   private readonly remoteEstateDisplays = new Map<
     string,
     {
@@ -1140,6 +1155,11 @@ export class WorldScene {
         this.clearRemoteEstateDisplay(uid);
       }
     }
+    for (const uid of Array.from(this.remoteOwnedTilesByUid.keys())) {
+      if (!appearances.has(uid)) {
+        this.remoteOwnedTilesByUid.delete(uid);
+      }
+    }
 
     for (const [uid, appData] of appearances.entries()) {
       const move = moves.get(uid);
@@ -1291,7 +1311,85 @@ export class WorldScene {
     this.remoteEstateDisplays.delete(uid);
   }
 
+  private getRemoteTileOwnerMap(): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const rec of this.remoteOwnedTilesByUid.values()) {
+      for (const key of rec.tiles) {
+        if (!map.has(key)) {
+          map.set(key, rec.ownerName);
+        }
+      }
+    }
+    return map;
+  }
+
   private syncRemoteEstateDisplay(uid: string, estate: RemotePlayerEstateSummary | null): void {
+    const myNameNorm = (this.estate.ownerName || this.getPlayerDisplayName()).trim().toLowerCase();
+    const remoteNameNorm = (estate?.ownerName || "").trim().toLowerCase();
+    const isSameOwnerTab = Boolean(estate && myNameNorm && remoteNameNorm && myNameNorm === remoteNameNorm);
+
+    // 1. Cập nhật tập ô đất thuộc sở hữu của người chơi khác để chặn tranh chấp mua đất / xây nhà
+    const prevRec = this.remoteOwnedTilesByUid.get(uid);
+    if (!estate || isSameOwnerTab) {
+      if (prevRec) {
+        this.remoteOwnedTilesByUid.delete(uid);
+        if (this.estateInteractMode !== "none") {
+          this.refreshEstateOverlays();
+        }
+      }
+    } else {
+      const nextTiles = new Set<string>();
+      if (Array.isArray(estate.ownedWorldTiles)) {
+        for (const key of estate.ownedWorldTiles) {
+          if (typeof key === "string") nextTiles.add(key);
+        }
+      }
+      if (estate.houseId) {
+        const m = getHouseModelDef(estate.houseId);
+        const t = m?.tier ?? 1;
+        for (let dr = 0; dr < t; dr++) {
+          for (let dc = 0; dc < t; dc++) {
+            nextTiles.add(makeWorldTileKey(estate.originC + dc, estate.originR + dr));
+          }
+        }
+      }
+      const ownerLabel = estate.ownerName || "Người Chơi";
+      let changed = !prevRec || prevRec.ownerName !== ownerLabel || prevRec.tiles.size !== nextTiles.size;
+      if (!changed && prevRec) {
+        for (const k of nextTiles) {
+          if (!prevRec.tiles.has(k)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (changed) {
+        if (nextTiles.size > 0) {
+          this.remoteOwnedTilesByUid.set(uid, { ownerName: ownerLabel, tiles: nextTiles });
+        } else {
+          this.remoteOwnedTilesByUid.delete(uid);
+        }
+        // Nếu người chơi đang chọn mua ô vừa bị người khác mua trước -> tự động bỏ chọn & báo tranh chấp ngay
+        if (this.estateInteractMode === "buy_tiles") {
+          let removedCount = 0;
+          for (const selKey of Array.from(this.estateSelectedTileKeys)) {
+            if (nextTiles.has(selKey)) {
+              this.estateSelectedTileKeys.delete(selKey);
+              removedCount++;
+            }
+          }
+          if (removedCount > 0) {
+            this.estateStatusMsg = `⚠️ Tranh chấp đất: ${removedCount} ô bạn đang chọn vừa được ${ownerLabel} mua trước — đã tự động bỏ chọn!`;
+            this.estateStatusIsError = true;
+            this.emitEstateInteractState();
+          }
+        }
+        if (this.estateInteractMode !== "none") {
+          this.refreshEstateOverlays();
+        }
+      }
+    }
+
     if (!estate || !estate.houseId) {
       this.clearRemoteEstateDisplay(uid);
       return;
@@ -1302,8 +1400,7 @@ export class WorldScene {
       this.estate.houseOrigin &&
       estate.originC === this.estate.houseOrigin.c &&
       estate.originR === this.estate.houseOrigin.r &&
-      (estate.ownerName || "").trim().toLowerCase() ===
-        (this.estate.ownerName || this.getPlayerDisplayName()).trim().toLowerCase()
+      isSameOwnerTab
     ) {
       this.clearRemoteEstateDisplay(uid);
       return;
@@ -3632,6 +3729,14 @@ export class WorldScene {
     ) {
       this.player.setManualDirection(0, 0);
       this.player.clearPath();
+    } else if (this.estateInteractMode !== "none") {
+      this.player.setManualDirection(0, 0);
+      this.player.clearPath();
+      if (kx !== 0 || ky !== 0) {
+        const panSpeed = 420 * dt;
+        this.estateCamX = Math.max(2 * TILE_SIZE, Math.min(32 * TILE_SIZE, this.estateCamX + kx * panSpeed));
+        this.estateCamY = Math.max(1 * TILE_SIZE, Math.min(18 * TILE_SIZE, this.estateCamY + ky * panSpeed));
+      }
     } else if (kx !== 0 || ky !== 0) {
       this.player.setManualDirection(kx, ky);
     } else {
@@ -3690,9 +3795,11 @@ export class WorldScene {
       estate: this.buildLocalEstateSummary(),
     });
 
-    const camLerp = 1 - Math.exp(-8.5 * dt);
-    this.camX += (this.player.x - this.camX) * camLerp;
-    this.camY += (this.player.y - this.camY) * camLerp;
+    const targetCamX = this.estateInteractMode !== "none" ? this.estateCamX : this.player.x;
+    const targetCamY = this.estateInteractMode !== "none" ? this.estateCamY : this.player.y;
+    const camLerp = this.isEstatePanning ? 1 : 1 - Math.exp(-8.5 * dt);
+    this.camX += (targetCamX - this.camX) * camLerp;
+    this.camY += (targetCamY - this.camY) * camLerp;
     this.zoom += (this.targetZoom - this.zoom) * (1 - Math.exp(-10 * dt));
 
     this.syncCameraTransform();
@@ -4743,14 +4850,17 @@ export class WorldScene {
   }
 
   private buildLocalEstateSummary(): RemotePlayerEstateSummary | null {
-    if (!this.estate.houseId) return null;
+    const ownedWorldTiles = this.estate.ownedWorldTiles ?? [];
+    if (!this.estate.houseId && ownedWorldTiles.length === 0) return null;
     const originC = this.estate.houseOrigin?.c ?? LEGACY_DEFAULT_LOT_COL;
     const originR = this.estate.houseOrigin?.r ?? LEGACY_DEFAULT_LOT_ROW;
     const slots = this.inventory.getCollectionHallStates();
     const displayedItems: Array<{ itemId: string; lightLevel: 0 | 1 | 2 }> = [];
-    for (const [itemId, slot] of Object.entries(slots)) {
-      if (slot.displayed) {
-        displayedItems.push({ itemId, lightLevel: slot.lightLevel });
+    if (this.estate.houseId) {
+      for (const [itemId, slot] of Object.entries(slots)) {
+        if (slot.displayed) {
+          displayedItems.push({ itemId, lightLevel: slot.lightLevel });
+        }
       }
     }
     return {
@@ -4758,6 +4868,7 @@ export class WorldScene {
       originC,
       originR,
       ownerName: this.estate.ownerName || this.getPlayerDisplayName(),
+      ownedWorldTiles: [...ownedWorldTiles],
       displayedItems,
     };
   }
@@ -4999,6 +5110,7 @@ export class WorldScene {
       mode: this.estateInteractMode,
       selectedTileKeys: selectedKeys,
       selectedCostGold: selectedKeys.length * TILE_PRICE_GOLD,
+      selectedRefundGold: selectedKeys.length * TILE_SELL_REFUND_GOLD,
       ownedTileCount: ownedWorld.length,
       placingModelId: model?.id ?? null,
       placingModelName: model?.name ?? null,
@@ -5014,10 +5126,19 @@ export class WorldScene {
     };
   }
 
+  private initEstateCameraBounds(): void {
+    this.estateCamX = Math.max(2 * TILE_SIZE, Math.min(32 * TILE_SIZE, this.camX));
+    this.estateCamY = Math.max(1 * TILE_SIZE, Math.min(18 * TILE_SIZE, this.camY));
+    this.isEstatePanning = false;
+    this.estatePointerDownActive = false;
+  }
+
   public startEstateBuyTilesMode(preselectKeys?: string[]): void {
+    const wasNone = this.estateInteractMode === "none";
     this.estateInteractMode = "buy_tiles";
     this.estatePlacingModelId = null;
     this.estateSelectedTileKeys.clear();
+    if (wasNone) this.initEstateCameraBounds();
     const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
     if (preselectKeys) {
       for (const k of preselectKeys) {
@@ -5027,7 +5148,21 @@ export class WorldScene {
         }
       }
     }
-    this.estateStatusMsg = "Click trực tiếp vào các ô đất 1×1 trên bản đồ để chọn mua.";
+    this.estateStatusMsg = "Kéo màn hình để di chuyển xem các lô đất • Chạm/Click ô trống để chọn mua.";
+    this.estateStatusIsError = false;
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.refreshEstateOverlays();
+    this.emitEstateInteractState();
+  }
+
+  public startEstateSellTilesMode(): void {
+    const wasNone = this.estateInteractMode === "none";
+    this.estateInteractMode = "sell_tiles";
+    this.estatePlacingModelId = null;
+    this.estateSelectedTileKeys.clear();
+    if (wasNone) this.initEstateCameraBounds();
+    this.estateStatusMsg = `Kéo màn hình để xem • Chạm/Click ô đất đã mua để chọn bán (hoàn ${TILE_SELL_REFUND_GOLD.toLocaleString("vi-VN")}🪙/ô).`;
     this.estateStatusIsError = false;
     this.player.clearPath();
     this.player.setManualDirection(0, 0);
@@ -5038,10 +5173,12 @@ export class WorldScene {
   public startEstatePlaceHouseMode(modelId: string): void {
     const model = getHouseModelDef(modelId);
     if (!model) return;
+    const wasNone = this.estateInteractMode === "none";
     this.estateInteractMode = "place_house";
     this.estatePlacingModelId = model.id;
     this.estateSelectedTileKeys.clear();
-    this.estateStatusMsg = `Rê chuột lên vùng đất đã mua đủ ${model.tier}×${model.tier} ô rồi click để xây ${model.name}.`;
+    if (wasNone) this.initEstateCameraBounds();
+    this.estateStatusMsg = `Kéo màn hình để xem • Chạm lên vùng đất đủ ${model.tier}×${model.tier} ô rồi xác nhận xây ${model.name}.`;
     this.estateStatusIsError = false;
     this.player.clearPath();
     this.player.setManualDirection(0, 0);
@@ -5066,6 +5203,28 @@ export class WorldScene {
     this.emitEstateInteractState();
   }
 
+  public confirmPlaceHouseAtHover(): { ok: boolean; message: string } {
+    if (this.estateInteractMode !== "place_house" || !this.estatePlacingModelId) {
+      return { ok: false, message: "Chưa chọn mẫu nhà để đặt." };
+    }
+    const anchor = this.getPlacingAnchorFromHover();
+    if (!anchor) {
+      return { ok: false, message: "Hãy chạm vào vị trí muốn đặt nhà trên bản đồ trước." };
+    }
+    const res = this.buildHouse(this.estatePlacingModelId, anchor.c, anchor.r);
+    if (res.ok) {
+      this.estateStatusMsg = res.message;
+      this.estateStatusIsError = false;
+      this.exitEstateInteractMode();
+      return res;
+    }
+    this.estateStatusMsg = res.message;
+    this.estateStatusIsError = true;
+    this.refreshEstateOverlays();
+    this.emitEstateInteractState();
+    return res;
+  }
+
   public exitEstateInteractMode(): void {
     if (this.estateInteractMode === "none") return;
     this.estateInteractMode = "none";
@@ -5074,6 +5233,8 @@ export class WorldScene {
     this.estateHoverTile = null;
     this.estateStatusMsg = "";
     this.estateStatusIsError = false;
+    this.isEstatePanning = false;
+    this.estatePointerDownActive = false;
     this.refreshEstateOverlays();
     this.emitEstateInteractState();
   }
@@ -5095,6 +5256,69 @@ export class WorldScene {
     this.refreshEstateOverlays();
     this.emitEstateInteractState();
     return res;
+  }
+
+  public sellSelectedEstateTiles(): { ok: boolean; message: string } {
+    const keys = Array.from(this.estateSelectedTileKeys);
+    const res = this.sellWorldTiles(keys);
+    this.estateStatusMsg = res.message;
+    this.estateStatusIsError = !res.ok;
+    if (res.ok) {
+      this.estateSelectedTileKeys.clear();
+    }
+    this.refreshEstateOverlays();
+    this.emitEstateInteractState();
+    return res;
+  }
+
+  public sellWorldTiles(tileKeys: string[]): { ok: boolean; message: string; soldCount?: number } {
+    normalizeEstateOwnedTiles(this.estate);
+    if (!tileKeys || tileKeys.length === 0) {
+      return { ok: false, message: "Vui lòng chọn ít nhất một ô đất đã mua để bán." };
+    }
+    const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
+    const occupiedByHouse = getHouseOccupiedWorldTileSet(this.estate);
+    const validToSell: string[] = [];
+    let blockedByHouseCount = 0;
+
+    for (const rawKey of tileKeys) {
+      const pt = parseWorldTileKey(rawKey);
+      if (!pt) continue;
+      const normKey = makeWorldTileKey(pt.c, pt.r);
+      if (!ownedSet.has(normKey)) continue;
+      if (occupiedByHouse.has(normKey)) {
+        blockedByHouseCount++;
+        continue;
+      }
+      validToSell.push(normKey);
+    }
+
+    if (validToSell.length === 0) {
+      if (blockedByHouseCount > 0) {
+        return {
+          ok: false,
+          message: "Không thể bán ô đất đang có dinh thự xây phía trên! Hãy phá dỡ nhà trước khi bán các ô đất này.",
+        };
+      }
+      return { ok: false, message: "Không có ô đất hợp lệ nào để bán." };
+    }
+
+    for (const k of validToSell) {
+      ownedSet.delete(k);
+    }
+    const refundGold = validToSell.length * TILE_SELL_REFUND_GOLD;
+    this.inventory.addGoldDirect(refundGold);
+    this.estate.ownedWorldTiles = Array.from(ownedSet).sort();
+    this.estate.plotTier = computeMaxOwnedTierWorld(this.estate.ownedWorldTiles);
+    this.syncEstateAndCollectionDisplay();
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+
+    return {
+      ok: true,
+      message: `Đã bán ${validToSell.length} ô đất, hoàn lại +${refundGold.toLocaleString("vi-VN")}🪙! Còn sở hữu ${this.estate.ownedWorldTiles.length} ô.`,
+      soldCount: validToSell.length,
+    };
   }
 
   private drawSportsComplexMarkings(): void {
@@ -5244,19 +5468,54 @@ export class WorldScene {
     }
 
     const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
+    const houseOccupiedSet = getHouseOccupiedWorldTileSet(this.estate);
+    const remoteOwnerMap = this.getRemoteTileOwnerMap();
 
-    // 1. Vẽ lưới quy hoạch 240 ô chỉ khi đang ở chế độ Mua Đất hoặc Đặt Nhà
+    // 1. Vẽ lưới quy hoạch 240 ô chỉ khi đang ở chế độ Mua Đất, Bán Đất hoặc Đặt Nhà
     for (const tile of ALL_PURCHASABLE_ESTATE_TILES) {
       const px = tile.c * TILE_SIZE;
       const py = tile.r * TILE_SIZE;
       const isOwned = ownedSet.has(tile.key);
+      const isRemoteOwned = !isOwned && remoteOwnerMap.has(tile.key);
       const isSelected = this.estateSelectedTileKeys.has(tile.key);
       const isHovered =
         this.estateHoverTile !== null &&
         this.estateHoverTile.c === tile.c &&
         this.estateHoverTile.r === tile.r;
 
-      if (isSelected) {
+      if (this.estateInteractMode === "sell_tiles") {
+        const isLockedByHouse = isOwned && houseOccupiedSet.has(tile.key);
+        if (isSelected) {
+          g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+            .fill({ color: 0xef4444, alpha: 0.46 })
+            .stroke({ color: 0xfca5a5, width: 2.5, alpha: 0.98 });
+        } else if (isLockedByHouse) {
+          g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+            .fill({ color: 0x475569, alpha: 0.36 })
+            .stroke({ color: 0x94a3b8, width: 1.6, alpha: 0.75 });
+        } else if (isOwned) {
+          g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+            .fill({ color: isHovered ? 0xf87171 : 0x10b981, alpha: isHovered ? 0.34 : 0.24 })
+            .stroke({
+              color: isHovered ? 0xfca5a5 : 0x34d399,
+              width: isHovered ? 2.4 : 1.8,
+              alpha: 0.92,
+            });
+        } else {
+          g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+            .fill({ color: 0x0f172a, alpha: 0.04 })
+            .stroke({ color: 0xf8fafc, width: 1, alpha: 0.14 });
+        }
+      } else if (isRemoteOwned) {
+        g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+          .fill({ color: 0x7c3aed, alpha: isHovered ? 0.44 : 0.3 })
+          .stroke({ color: isHovered ? 0xfca5a5 : 0xc4b5fd, width: isHovered ? 2.2 : 1.6, alpha: 0.9 })
+          .moveTo(px + 10, py + 10)
+          .lineTo(px + TILE_SIZE - 10, py + TILE_SIZE - 10)
+          .moveTo(px + TILE_SIZE - 10, py + 10)
+          .lineTo(px + 10, py + TILE_SIZE - 10)
+          .stroke({ color: 0xe9d5ff, width: 1.5, alpha: 0.55 });
+      } else if (isSelected) {
         g.rect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2)
           .fill({ color: 0xf59e0b, alpha: 0.34 })
           .stroke({ color: 0xfde047, width: 2.5, alpha: 0.95 });
@@ -5352,15 +5611,52 @@ export class WorldScene {
       if (info && this.estateGhostLabel) {
         const key = info.key;
         const isOwned = ownedSet.has(key);
+        const remoteOwner = !isOwned ? remoteOwnerMap.get(key) : undefined;
         const isSelected = this.estateSelectedTileKeys.has(key);
         this.estateGhostContainer.visible = true;
         this.estateGhostLabel.visible = true;
-        this.estateGhostLabel.text = isOwned
-          ? `✅ ĐÃ SỞ HỮU (${info.lotName})`
-          : isSelected
-            ? `🛒 ĐÃ CHỌN • CLICK ĐỂ BỎ CHỌN (${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙)`
-            : `🏞️ CLICK CHỌN Ô NÀY • ${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙 (${info.lotName})`;
-        this.estateGhostLabel.style.fill = isOwned ? 0x34d399 : isSelected ? 0xfde047 : 0xf8fafc;
+        if (remoteOwner) {
+          this.estateGhostLabel.text = `⛔ ĐẤT CỦA ${remoteOwner.toUpperCase()} — KHÔNG THỂ MUA TRANH CHẤP`;
+          this.estateGhostLabel.style.fill = 0xe9d5ff;
+        } else {
+          this.estateGhostLabel.text = isOwned
+            ? `✅ ĐÃ SỞ HỮU (${info.lotName})`
+            : isSelected
+              ? `🛒 ĐÃ CHỌN • CHẠM ĐỂ BỎ CHỌN (${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙)`
+              : `🏞️ CHẠM CHỌN Ô NÀY • ${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙 (${info.lotName})`;
+          this.estateGhostLabel.style.fill = isOwned ? 0x34d399 : isSelected ? 0xfde047 : 0xf8fafc;
+        }
+        this.estateGhostLabel.position.set(
+          (info.c + 0.5) * TILE_SIZE,
+          info.r * TILE_SIZE - 6,
+        );
+      } else {
+        this.estateGhostContainer.visible = false;
+      }
+    } else if (this.estateInteractMode === "sell_tiles" && this.estateHoverTile) {
+      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r);
+      this.estateGhostGrid.clear();
+      this.estateGhostSprite.visible = false;
+      if (info && this.estateGhostLabel) {
+        const key = info.key;
+        const isOwned = ownedSet.has(key);
+        const isLockedByHouse = isOwned && houseOccupiedSet.has(key);
+        const isSelected = this.estateSelectedTileKeys.has(key);
+        this.estateGhostContainer.visible = true;
+        this.estateGhostLabel.visible = true;
+        if (!isOwned) {
+          this.estateGhostLabel.text = `⬜ Ô CHƯA SỞ HỮU (${info.lotName})`;
+          this.estateGhostLabel.style.fill = 0x94a3b8;
+        } else if (isLockedByHouse) {
+          this.estateGhostLabel.text = `🔒 ĐANG CÓ NHÀ PHÍA TRÊN — HÃY PHÁ NHÀ TRƯỚC`;
+          this.estateGhostLabel.style.fill = 0xfca5a5;
+        } else if (isSelected) {
+          this.estateGhostLabel.text = `💰 ĐÃ CHỌN BÁN (+${TILE_SELL_REFUND_GOLD.toLocaleString("vi-VN")}🪙) • CHẠM ĐỂ BỎ CHỌN`;
+          this.estateGhostLabel.style.fill = 0xfca5a5;
+        } else {
+          this.estateGhostLabel.text = `💰 CHẠM CHỌN BÁN Ô NÀY • HOÀN +${TILE_SELL_REFUND_GOLD.toLocaleString("vi-VN")}🪙`;
+          this.estateGhostLabel.style.fill = 0xfde047;
+        }
         this.estateGhostLabel.position.set(
           (info.c + 0.5) * TILE_SIZE,
           info.r * TILE_SIZE - 6,
@@ -5515,16 +5811,31 @@ export class WorldScene {
       return { ok: false, message: "Vui lòng chọn ít nhất một ô đất để mua." };
     }
     const currentOwned = new Set(this.estate.ownedWorldTiles ?? []);
+    const remoteOwnerMap = this.getRemoteTileOwnerMap();
     const validToBuy: string[] = [];
+    const contestedOwners = new Set<string>();
+    let contestedCount = 0;
     for (const rawKey of tileKeys) {
       const pt = parseWorldTileKey(rawKey);
       if (!pt) continue;
       const normKey = makeWorldTileKey(pt.c, pt.r);
-      if (isPurchasableEstateTile(pt.c, pt.r) && !currentOwned.has(normKey)) {
-        validToBuy.push(normKey);
+      if (!isPurchasableEstateTile(pt.c, pt.r) || currentOwned.has(normKey)) continue;
+      const remoteOwner = remoteOwnerMap.get(normKey);
+      if (remoteOwner) {
+        contestedCount++;
+        contestedOwners.add(remoteOwner);
+        continue;
       }
+      validToBuy.push(normKey);
     }
     if (validToBuy.length === 0) {
+      if (contestedCount > 0) {
+        const ownerNames = Array.from(contestedOwners).join(", ");
+        return {
+          ok: false,
+          message: `⛔ Tranh chấp đất! ${contestedCount} ô bạn chọn đã thuộc sở hữu của ${ownerNames} — không thể mua.`,
+        };
+      }
       return { ok: false, message: "Tất cả các ô đất bạn chọn đều đã được sở hữu." };
     }
 
@@ -5550,9 +5861,13 @@ export class WorldScene {
     this.playPressSfx();
     this.callbacks.onRequestSave?.(true);
 
+    const contestedNote =
+      contestedCount > 0
+        ? ` (đã bỏ qua ${contestedCount} ô đang có chủ: ${Array.from(contestedOwners).join(", ")})`
+        : "";
     return {
       ok: true,
-      message: `Đã mua thành công ${validToBuy.length} ô đất (${totalCost.toLocaleString("vi-VN")}🪙)! Tổng sở hữu: ${this.estate.ownedWorldTiles.length} ô.`,
+      message: `Đã mua thành công ${validToBuy.length} ô đất (${totalCost.toLocaleString("vi-VN")}🪙)${contestedNote}! Tổng sở hữu: ${this.estate.ownedWorldTiles.length} ô.`,
       purchasedCount: validToBuy.length,
     };
   }
@@ -5615,6 +5930,21 @@ export class WorldScene {
         ok: false,
         message: `Khu vực này còn thiếu ${check.missingKeys.length} ô đất để đủ diện tích ${model.tier}×${model.tier}! Hãy mua đủ các ô còn thiếu trước khi xây.`,
       };
+    }
+
+    // Chống tranh chấp: không cho xây nhà đè lên ô đất đang thuộc sở hữu của người chơi khác
+    const remoteOwnerMap = this.getRemoteTileOwnerMap();
+    for (let dr = 0; dr < model.tier; dr++) {
+      for (let dc = 0; dc < model.tier; dc++) {
+        const key = makeWorldTileKey(chosenC + dc, chosenR + dr);
+        const conflictOwner = remoteOwnerMap.get(key);
+        if (conflictOwner) {
+          return {
+            ok: false,
+            message: `⛔ Tranh chấp đất! Vị trí này bị trùng với ô đất của ${conflictOwner}.`,
+          };
+        }
+      }
     }
 
     const totalCost = model.blueprintCostGold + model.buildCostGold;
@@ -6436,55 +6766,15 @@ export class WorldScene {
     const worldPos = targetContainer.toLocal(e.global);
 
     if (!this.isInJail && this.estateInteractMode !== "none") {
-      const col = Math.floor(worldPos.x / TILE_SIZE);
-      const row = Math.floor(worldPos.y / TILE_SIZE);
-      this.estateHoverTile = { c: col, r: row };
-
-      if (this.estateInteractMode === "buy_tiles") {
-        const key = makeWorldTileKey(col, row);
-        const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
-        if (!isPurchasableEstateTile(col, row)) {
-          this.estateStatusMsg = "Ô này là đường đi, hồ hoặc công viên — hãy chọn các ô đất trong Khu Biệt Thự!";
-          this.estateStatusIsError = true;
-        } else if (ownedSet.has(key)) {
-          this.estateStatusMsg = "Ô đất này đã thuộc quyền sở hữu của bạn.";
-          this.estateStatusIsError = false;
-        } else {
-          if (this.estateSelectedTileKeys.has(key)) {
-            this.estateSelectedTileKeys.delete(key);
-          } else {
-            this.estateSelectedTileKeys.add(key);
-          }
-          this.playPressSfx();
-          const count = this.estateSelectedTileKeys.size;
-          this.estateStatusMsg =
-            count > 0
-              ? `Đang chọn ${count} ô đất (${(count * TILE_PRICE_GOLD).toLocaleString("vi-VN")}🪙). Bấm nút MUA bên dưới để xác nhận!`
-              : "Click trực tiếp vào các ô đất 1×1 trên bản đồ để chọn mua.";
-          this.estateStatusIsError = false;
-        }
-        this.refreshEstateOverlays();
-        this.emitEstateInteractState();
-        return;
-      }
-
-      if (this.estateInteractMode === "place_house" && this.estatePlacingModelId) {
-        const anchor = this.getPlacingAnchorFromHover();
-        if (anchor) {
-          const res = this.buildHouse(this.estatePlacingModelId, anchor.c, anchor.r);
-          if (res.ok) {
-            this.estateStatusMsg = res.message;
-            this.estateStatusIsError = false;
-            this.exitEstateInteractMode();
-            return;
-          }
-          this.estateStatusMsg = res.message;
-          this.estateStatusIsError = true;
-          this.refreshEstateOverlays();
-          this.emitEstateInteractState();
-        }
-        return;
-      }
+      // Hỗ trợ kéo màn hình (touch drag / mouse drag) để di chuyển camera xem các lô đất ngoài màn hình;
+      // chỉ xử lý chạm chọn ô khi thả tay (onPointerUp) nếu khoảng di chuyển < 10px.
+      this.estatePointerDownActive = true;
+      this.isEstatePanning = false;
+      this.estatePanStartScreenX = e.global.x;
+      this.estatePanStartScreenY = e.global.y;
+      this.estatePanStartCamX = this.estateCamX;
+      this.estatePanStartCamY = this.estateCamY;
+      return;
     }
 
     this.isPointerDown = true;
@@ -6511,6 +6801,23 @@ export class WorldScene {
     const worldPos = targetContainer.toLocal(e.global);
 
     if (!this.isInJail && this.estateInteractMode !== "none") {
+      if (this.estatePointerDownActive) {
+        const dx = e.global.x - this.estatePanStartScreenX;
+        const dy = e.global.y - this.estatePanStartScreenY;
+        if (!this.isEstatePanning && Math.hypot(dx, dy) >= 10) {
+          this.isEstatePanning = true;
+        }
+        if (this.isEstatePanning) {
+          const z = Math.max(0.4, this.zoom);
+          this.estateCamX = Math.max(2 * TILE_SIZE, Math.min(32 * TILE_SIZE, this.estatePanStartCamX - dx / z));
+          this.estateCamY = Math.max(1 * TILE_SIZE, Math.min(18 * TILE_SIZE, this.estatePanStartCamY - dy / z));
+          this.camX = this.estateCamX;
+          this.camY = this.estateCamY;
+          this.syncCameraTransform();
+          return;
+        }
+      }
+
       const col = Math.floor(worldPos.x / TILE_SIZE);
       const row = Math.floor(worldPos.y / TILE_SIZE);
       if (!this.estateHoverTile || this.estateHoverTile.c !== col || this.estateHoverTile.r !== row) {
@@ -6529,8 +6836,108 @@ export class WorldScene {
     this.moveToWorldPoint(worldPos.x, worldPos.y, false);
   };
 
-  private readonly onPointerUp = (): void => {
+  private readonly onPointerUp = (e: FederatedPointerEvent): void => {
     this.isPointerDown = false;
+
+    if (!this.isInJail && this.estateInteractMode !== "none" && this.estatePointerDownActive) {
+      const wasPanning = this.isEstatePanning;
+      this.estatePointerDownActive = false;
+      this.isEstatePanning = false;
+      if (wasPanning) return;
+
+      const worldPos = this.worldContainer.toLocal(e.global);
+      const col = Math.floor(worldPos.x / TILE_SIZE);
+      const row = Math.floor(worldPos.y / TILE_SIZE);
+      const prevHover = this.estateHoverTile;
+      this.estateHoverTile = { c: col, r: row };
+
+      if (this.estateInteractMode === "buy_tiles") {
+        const key = makeWorldTileKey(col, row);
+        const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
+        const remoteOwner = this.getRemoteTileOwnerMap().get(key);
+        if (!isPurchasableEstateTile(col, row)) {
+          this.estateStatusMsg = "Ô này là đường đi, hồ hoặc công viên — hãy kéo bản đồ và chọn các ô đất trong Khu Biệt Thự!";
+          this.estateStatusIsError = true;
+        } else if (ownedSet.has(key)) {
+          this.estateStatusMsg = "Ô đất này đã thuộc quyền sở hữu của bạn.";
+          this.estateStatusIsError = false;
+        } else if (remoteOwner) {
+          this.estateStatusMsg = `⛔ Tranh chấp đất! Ô này đã thuộc sở hữu của ${remoteOwner} — không thể chọn mua.`;
+          this.estateStatusIsError = true;
+        } else {
+          if (this.estateSelectedTileKeys.has(key)) {
+            this.estateSelectedTileKeys.delete(key);
+          } else {
+            this.estateSelectedTileKeys.add(key);
+          }
+          this.playPressSfx();
+          const count = this.estateSelectedTileKeys.size;
+          this.estateStatusMsg =
+            count > 0
+              ? `Đang chọn ${count} ô đất (${(count * TILE_PRICE_GOLD).toLocaleString("vi-VN")}🪙). Bấm nút MUA bên dưới để xác nhận!`
+              : "Kéo màn hình để xem các lô đất • Chạm vào ô đất 1×1 để chọn mua.";
+          this.estateStatusIsError = false;
+        }
+        this.refreshEstateOverlays();
+        this.emitEstateInteractState();
+        return;
+      }
+
+      if (this.estateInteractMode === "sell_tiles") {
+        const key = makeWorldTileKey(col, row);
+        const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
+        const houseOccupiedSet = getHouseOccupiedWorldTileSet(this.estate);
+        if (!isPurchasableEstateTile(col, row) || !ownedSet.has(key)) {
+          this.estateStatusMsg = "Hãy chạm vào ô đất màu xanh bạn đang sở hữu để chọn bán!";
+          this.estateStatusIsError = true;
+        } else if (houseOccupiedSet.has(key)) {
+          this.estateStatusMsg = "🔒 Ô đất này đang có nhà xây phía trên — hãy phá bỏ nhà trước khi bán đất!";
+          this.estateStatusIsError = true;
+        } else {
+          if (this.estateSelectedTileKeys.has(key)) {
+            this.estateSelectedTileKeys.delete(key);
+          } else {
+            this.estateSelectedTileKeys.add(key);
+          }
+          this.playPressSfx();
+          const count = this.estateSelectedTileKeys.size;
+          this.estateStatusMsg =
+            count > 0
+              ? `Đang chọn bán ${count} ô đất (hoàn +${(count * TILE_SELL_REFUND_GOLD).toLocaleString("vi-VN")}🪙). Bấm nút BÁN bên dưới để xác nhận!`
+              : "Kéo màn hình để di chuyển • Chạm vào ô đất đã sở hữu để chọn bán (hoàn 70%).";
+          this.estateStatusIsError = false;
+        }
+        this.refreshEstateOverlays();
+        this.emitEstateInteractState();
+        return;
+      }
+
+      if (this.estateInteractMode === "place_house" && this.estatePlacingModelId) {
+        const isTouch = e.pointerType === "touch";
+        const tappedSameTile = prevHover !== null && prevHover.c === col && prevHover.r === row;
+        if (isTouch && !tappedSameTile) {
+          this.estateStatusMsg = "Đã xem trước vị trí đặt nhà! Chạm lại lần nữa hoặc bấm nút ✅ XÂY TẠI ĐÂY để xác nhận.";
+          this.estateStatusIsError = false;
+          this.refreshEstateOverlays();
+          this.emitEstateInteractState();
+          return;
+        }
+        const anchor = this.getPlacingAnchorFromHover();
+        if (anchor) {
+          const res = this.buildHouse(this.estatePlacingModelId, anchor.c, anchor.r);
+          if (res.ok) {
+            this.estateStatusMsg = res.message;
+            this.estateStatusIsError = false;
+            this.exitEstateInteractMode();
+            return;
+          }
+          this.estateStatusMsg = res.message;
+          this.estateStatusIsError = true;
+          this.refreshEstateOverlays();
+          this.emitEstateInteractState();
+        }
+      }
+    }
   };
 
   private readonly onWheel = (e: WheelEvent): void => {

@@ -41,7 +41,11 @@ export interface PlayerEstateState {
   houseOrigin?: { c: number; r: number }; // Điểm neo góc trên-trái (tọa độ thế giới col, row) của ngôi nhà
 }
 
-export const TILE_PRICE_GOLD = 37_500; // Giá mua 1 ô đất 1x1 (37.500🪙/ô)
+export const TILE_PRICE_BASE_GOLD = 37_500;
+export const TILE_DISCOUNT_PCT = 30; // Giảm giá thêm 30% cho mỗi ô đất
+export const TILE_PRICE_GOLD = Math.round((TILE_PRICE_BASE_GOLD * (100 - TILE_DISCOUNT_PCT)) / 100); // 26.250🪙/ô
+export const TILE_SELL_REFUND_PCT = 70; // Hoàn lại 70% giá mua hiện tại khi bán ô đất
+export const TILE_SELL_REFUND_GOLD = Math.round((TILE_PRICE_GOLD * TILE_SELL_REFUND_PCT) / 100); // 18.375🪙/ô
 export const PARCEL_COLS = 4;
 export const PARCEL_ROWS = 4;
 export const TOTAL_PARCEL_TILES = 16;
@@ -544,8 +548,8 @@ export const HOUSE_MODELS: Record<string, HouseModelDef> = {
   },
 };
 
-// Giảm giá 70% toàn bộ 16 mẫu nhà (áp dụng đồng nhất cho bản vẽ, chi phí xây, phí phá dỡ & hoàn tiền)
-export const HOUSE_DISCOUNT_PCT = 70;
+// Giảm giá thêm 30% trên mức đã giảm 70% (0.30 * 0.70 = 0.21 => tổng giảm 79% toàn bộ 16 mẫu nhà)
+export const HOUSE_DISCOUNT_PCT = 79;
 const HOUSE_PRICE_MULTIPLIER = (100 - HOUSE_DISCOUNT_PCT) / 100;
 for (const model of Object.values(HOUSE_MODELS)) {
   model.blueprintCostGold = Math.round(model.blueprintCostGold * HOUSE_PRICE_MULTIPLIER);
@@ -795,4 +799,19 @@ export function normalizeEstateOwnedTiles(estate: PlayerEstateState): void {
   }
 
   estate.plotTier = computeMaxOwnedTierWorld(estate.ownedWorldTiles);
+}
+
+export function getHouseOccupiedWorldTileSet(estate: PlayerEstateState): Set<string> {
+  const occupied = new Set<string>();
+  if (!estate.houseId) return occupied;
+  const model = getHouseModelDef(estate.houseId);
+  if (!model) return occupied;
+  const originC = estate.houseOrigin?.c ?? LEGACY_DEFAULT_LOT_COL;
+  const originR = estate.houseOrigin?.r ?? LEGACY_DEFAULT_LOT_ROW;
+  for (let dr = 0; dr < model.tier; dr++) {
+    for (let dc = 0; dc < model.tier; dc++) {
+      occupied.add(makeWorldTileKey(originC + dc, originR + dr));
+    }
+  }
+  return occupied;
 }

@@ -81,6 +81,8 @@ import {
   HOUSE_MODELS,
   HOUSE_TIER_AURA_CONFIG,
   TILE_PRICE_GOLD,
+  TILE_SELL_REFUND_GOLD,
+  TILE_SELL_REFUND_PCT,
   TOTAL_DISTRICT_TILES,
   canClaimDailyDividend,
   getHouseModelDef,
@@ -2115,13 +2117,14 @@ export class Hud {
         <div class="estate-bar-top">
           <div class="estate-bar-title">
             <span class="estate-bar-pill is-buy">🗺️ MUA ĐẤT TRỰC TIẾP</span>
-            <span class="estate-bar-info">Đã có: <strong>${snap.ownedTileCount}/${TOTAL_DISTRICT_TILES} ô</strong>${lotInfo} • Ví: <strong class="price-gold">${gold.toLocaleString("vi-VN")}🪙</strong></span>
+            <span class="estate-bar-info">Đã có: <strong>${snap.ownedTileCount}/${TOTAL_DISTRICT_TILES} ô</strong>${lotInfo} • Ví: <strong class="price-gold">${gold.toLocaleString("vi-VN")}🪙</strong> • <em>Kéo màn hình để xem các lô đất</em></span>
           </div>
           <div class="estate-bar-actions">
             <button id="btn-bar-buy-tiles" class="btn-bar-primary" type="button" ${!canBuy ? "disabled" : ""}>
-              ${count === 0 ? "Click chọn ô đất trên bản đồ" : gold < cost ? `Thiếu ${(cost - gold).toLocaleString("vi-VN")}🪙` : `✅ MUA ${count} Ô (${cost.toLocaleString("vi-VN")}🪙)`}
+              ${count === 0 ? "Chạm ô đất để chọn" : gold < cost ? `Thiếu ${(cost - gold).toLocaleString("vi-VN")}🪙` : `✅ MUA ${count} Ô (${cost.toLocaleString("vi-VN")}🪙)`}
             </button>
             ${count > 0 ? `<button id="btn-bar-clear-tiles" class="btn-bar-ghost" type="button">Bỏ chọn</button>` : ""}
+            ${snap.ownedTileCount > 0 ? `<button id="btn-bar-switch-sell" class="btn-bar-danger-outline" type="button">💰 Bán đất</button>` : ""}
             <button id="btn-bar-open-build" class="btn-bar-secondary" type="button">🏗️ Chọn nhà</button>
             <button id="btn-bar-exit" class="btn-bar-close" type="button">✖ Xong</button>
           </div>
@@ -2137,6 +2140,10 @@ export class Hud {
         e.stopPropagation();
         this.scene.clearSelectedEstateTiles();
       });
+      this.estateModeBarEl.querySelector("#btn-bar-switch-sell")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.startEstateSellTilesMode();
+      });
       this.estateModeBarEl.querySelector("#btn-bar-open-build")?.addEventListener("click", (e) => {
         e.stopPropagation();
         this.scene.exitEstateInteractMode();
@@ -2146,18 +2153,64 @@ export class Hud {
         e.stopPropagation();
         this.scene.exitEstateInteractMode();
       });
+    } else if (snap.mode === "sell_tiles") {
+      const count = snap.selectedTileKeys.length;
+      const refund = snap.selectedRefundGold;
+      const canSell = count > 0;
+      const lotInfo = snap.hoverLotName ? ` • Khu: ${snap.hoverLotName}` : "";
+
+      this.estateModeBarEl.innerHTML = `
+        <div class="estate-bar-top">
+          <div class="estate-bar-title">
+            <span class="estate-bar-pill is-sell">💰 BÁN Ô ĐẤT (HOÀN ${TILE_SELL_REFUND_PCT}%)</span>
+            <span class="estate-bar-info">Đang sở hữu: <strong>${snap.ownedTileCount}/${TOTAL_DISTRICT_TILES} ô</strong>${lotInfo} • Hoàn: <strong class="price-gold">+${TILE_SELL_REFUND_GOLD.toLocaleString("vi-VN")}🪙/ô</strong> • <em>Kéo màn hình để di chuyển</em></span>
+          </div>
+          <div class="estate-bar-actions">
+            <button id="btn-bar-sell-tiles" class="btn-bar-danger" type="button" ${!canSell ? "disabled" : ""}>
+              ${count === 0 ? "Chạm ô xanh để chọn bán" : `💰 BÁN ${count} Ô (+${refund.toLocaleString("vi-VN")}🪙)`}
+            </button>
+            ${count > 0 ? `<button id="btn-bar-clear-tiles" class="btn-bar-ghost" type="button">Bỏ chọn</button>` : ""}
+            <button id="btn-bar-switch-buy" class="btn-bar-secondary" type="button">🛒 Mua đất</button>
+            <button id="btn-bar-exit" class="btn-bar-close" type="button">✖ Xong</button>
+          </div>
+        </div>
+        ${snap.statusMessage ? `<div class="estate-bar-status ${snap.statusIsError ? "is-error" : ""}">${snap.statusMessage}</div>` : ""}
+      `;
+
+      this.estateModeBarEl.querySelector("#btn-bar-sell-tiles")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.sellSelectedEstateTiles();
+      });
+      this.estateModeBarEl.querySelector("#btn-bar-clear-tiles")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.clearSelectedEstateTiles();
+      });
+      this.estateModeBarEl.querySelector("#btn-bar-switch-buy")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.startEstateBuyTilesMode();
+      });
+      this.estateModeBarEl.querySelector("#btn-bar-exit")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.exitEstateInteractMode();
+      });
     } else if (snap.mode === "place_house") {
       const missingCount = snap.hoverMissingKeys.length;
       const missingCost = missingCount * TILE_PRICE_GOLD;
       const canQuickBuyMissing = missingCount > 0 && snap.hoverBlockedCount === 0 && gold >= missingCost;
+      const canConfirmBuild = snap.hoverCanBuild && gold >= snap.placingCostGold;
 
       this.estateModeBarEl.innerHTML = `
         <div class="estate-bar-top">
           <div class="estate-bar-title">
             <span class="estate-bar-pill is-build">🏗️ ĐẶT NHÀ (${snap.placingTier}×${snap.placingTier})</span>
-            <span class="estate-bar-info"><strong>${snap.placingModelName ?? ""}</strong> • Giá xây: <strong class="price-gold">${snap.placingCostGold.toLocaleString("vi-VN")}🪙</strong> • Rê chuột vào vùng ô đất xanh rồi <strong>Click</strong> để xây!</span>
+            <span class="estate-bar-info"><strong>${snap.placingModelName ?? ""}</strong> • Giá xây: <strong class="price-gold">${snap.placingCostGold.toLocaleString("vi-VN")}🪙</strong> • Kéo để xem, chạm ô đất để đặt!</span>
           </div>
           <div class="estate-bar-actions">
+            ${
+              snap.hoverCanBuild
+                ? `<button id="btn-bar-confirm-build" class="btn-bar-primary" type="button" ${!canConfirmBuild ? "disabled" : ""}>✅ XÂY TẠI ĐÂY (${snap.placingCostGold.toLocaleString("vi-VN")}🪙)</button>`
+                : ""
+            }
             ${
               missingCount > 0 && snap.hoverBlockedCount === 0
                 ? `<button id="btn-bar-quick-buy-missing" class="btn-bar-primary" type="button" ${!canQuickBuyMissing ? "disabled" : ""}>🛒 Mua nhanh ${missingCount} ô thiếu (${missingCost.toLocaleString("vi-VN")}🪙)</button>`
@@ -2170,6 +2223,10 @@ export class Hud {
         ${snap.statusMessage ? `<div class="estate-bar-status ${snap.statusIsError ? "is-error" : ""}">${snap.statusMessage}</div>` : ""}
       `;
 
+      this.estateModeBarEl.querySelector("#btn-bar-confirm-build")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.scene.confirmPlaceHouseAtHover();
+      });
       this.estateModeBarEl.querySelector("#btn-bar-quick-buy-missing")?.addEventListener("click", (e) => {
         e.stopPropagation();
         const res = this.scene.purchaseWorldTiles(snap.hoverMissingKeys);
@@ -2257,6 +2314,9 @@ export class Hud {
         <button id="btn-open-map-buy-tiles" class="btn-card-primary btn-estate-hero-cta" type="button">
           🗺️ MỞ BẢN ĐỒ CHỌN MUA TỪNG Ô ĐẤT (${TILE_PRICE_GOLD.toLocaleString("vi-VN")}🪙 / Ô)
         </button>
+        <button id="btn-open-map-sell-tiles" class="btn-estate-hero-sell" type="button" ${ownedCount === 0 ? "disabled" : ""}>
+          💰 Bán Ô Đất (+${TILE_SELL_REFUND_GOLD.toLocaleString("vi-VN")}🪙 / Ô)
+        </button>
         <button id="btn-goto-build-from-plot" class="btn-card-secondary btn-estate-hero-sub" type="button">
           🏗️ Sang Chọn Mẫu Nhà Xây Dựng
         </button>
@@ -2267,6 +2327,11 @@ export class Hud {
       e.stopPropagation();
       this.closeAllModals();
       this.scene.startEstateBuyTilesMode();
+    });
+    hero.querySelector("#btn-open-map-sell-tiles")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeAllModals();
+      this.scene.startEstateSellTilesMode();
     });
     hero.querySelector("#btn-goto-build-from-plot")?.addEventListener("click", (e) => {
       e.stopPropagation();
