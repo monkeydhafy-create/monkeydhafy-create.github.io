@@ -1543,6 +1543,12 @@ export class WorldScene {
     return this.equippedPetId ? (PET_BY_ID[this.equippedPetId] ?? null) : null;
   }
 
+  public getTotalPermanentStaminaBonusPct(): number {
+    const gymPct = this.inventory.getPermanentStaminaBonusPct();
+    const petPct = this.getEquippedPet()?.bonuses.staminaPct ?? 0;
+    return gymPct + petPct;
+  }
+
   public equipPet(petId: string | null): { ok: boolean; message: string } {
     if (petId !== null && !this.ownedPetIds.has(petId)) {
       return { ok: false, message: "Bạn chưa sở hữu thú cưng này." };
@@ -2142,15 +2148,30 @@ export class WorldScene {
   private applyConsumableEffect(c: ConsumableDef): void {
     this.reputation.consumablesUsed += 1;
     if (c.staminaBoostPct && c.staminaBoostDurationMs) {
-      this.survival.staminaBuff = {
-        boostPct: c.staminaBoostPct,
-        expiresAt: Date.now() + c.staminaBoostDurationMs,
-      };
+      const now = Date.now();
+      const curBuff = this.survival.staminaBuff;
+      const curActive = Boolean(curBuff && curBuff.expiresAt > now && curBuff.boostPct > 0);
+      if (!curActive) {
+        this.survival.staminaBuff = {
+          boostPct: c.staminaBoostPct,
+          expiresAt: now + c.staminaBoostDurationMs,
+        };
+      } else if (c.staminaBoostPct >= curBuff!.boostPct) {
+        this.survival.staminaBuff = {
+          boostPct: c.staminaBoostPct,
+          expiresAt: Math.max(curBuff!.expiresAt, now + c.staminaBoostDurationMs),
+        };
+      } else {
+        this.survival.staminaBuff = {
+          boostPct: curBuff!.boostPct,
+          expiresAt: Math.max(curBuff!.expiresAt, now + c.staminaBoostDurationMs),
+        };
+      }
     }
     const maxStamina = getActiveStaminaMax(
       this.survival,
       Date.now(),
-      this.inventory.getPermanentStaminaBonusPct(),
+      this.getTotalPermanentStaminaBonusPct(),
     );
 
     if (c.isFullRestore) {
@@ -3372,8 +3393,7 @@ export class WorldScene {
         mapId: this.activeMapId,
         biome: this.getCurrentBiome(),
         totalWeightKg: this.inventory.getCarriedWeightKg(this.cachedEquipStats.weightKg),
-        permanentStaminaBonusPct:
-          this.inventory.getPermanentStaminaBonusPct() + (activePet?.bonuses.staminaPct ?? 0),
+        permanentStaminaBonusPct: this.getTotalPermanentStaminaBonusPct(),
         heavySpeedBonusPct: this.inventory.getHeavySpeedBonusPct(),
       });
       this.lastSurvivalTick = survivalTick;

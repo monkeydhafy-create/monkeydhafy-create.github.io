@@ -5017,7 +5017,12 @@ export class Hud {
     const actions = document.createElement("div");
     actions.className = "inspector-actions";
 
-    if (this.selectedItem.zone === "backpack" && def.consumableId) {
+    if (
+      (this.selectedItem.zone === "backpack" ||
+        this.selectedItem.zone === "torso" ||
+        this.selectedItem.zone === "legs") &&
+      def.consumableId
+    ) {
       const cDef = CONSUMABLE_BY_ID[def.consumableId];
       const durText = cDef ? ` • ${(cDef.useDurationMs / 1000).toFixed(1)}s` : "";
       const remUses = getItemRemainingUses(inst, def);
@@ -5948,13 +5953,19 @@ export class Hud {
     const hunger = Math.round(state.hunger);
     const stamina = Math.round(state.stamina);
     const nowMs = Date.now();
-    const permStaminaPct = this.scene.inventory.getPermanentStaminaBonusPct();
+    const permStaminaPct = this.scene.getTotalPermanentStaminaBonusPct();
+    const gymPct = this.scene.inventory.getPermanentStaminaBonusPct();
+    const activePet = this.scene.getEquippedPet();
+    const petStaminaPct = activePet?.bonuses.staminaPct ?? 0;
     const heavySpeedPct = this.scene.inventory.getHeavySpeedBonusPct();
     const maxStamina = getActiveStaminaMax(state, nowMs, permStaminaPct);
 
     let buffSuffix = "";
-    if (permStaminaPct > 0) {
-      buffSuffix += ` • 🏋️ +${permStaminaPct}%`;
+    if (gymPct > 0) {
+      buffSuffix += ` • 🏋️ +${gymPct}%`;
+    }
+    if (petStaminaPct > 0) {
+      buffSuffix += ` • ${activePet?.emoji ?? "🐾"} +${petStaminaPct}%`;
     }
     if (heavySpeedPct > 0) {
       buffSuffix += ` • 🏃 +${heavySpeedPct}%`;

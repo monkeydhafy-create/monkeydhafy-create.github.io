@@ -1138,6 +1138,21 @@ export function validateSavePayload(
       )
     : [];
 
+  // Validate owned & equipped pets early so pet passive bonuses (e.g. stamina) are verified with survival vitals
+  const ownedPetSet = new Set<string>();
+  if (Array.isArray(obj.ownedPetIds)) {
+    for (const id of obj.ownedPetIds) {
+      if (typeof id === "string" && PET_BY_ID[id]) {
+        ownedPetSet.add(id);
+      }
+    }
+  }
+  const equippedPetId =
+    typeof obj.equippedPetId === "string" && ownedPetSet.has(obj.equippedPetId)
+      ? obj.equippedPetId
+      : null;
+  const petStaminaPct = equippedPetId ? (PET_BY_ID[equippedPetId]?.bonuses.staminaPct ?? 0) : 0;
+
   // Validate survival vitals + optional temporary stamina buff
   let survival = createDefaultSurvivalState();
   if (obj.survival !== undefined) {
@@ -1167,8 +1182,21 @@ export function validateSavePayload(
       }
     }
     const permanentGymPct = GYM_BY_ID[validatedGym.id]?.bonusPct ?? 0;
-    const maxAllowedStamina =
-      100 + permanentGymPct + (validatedBuff ? validatedBuff.boostPct : 0);
+    const activeBuffPct = validatedBuff ? validatedBuff.boostPct : 0;
+    // Allow a grace window for stamina decaying after a valid boost recently expired
+    const rawBuff = s.staminaBuff as Partial<StaminaBuffState> | null | undefined;
+    const graceBuffPct =
+      activeBuffPct > 0
+        ? activeBuffPct
+        : (rawBuff &&
+            typeof rawBuff.boostPct === "number" &&
+            rawBuff.boostPct >= 1 &&
+            rawBuff.boostPct <= 80 &&
+            typeof rawBuff.expiresAt === "number" &&
+            rawBuff.expiresAt > now - 180_000
+            ? rawBuff.boostPct
+            : 0);
+    const maxAllowedStamina = 100 + permanentGymPct + petStaminaPct + graceBuffPct;
     if (
       typeof s.hp !== "number" ||
       !Number.isFinite(s.hp) ||
@@ -1189,10 +1217,12 @@ export function validateSavePayload(
     ) {
       throw new TamperError("Survival invariant bounds violated");
     }
+    const currentActiveCap = 100 + permanentGymPct + petStaminaPct + activeBuffPct;
+    const cleanStamina = Math.min(s.stamina, currentActiveCap);
     survival = {
       hp: s.hp,
       hunger: s.hunger,
-      stamina: s.stamina,
+      stamina: cleanStamina,
       bodyTempC: s.bodyTempC,
       staminaBuff: validatedBuff,
     };
@@ -1505,19 +1535,6 @@ export function validateSavePayload(
       claimedIds: Array.from(claimedSet),
     };
   }
-
-  const ownedPetSet = new Set<string>();
-  if (Array.isArray(obj.ownedPetIds)) {
-    for (const id of obj.ownedPetIds) {
-      if (typeof id === "string" && PET_BY_ID[id]) {
-        ownedPetSet.add(id);
-      }
-    }
-  }
-  const equippedPetId =
-    typeof obj.equippedPetId === "string" && ownedPetSet.has(obj.equippedPetId)
-      ? obj.equippedPetId
-      : null;
 
   return {
     schemaVersion: 3,
