@@ -1058,6 +1058,15 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
 
 for (const item of ITEM_CATALOG) {
   (item as { iconSrc: string }).iconSrc = withAssetHash(item.iconSrc);
+  // Tăng giá trị vật phẩm Vàng (Hạng A) và Đỏ (Hạng S) thêm 45%
+  if (
+    (item.rarity === "A" || item.rarity === "S") &&
+    !item.backpackId &&
+    !item.garmentId &&
+    !item.consumableId
+  ) {
+    (item as { valueGold: number }).valueGold = Math.round(item.valueGold * 1.45);
+  }
 }
 
 export const ITEM_BY_ID: Record<string, CollectibleItemDef> = Object.fromEntries(
@@ -1394,18 +1403,19 @@ export interface ContainerLootState {
 }
 
 /**
- * Respawn/refresh intervals per lootable container type (-30% faster reset again):
- * - Trash bins: 14m 42s
- * - Chests (wooden & royal): 22m 03s
- * - Buildings / houses: 29.4 - 58.8 minutes
+ * Respawn/refresh intervals per lootable container type (reduced 30%):
+ * - Trash bins: ~7m 12s (432,180ms)
+ * - Chests (wooden & royal): ~10m 48s (648,270ms)
+ * - Standard houses: ~14m 24s – 22m 49s (864,360 – 1,368,570ms)
+ * - Landmark / Vault houses: ~21m 37s – 28m 49s (1,296,540 – 1,728,720ms)
  */
 export const CONTAINER_REFRESH_RULES: Record<LootSourceType, { minMs: number; maxMs: number }> = {
-  trash_bin: { minMs: 10.29 * 60_000, maxMs: 10.29 * 60_000 },
-  chest_wooden: { minMs: 15.435 * 60_000, maxMs: 15.435 * 60_000 },
-  chest_royal: { minMs: 15.435 * 60_000, maxMs: 15.435 * 60_000 },
-  house_standard: { minMs: 20.58 * 60_000, maxMs: 32.585 * 60_000 },
-  house_landmark: { minMs: 30.87 * 60_000, maxMs: 41.16 * 60_000 },
-  house_vault: { minMs: 30.87 * 60_000, maxMs: 41.16 * 60_000 },
+  trash_bin: { minMs: 432_180, maxMs: 432_180 },
+  chest_wooden: { minMs: 648_270, maxMs: 648_270 },
+  chest_royal: { minMs: 648_270, maxMs: 648_270 },
+  house_standard: { minMs: 864_360, maxMs: 1_368_570 },
+  house_landmark: { minMs: 1_296_540, maxMs: 1_728_720 },
+  house_vault: { minMs: 1_296_540, maxMs: 1_728_720 },
 };
 
 export function rollContainerRefreshMs(sourceType: LootSourceType): number {

@@ -1,4 +1,5 @@
 import { withAssetHash } from "../assetUrl.ts";
+import { PetGachaShowcase } from "./PetGachaShowcase.ts";
 import {
   AIRPORT_GENDER_CHANGE_COST,
   AIRPORT_JAPAN_FLIGHT_COST,
@@ -411,6 +412,7 @@ export class Hud {
   private previewPetId: string = PET_CATALOG[0].id;
   private previewPetAnim: "idle" | "run" | "play" = "idle";
   private lastGachaOutcomes: GachaRollOutcome[] = [];
+  private petGachaShowcase!: PetGachaShowcase;
 
   // How-To-Play Slide Deck Modal
   private readonly guideModalEl: HTMLElement;
@@ -2878,7 +2880,7 @@ export class Hud {
     if (!atGacha) {
       this.petRoll1Btn.textContent = "🔒 Đến Nhà Nhận Nuôi để quay";
       this.petRoll1Btn.disabled = true;
-      this.petRoll5Btn.textContent = "🔒 Quay 5 lần (10.000🪙)";
+      this.petRoll5Btn.textContent = `🔒 Quay 5 lần (${(PET_GACHA_COST_GOLD * 5).toLocaleString("vi-VN")}🪙)`;
       this.petRoll5Btn.disabled = true;
     } else {
       this.petRoll1Btn.textContent = `🎰 Quay 1 lần (${PET_GACHA_COST_GOLD.toLocaleString("vi-VN")}🪙)`;
@@ -4161,11 +4163,25 @@ export class Hud {
           this.previewPetAnim = firstPet.pet.playIconSrc ? "play" : "idle";
         }
         this.petModalTab = "gacha";
+        this.refreshBagBadge();
+        this.renderPetGachaModal();
+        this.petGachaShowcase.play(res.results, times);
+        return;
       }
-      this.showDiscoveryToast(res.ok ? "🐾 Kết Quả Gacha" : "Không thể quay", res.message);
+      this.showDiscoveryToast("Không thể quay", res.message);
       this.refreshBagBadge();
       this.renderPetGachaModal();
     };
+    this.petGachaShowcase = new PetGachaShowcase({
+      isSoundEnabled: () => this.scene.isSoundEnabled(),
+      getGold: () => this.scene.inventory.getGold(),
+      canRoll: () => this.scene.isAtPetGacha(),
+      onRollAgain: (times) => runGacha(times),
+      onClose: () => {
+        this.refreshBagBadge();
+        this.renderPetGachaModal();
+      },
+    });
     this.petRoll1Btn.addEventListener("click", () => runGacha(1));
     this.petRoll5Btn.addEventListener("click", () => runGacha(5));
 

@@ -91,7 +91,7 @@ AS $$
   SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
 $$;
 
--- 5b. Thời gian reset điểm loot chuẩn quản lý tập trung trên DB (đã giảm 30%)
+-- 5b. Thời gian reset điểm loot chuẩn quản lý tập trung trên DB (đã giảm thêm 30%)
 CREATE OR REPLACE FUNCTION public.get_container_refresh_ms(p_source_type text)
 RETURNS bigint
 LANGUAGE plpgsql
@@ -100,13 +100,13 @@ SET search_path = public
 AS $$
 BEGIN
   CASE p_source_type
-    WHEN 'trash_bin' THEN RETURN 617400; -- 10.29 phút
-    WHEN 'chest_wooden' THEN RETURN 926100; -- 15.435 phút
-    WHEN 'chest_royal' THEN RETURN 926100; -- 15.435 phút
-    WHEN 'house_standard' THEN RETURN floor(1234800 + random() * (1955100 - 1234800))::bigint; -- 20.58 - 32.585 phút
-    WHEN 'house_landmark' THEN RETURN floor(1852200 + random() * (2469600 - 1852200))::bigint; -- 30.87 - 41.16 phút
-    WHEN 'house_vault' THEN RETURN floor(1852200 + random() * (2469600 - 1852200))::bigint; -- 30.87 - 41.16 phút
-    ELSE RETURN 926100;
+    WHEN 'trash_bin' THEN RETURN 432180; -- ~7p 12s
+    WHEN 'chest_wooden' THEN RETURN 648270; -- ~10p 48s
+    WHEN 'chest_royal' THEN RETURN 648270; -- ~10p 48s
+    WHEN 'house_standard' THEN RETURN floor(864360 + random() * (1368570 - 864360))::bigint; -- ~14p 24s - 22p 49s
+    WHEN 'house_landmark' THEN RETURN floor(1296540 + random() * (1728720 - 1296540))::bigint; -- ~21p 37s - 28p 49s
+    WHEN 'house_vault' THEN RETURN floor(1296540 + random() * (1728720 - 1296540))::bigint; -- ~21p 37s - 28p 49s
+    ELSE RETURN 648270;
   END CASE;
 END;
 $$;

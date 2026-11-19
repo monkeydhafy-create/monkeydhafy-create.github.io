@@ -973,7 +973,7 @@ export class SupabaseSync {
       const items = Array.isArray(row.items) ? (row.items as GridItemInstance[]) : [];
       const newVersion = Number(row.new_version) || expectedVersion;
       const openedAt = row.opened_at ? Date.parse(row.opened_at) : Date.now();
-      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 926_100;
+      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 648_270;
       if (row.ok && this.worldChannel) {
         void this.worldChannel.send({
           type: "broadcast",
@@ -1014,7 +1014,7 @@ export class SupabaseSync {
       const items = Array.isArray(row.items) ? (row.items as GridItemInstance[]) : [];
       const newVersion = Number(row.new_version) || expectedVersion;
       const openedAt = row.opened_at ? Date.parse(row.opened_at) : Date.now();
-      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 926_100;
+      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 648_270;
       if (row.ok && this.worldChannel) {
         void this.worldChannel.send({
           type: "broadcast",
@@ -1060,7 +1060,7 @@ export class SupabaseSync {
       const items = Array.isArray(row.items) ? (row.items as GridItemInstance[]) : [];
       const newVersion = Number(row.new_version) || expectedVersion;
       const openedAt = row.opened_at ? Date.parse(row.opened_at) : Date.now();
-      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 926_100;
+      const refreshAt = row.refresh_at ? Date.parse(row.refresh_at) : Date.now() + 648_270;
       if (row.ok && this.worldChannel) {
         void this.worldChannel.send({
           type: "broadcast",
@@ -1241,7 +1241,7 @@ export class SupabaseSync {
           p.items,
           Number(p.ver) || 1,
           Number(p.openedAt) || Date.now(),
-          Number(p.refreshAt) || Date.now() + 926_100,
+          Number(p.refreshAt) || Date.now() + 648_270,
         );
       })
       .on("broadcast", { event: "w_vault_open" }, ({ payload }) => {
@@ -1314,7 +1314,7 @@ export class SupabaseSync {
       }>) {
         const items = Array.isArray(row.items) ? row.items : [];
         const openedAt = Date.parse(row.opened_at) || Date.now();
-        const refreshAt = Date.parse(row.refresh_at) || Date.now() + 926_100;
+        const refreshAt = Date.parse(row.refresh_at) || Date.now() + 648_270;
         this.callbacks.onSharedContainerUpdated?.(
           mapId,
           row.container_id,
