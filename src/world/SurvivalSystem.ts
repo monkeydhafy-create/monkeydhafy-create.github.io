@@ -526,7 +526,8 @@ export function stepSurvivalState(
   const weatherSpeedMul = clamp(1 - (snowSlowPenalty + hanoiFx.speedPenalty) * weatherAdverseFactor, 0.58, 1.0);
 
   const speedMultiplier = Math.max(0.18, staminaSpeedMul * overloadSpeedMul * weatherSpeedMul);
-  const fainted = state.hp <= 0 || (state.hunger <= 0 && state.stamina <= 1);
+  // Only faint when HP reaches 0. Avoid instant-faint when player still has high HP (e.g. 60-70 HP) and drains stamina.
+  const fainted = state.hp <= 0;
 
   return {
     thermal,
