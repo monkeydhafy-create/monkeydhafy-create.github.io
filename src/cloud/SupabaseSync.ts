@@ -109,6 +109,10 @@ export interface SupabaseSyncCallbacks {
     container?: ContainerLootState;
   }) => void;
   onServerClockOffset?: (offsetMs: number) => void;
+  onPersistentWorldEstatesChanged?: (
+    estates: Map<string, RemotePlayerEstateSummary>,
+    localUserId: string | null,
+  ) => void;
 }
 
 const SECTOR_COLS = 4; // 204 / 4 = 51 tiles per sector horizontally
@@ -162,7 +166,9 @@ export class SupabaseSync {
   private accountChannel: RealtimeChannel | null = null;
   private worldChannel: RealtimeChannel | null = null;
   private auctionChannel: RealtimeChannel | null = null;
+  private estatesChannel: RealtimeChannel | null = null;
   private activeSectorKey: string | null = null;
+  private readonly persistentWorldEstates = new Map<string, RemotePlayerEstateSummary>();
 
   private saveTimerId: number | null = null;
   private pendingSave: PlayerGameSaveV3 | null = null;
@@ -379,13 +385,28 @@ export class SupabaseSync {
   }
 
   public async signOut(): Promise<void> {
-    this.flushPendingSave();
+    // Đẩy bản lưu cuối cùng lên Cloud trước khi đăng xuất để tài khoản không mất dữ liệu
+    if (this.pendingSave) {
+      const toPush = this.pendingSave;
+      this.pendingSave = null;
+      if (this.saveTimerId !== null) {
+        window.clearTimeout(this.saveTimerId);
+        this.saveTimerId = null;
+      }
+      await this.upsertSaveImmediate(toPush);
+    }
+    if (this.latestLocalLive) {
+      await this.pushLiveRow(this.latestLocalLive);
+    }
     await this.stopRealtimeChannels();
     await this.client.auth.signOut();
     this.user = null;
     this.realtimeState = "offline";
     this.lastError = null;
     this.emitStatus();
+    // Re-emit persistent world estates với localUserId = null để người chơi sau khi logout vẫn thấy nhà của tài khoản đã offline
+    this.callbacks.onPersistentWorldEstatesChanged?.(this.persistentWorldEstates, null);
+    void this.syncPersistentWorldEstates("vietnam");
   }
 
   private async activateUserSession(session: Session): Promise<{
@@ -441,6 +462,10 @@ export class SupabaseSync {
     const initY = remoteLive?.y ?? remoteSave?.profile.y ?? 2136;
 
     this.startRealtimeChannels(initMap, initX, initY);
+    if (remoteSave) {
+      void this.upsertWorldEstateFromSave(remoteSave);
+    }
+    void this.syncPersistentWorldEstates("vietnam");
     this.lastSyncAt = Date.now();
     this.emitStatus();
 
@@ -521,7 +546,165 @@ export class SupabaseSync {
     this.lastSyncAt = Date.now();
     this.lastError = null;
     this.emitStatus();
+    void this.upsertWorldEstateFromSave(save);
     return { ok: true };
+  }
+
+  private async upsertWorldEstateFromSave(save: PlayerGameSaveV3): Promise<void> {
+    if (!this.user) return;
+    try {
+      const est = save.estate;
+      const ownedWorldTiles = Array.isArray(est?.ownedWorldTiles) ? est.ownedWorldTiles : [];
+      const houseId = est?.houseId ?? null;
+      if (!houseId && ownedWorldTiles.length === 0) {
+        await this.client.from("world_estates").delete().eq("user_id", this.user.id);
+        this.persistentWorldEstates.delete(this.user.id);
+        return;
+      }
+      const ownerName = (est?.ownerName || formatAccountDisplayName(this.user) || "Người Chơi").trim();
+      const originC = est?.houseOrigin?.c ?? 13;
+      const originR = est?.houseOrigin?.r ?? 13;
+      const displayedItems: Array<{ itemId: string; lightLevel: 0 | 1 | 2 }> = [];
+      if (houseId && save.inventory?.collectionHall) {
+        for (const [itemId, slot] of Object.entries(save.inventory.collectionHall)) {
+          if (slot?.displayed) {
+            const lvl = slot.lightLevel === 2 ? 2 : slot.lightLevel === 1 ? 1 : 0;
+            displayedItems.push({ itemId, lightLevel: lvl });
+          }
+        }
+      }
+      const summary: RemotePlayerEstateSummary = {
+        houseId,
+        originC,
+        originR,
+        ownerName,
+        ownedWorldTiles,
+        displayedItems,
+      };
+      const { error } = await this.client.from("world_estates").upsert(
+        {
+          user_id: this.user.id,
+          map_id: "vietnam",
+          owner_name: ownerName,
+          house_id: houseId,
+          origin_c: originC,
+          origin_r: originR,
+          owned_world_tiles: ownedWorldTiles,
+          displayed_items: displayedItems,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
+      if (!error) {
+        this.persistentWorldEstates.set(this.user.id, summary);
+      }
+    } catch {
+      // Ignore if world_estates table has not been migrated yet
+    }
+  }
+
+  public async syncPersistentWorldEstates(mapId: MapId = "vietnam"): Promise<void> {
+    try {
+      const { data, error } = await this.client
+        .from("world_estates")
+        .select("user_id, owner_name, house_id, origin_c, origin_r, owned_world_tiles, displayed_items")
+        .eq("map_id", mapId)
+        .limit(300);
+
+      if (!error && Array.isArray(data)) {
+        this.persistentWorldEstates.clear();
+        for (const raw of data) {
+          const row = raw as {
+            user_id?: string;
+            owner_name?: string;
+            house_id?: string | null;
+            origin_c?: number;
+            origin_r?: number;
+            owned_world_tiles?: unknown;
+            displayed_items?: unknown;
+          };
+          if (!row.user_id) continue;
+          const ownedWorldTiles = Array.isArray(row.owned_world_tiles)
+            ? row.owned_world_tiles.filter((x): x is string => typeof x === "string")
+            : [];
+          const displayedItems = Array.isArray(row.displayed_items)
+            ? (row.displayed_items as Array<{ itemId: string; lightLevel: 0 | 1 | 2 }>)
+            : [];
+          if (!row.house_id && ownedWorldTiles.length === 0) continue;
+          this.persistentWorldEstates.set(row.user_id, {
+            houseId: row.house_id ?? null,
+            originC: Number.isFinite(row.origin_c) ? Number(row.origin_c) : 13,
+            originR: Number.isFinite(row.origin_r) ? Number(row.origin_r) : 13,
+            ownerName: row.owner_name || "Người Chơi",
+            ownedWorldTiles,
+            displayedItems,
+          });
+        }
+        this.callbacks.onPersistentWorldEstatesChanged?.(
+          this.persistentWorldEstates,
+          this.user?.id ?? null,
+        );
+      }
+    } catch {
+      // Ignore if table not migrated yet
+    }
+
+    // Đăng ký kênh Realtime cho bảng world_estates (1 lần duy nhất) để nhà & đất cập nhật tức thời
+    if (!this.estatesChannel) {
+      const chan = this.client.channel("world_estates_global");
+      chan
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "world_estates" },
+          (payload) => {
+            if (payload.eventType === "DELETE") {
+              const oldRow = payload.old as { user_id?: string } | null;
+              if (oldRow?.user_id) {
+                this.persistentWorldEstates.delete(oldRow.user_id);
+                this.callbacks.onPersistentWorldEstatesChanged?.(
+                  this.persistentWorldEstates,
+                  this.user?.id ?? null,
+                );
+              }
+              return;
+            }
+            const nextRow = payload.new as {
+              user_id?: string;
+              owner_name?: string;
+              house_id?: string | null;
+              origin_c?: number;
+              origin_r?: number;
+              owned_world_tiles?: unknown;
+              displayed_items?: unknown;
+            } | null;
+            if (!nextRow?.user_id) return;
+            const ownedWorldTiles = Array.isArray(nextRow.owned_world_tiles)
+              ? nextRow.owned_world_tiles.filter((x): x is string => typeof x === "string")
+              : [];
+            const displayedItems = Array.isArray(nextRow.displayed_items)
+              ? (nextRow.displayed_items as Array<{ itemId: string; lightLevel: 0 | 1 | 2 }>)
+              : [];
+            if (!nextRow.house_id && ownedWorldTiles.length === 0) {
+              this.persistentWorldEstates.delete(nextRow.user_id);
+            } else {
+              this.persistentWorldEstates.set(nextRow.user_id, {
+                houseId: nextRow.house_id ?? null,
+                originC: Number.isFinite(nextRow.origin_c) ? Number(nextRow.origin_c) : 13,
+                originR: Number.isFinite(nextRow.origin_r) ? Number(nextRow.origin_r) : 13,
+                ownerName: nextRow.owner_name || "Người Chơi",
+                ownedWorldTiles,
+                displayedItems,
+              });
+            }
+            this.callbacks.onPersistentWorldEstatesChanged?.(
+              this.persistentWorldEstates,
+              this.user?.id ?? null,
+            );
+          },
+        )
+        .subscribe();
+      this.estatesChannel = chan;
+    }
   }
 
   private async upsertLiveImmediate(save: PlayerGameSaveV3): Promise<void> {

@@ -136,6 +136,9 @@ async function bootstrap(): Promise<void> {
     onServerClockOffset: (offsetMs) => {
       worldScene?.setServerClockOffsetMs(offsetMs);
     },
+    onPersistentWorldEstatesChanged: (estates, localUserId) => {
+      worldScene?.syncPersistentWorldEstates(estates, localUserId);
+    },
   });
 
   worldScene = new WorldScene(
@@ -230,7 +233,17 @@ async function bootstrap(): Promise<void> {
 
   app.stage.addChild(worldScene.stageLayer);
 
-  hud = new Hud(worldScene, cloudSync);
+  hud = new Hud(worldScene, cloudSync, {
+    onAfterLogout: async () => {
+      if (!worldScene) return;
+      const freshSave = await saveVault.resetToFreshSave();
+      worldScene.applyRemoteSaveState(freshSave);
+      hud?.refreshFromRemoteState();
+      if (worldScene.needsOnboarding()) {
+        hud?.openOnboardingModal();
+      }
+    },
+  });
   (window as unknown as { __WORLD_SCENE__?: WorldScene; __HUD__?: Hud }).__WORLD_SCENE__ = worldScene;
   (window as unknown as { __WORLD_SCENE__?: WorldScene; __HUD__?: Hud }).__HUD__ = hud;
   if (worldScene.needsOnboarding()) {
@@ -244,6 +257,8 @@ async function bootstrap(): Promise<void> {
       "Hệ thống đã từ chối bản lưu bất thường và đặt lại phiên an toàn mới.",
     );
   }
+
+  void cloudSync.syncPersistentWorldEstates("vietnam");
 
   void cloudSync.restoreSession().then((res) => {
     if (!res.authenticated || !worldScene) return;

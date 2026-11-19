@@ -1963,6 +1963,25 @@ export class SaveVault {
     return this.writeQueue;
   }
 
+  public async resetToFreshSave(): Promise<PlayerGameSaveV3> {
+    if (this.debounceTimer !== null) {
+      globalThis.clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    this.pendingSnapshot = null;
+    const fresh = createDefaultGameSave(this.spawnX, this.spawnY);
+    this.writeQueue = this.writeQueue.then(async () => {
+      await this.driver.clearSaveData();
+      this.purgeLegacyPlaintext();
+      const clean = validateSavePayload(fresh, this.spawnX, this.spawnY, true);
+      const envelope = await this.encryptAndSignSave(clean);
+      const anchor = await this.computeSeqAnchor(envelope);
+      await this.driver.writeSaveAtomic(envelope, anchor);
+    });
+    await this.writeQueue;
+    return fresh;
+  }
+
   private async sha256B64(input: Uint8Array): Promise<string> {
     if (hasWebCryptoSubtle()) {
       const digest = await globalThis.crypto.subtle.digest("SHA-256", toArrayBuffer(input));

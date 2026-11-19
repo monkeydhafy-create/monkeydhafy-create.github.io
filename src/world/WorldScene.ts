@@ -434,6 +434,9 @@ export class WorldScene {
     string,
     { ownerName: string; tiles: Set<string> }
   >();
+  // Bản lưu vĩnh viễn nhà & đất của tất cả người chơi (kể cả khi đã offline) đồng bộ từ bảng public.world_estates
+  private persistentWorldEstates = new Map<string, RemotePlayerEstateSummary>();
+  private localCloudUserId: string | null = null;
   private readonly remoteEstateDisplays = new Map<
     string,
     {
@@ -1147,16 +1150,23 @@ export class WorldScene {
           rp.petNode.destroy({ children: true });
         }
         this.remotePlayers.delete(uid);
-        this.clearRemoteEstateDisplay(uid);
+        // Nếu người chơi đã offline nhưng vẫn có nhà/đất vĩnh viễn trên Cloud thì GIỮ LẠI nhà & đất của họ!
+        const persistent = this.persistentWorldEstates.get(uid);
+        if (persistent && uid !== this.localCloudUserId) {
+          this.syncRemoteEstateDisplay(uid, persistent);
+        } else {
+          this.clearRemoteEstateDisplay(uid);
+          this.remoteOwnedTilesByUid.delete(uid);
+        }
       }
     }
     for (const uid of Array.from(this.remoteEstateDisplays.keys())) {
-      if (!appearances.has(uid)) {
+      if (!appearances.has(uid) && !this.persistentWorldEstates.has(uid)) {
         this.clearRemoteEstateDisplay(uid);
       }
     }
     for (const uid of Array.from(this.remoteOwnedTilesByUid.keys())) {
-      if (!appearances.has(uid)) {
+      if (!appearances.has(uid) && !this.persistentWorldEstates.has(uid)) {
         this.remoteOwnedTilesByUid.delete(uid);
       }
     }
@@ -1323,10 +1333,44 @@ export class WorldScene {
     return map;
   }
 
+  public syncPersistentWorldEstates(
+    estates: Map<string, RemotePlayerEstateSummary>,
+    localUserId: string | null,
+  ): void {
+    this.localCloudUserId = localUserId;
+    this.persistentWorldEstates = new Map(estates);
+
+    // Xóa các bản hiển thị cũ nếu chủ sở hữu là chính mình hoặc đã xóa nhà/đất khỏi Cloud (và không online)
+    for (const uid of Array.from(this.remoteEstateDisplays.keys())) {
+      if (uid === localUserId || (!this.persistentWorldEstates.has(uid) && !this.remotePlayers.has(uid))) {
+        this.clearRemoteEstateDisplay(uid);
+      }
+    }
+    for (const uid of Array.from(this.remoteOwnedTilesByUid.keys())) {
+      if (uid === localUserId || (!this.persistentWorldEstates.has(uid) && !this.remotePlayers.has(uid))) {
+        this.remoteOwnedTilesByUid.delete(uid);
+      }
+    }
+
+    // Hiển thị toàn bộ nhà & đất của tất cả người chơi khác (kể cả khi họ đã offline)
+    if (this.activeMapId === "vietnam") {
+      for (const [uid, est] of this.persistentWorldEstates.entries()) {
+        if (localUserId && uid === localUserId) continue;
+        this.syncRemoteEstateDisplay(uid, est);
+      }
+    }
+    if (this.estateInteractMode !== "none") {
+      this.refreshEstateOverlays();
+    }
+  }
+
   private syncRemoteEstateDisplay(uid: string, estate: RemotePlayerEstateSummary | null): void {
     const myNameNorm = (this.estate.ownerName || this.getPlayerDisplayName()).trim().toLowerCase();
     const remoteNameNorm = (estate?.ownerName || "").trim().toLowerCase();
-    const isSameOwnerTab = Boolean(estate && myNameNorm && remoteNameNorm && myNameNorm === remoteNameNorm);
+    const isSameOwnerTab = Boolean(
+      (this.localCloudUserId && uid === this.localCloudUserId) ||
+        (estate && myNameNorm && remoteNameNorm && myNameNorm === remoteNameNorm),
+    );
 
     // 1. Cập nhật tập ô đất thuộc sở hữu của người chơi khác để chặn tranh chấp mua đất / xây nhà
     const prevRec = this.remoteOwnedTilesByUid.get(uid);
@@ -1607,6 +1651,7 @@ export class WorldScene {
     const wasReady = this.isSceneReady;
     this.isSceneReady = false;
     try {
+      this.exitEstateInteractMode();
       this.inventory.replacePersistedState(save.inventory);
       this.gender = save.profile.gender ?? "male";
       this.hairId = HAIR_BY_ID[save.hairId] ? save.hairId : HAIR_OPTIONS[0].id;
@@ -1633,6 +1678,15 @@ export class WorldScene {
         this.detainedUntil = save.policeState.detainedUntil;
         this.ignoreUntilByOfficer = { ...save.policeState.ignoreUntilByOfficer };
         this.globalPoliceIgnoreUntil = save.policeState.globalIgnoreUntil ?? 0;
+      } else {
+        this.detainedUntil = 0;
+        this.ignoreUntilByOfficer = {};
+        this.globalPoliceIgnoreUntil = 0;
+      }
+      if (this.detainedUntil <= Date.now() && this.isInJail) {
+        this.isInJail = false;
+        this.jailRoom.container.visible = false;
+        this.worldContainer.visible = true;
       }
       if (save.questBoard) {
         this.questBoard = save.questBoard;
@@ -1645,17 +1699,16 @@ export class WorldScene {
         this.ownedPetIds.add(pid);
       }
       this.equippedPetId = save.equippedPetId ?? null;
-      if (save.estate) {
-        this.estate = { ...save.estate };
-        normalizeEstateOwnedTiles(this.estate);
-        if (this.estate.houseId) {
-          const m = getHouseModelDef(this.estate.houseId);
-          this.inventory.setEstateStorageBonus(m ? m.storageCols : 0, m ? m.storageRows : 0);
-        } else {
-          this.inventory.setEstateStorageBonus(0, 0);
-        }
-        this.syncEstateAndCollectionDisplay();
+      this.estate = save.estate ? { ...save.estate } : createDefaultPlayerEstateState();
+      normalizeEstateOwnedTiles(this.estate);
+      if (this.estate.houseId) {
+        const m = getHouseModelDef(this.estate.houseId);
+        this.inventory.setEstateStorageBonus(m ? m.storageCols : 0, m ? m.storageRows : 0);
+      } else {
+        this.inventory.setEstateStorageBonus(0, 0);
       }
+      this.syncEstateAndCollectionDisplay();
+      this.refreshCollectionOrbitSprites();
 
       const targetMap: MapId = save.profile.activeMapId === "japan" ? "japan" : "vietnam";
       if (targetMap !== this.activeMapId) {
@@ -1721,6 +1774,7 @@ export class WorldScene {
     this.waterDroplets.length = 0;
     this.collectionOrbitHost = null;
     this.collectionOrbitItems.length = 0;
+    this.remoteEstateDisplays.clear();
 
     this.buildTerrainChunks();
     this.buildZoneBoundaryMarkers();
@@ -1729,6 +1783,12 @@ export class WorldScene {
     this.buildChests();
     this.entityLayer.addChild(this.player);
     this.reattachRemotePlayersToEntityLayer();
+    if (targetMapId === "vietnam") {
+      for (const [uid, est] of this.persistentWorldEstates.entries()) {
+        if (this.localCloudUserId && uid === this.localCloudUserId) continue;
+        this.syncRemoteEstateDisplay(uid, est);
+      }
+    }
     this.refreshPetFollower();
     this.police = new PoliceSystem(nextWorld, this.atlas, this.entityLayer);
     this.atmosphere.rebuildForWorld(nextWorld);

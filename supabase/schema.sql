@@ -630,3 +630,40 @@ GRANT EXECUTE ON FUNCTION public.cancel_auction_listing(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_auction_proceeds(uuid) TO authenticated;
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.auction_listings;
+
+-- ============================================================================
+-- 11. Khu Biệt Thự & Dinh Thự Vĩnh Viễn (Hiển thị cả khi chủ nhà offline + chống tranh chấp đất)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.world_estates (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  map_id text NOT NULL DEFAULT 'vietnam',
+  owner_name text NOT NULL DEFAULT 'Người Chơi',
+  house_id text,
+  origin_c integer NOT NULL DEFAULT 13,
+  origin_r integer NOT NULL DEFAULT 13,
+  owned_world_tiles jsonb NOT NULL DEFAULT '[]'::jsonb,
+  displayed_items jsonb NOT NULL DEFAULT '[]'::jsonb,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_world_estates_map
+  ON public.world_estates (map_id);
+
+ALTER TABLE public.world_estates ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "world_estates_read_all" ON public.world_estates;
+CREATE POLICY "world_estates_read_all"
+  ON public.world_estates
+  FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "world_estates_owner_write" ON public.world_estates;
+CREATE POLICY "world_estates_owner_write"
+  ON public.world_estates
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.world_estates;

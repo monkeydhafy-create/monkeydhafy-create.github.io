@@ -630,9 +630,15 @@ export class Hud {
   private lastMinimapDrawAt = 0;
   private lastSurvivalSignature = "";
   private lastPromptSignature = "";
+  private readonly onAfterLogout?: () => Promise<void>;
 
-  constructor(scene: WorldScene, cloudSync: SupabaseSync | null = null) {
+  constructor(
+    scene: WorldScene,
+    cloudSync: SupabaseSync | null = null,
+    options?: { onAfterLogout?: () => Promise<void> },
+  ) {
     this.scene = scene;
+    this.onAfterLogout = options?.onAfterLogout;
     this.cloudSync = cloudSync;
 
     this.minimapBtn = document.getElementById("btn-minimap") as HTMLButtonElement;
@@ -8306,7 +8312,14 @@ export class Hud {
     await this.cloudSync.signOut();
     this.accountFeedbackEl.textContent = "";
     this.accountAuthFeedbackEl.textContent = "";
+    this.closeAllModals();
+    if (this.onAfterLogout) {
+      await this.onAfterLogout();
+    }
     this.renderAccountModal();
-    this.showDiscoveryToast("🚪 Đã đăng xuất", "Dữ liệu cục bộ trên máy vẫn được giữ an toàn.");
+    this.showDiscoveryToast(
+      "🚪 Đã đăng xuất",
+      "Dữ liệu tài khoản Cloud đã được lưu. Nhân vật cục bộ đã đặt lại về lúc mới tạo!",
+    );
   }
 }
