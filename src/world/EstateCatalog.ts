@@ -42,10 +42,10 @@ export interface PlayerEstateState {
 }
 
 export const TILE_PRICE_BASE_GOLD = 37_500;
-export const TILE_DISCOUNT_PCT = 44; // Giảm 30% rồi giảm tiếp 20% (0.70 × 0.80 = 0.56 => tổng giảm 44%)
-export const TILE_PRICE_GOLD = Math.round((TILE_PRICE_BASE_GOLD * (100 - TILE_DISCOUNT_PCT)) / 100); // 21.000🪙/ô
+export const TILE_DISCOUNT_PCT = 72; // Giảm tiếp 50% trên mức 21.000🪙 -> 10.500🪙/ô (tổng giảm 72% so với gốc)
+export const TILE_PRICE_GOLD = Math.round((TILE_PRICE_BASE_GOLD * (100 - TILE_DISCOUNT_PCT)) / 100); // 10.500🪙/ô
 export const TILE_SELL_REFUND_PCT = 70; // Hoàn lại 70% giá mua hiện tại khi bán ô đất
-export const TILE_SELL_REFUND_GOLD = Math.round((TILE_PRICE_GOLD * TILE_SELL_REFUND_PCT) / 100); // 14.700🪙/ô
+export const TILE_SELL_REFUND_GOLD = Math.round((TILE_PRICE_GOLD * TILE_SELL_REFUND_PCT) / 100); // 7.350🪙/ô
 export const PARCEL_COLS = 4;
 export const PARCEL_ROWS = 4;
 export const TOTAL_PARCEL_TILES = 16;

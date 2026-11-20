@@ -397,10 +397,10 @@ export function rollPetGachaOutcome(mapId: MapId): {
     return fallback[Math.floor(Math.random() * fallback.length)] ?? Object.values(ITEM_BY_ID)[0];
   };
 
-  if (roll < (acc += 0.15)) return { kind: "pet", rarity: "S", pet: pickPet("S") };
-  if (roll < (acc += 1.2)) return { kind: "pet", rarity: "A", pet: pickPet("A") };
-  if (roll < (acc += 3.5)) return { kind: "pet", rarity: "B", pet: pickPet("B") };
-  if (roll < (acc += 7.5)) return { kind: "pet", rarity: "C", pet: pickPet("C") };
+  if (roll < (acc += 0.3)) return { kind: "pet", rarity: "S", pet: pickPet("S") };
+  if (roll < (acc += 2.0)) return { kind: "pet", rarity: "A", pet: pickPet("A") };
+  if (roll < (acc += 5.0)) return { kind: "pet", rarity: "B", pet: pickPet("B") };
+  if (roll < (acc += 10.0)) return { kind: "pet", rarity: "C", pet: pickPet("C") };
   if (roll < (acc += 2.0)) return { kind: "item", rarity: "S", item: pickItem("S") };
   if (roll < (acc += 10.0)) return { kind: "item", rarity: "A", item: pickItem("A") };
   if (roll < (acc += 30.0)) return { kind: "item", rarity: "B", item: pickItem("B") };
