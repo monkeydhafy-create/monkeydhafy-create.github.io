@@ -2407,7 +2407,8 @@ export class Hud {
     const wrap = document.createElement("div");
     wrap.className = "estate-house-grid estate-house-grid-compact";
 
-    let models = Object.values(HOUSE_MODELS);
+    const curMapId = this.scene.getActiveMapId();
+    let models = Object.values(HOUSE_MODELS).filter((m) => !m.deprecated && (m.mapId ?? "vietnam") === curMapId);
     if (this.realEstateFilterTier !== "all") {
       const targetTier = parseInt(this.realEstateFilterTier, 10);
       models = models.filter((m) => m.tier === targetTier);

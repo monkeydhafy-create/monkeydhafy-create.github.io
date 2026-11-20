@@ -86,6 +86,24 @@ const RAW_ASSETS = [
   { alias: "estate-tier4_02_octagon_castle", src: "assets/world/estates/tier4_02_octagon_castle.png" },
   { alias: "estate-tier4_03_cathedral_spire_palace", src: "assets/world/estates/tier4_03_cathedral_spire_palace.png" },
   { alias: "estate-tier4_04_twin_spired_abbey", src: "assets/world/estates/tier4_04_twin_spired_abbey.png" },
+  // Vietnam Traditional & Indochine Residential Estate Models
+  { alias: "estate-vn_tier1_01_nha_san_ho", src: "assets/world/estates/vn_tier1_01_nha_san_ho.png" },
+  { alias: "estate-vn_tier1_02_nha_tranh_vuon", src: "assets/world/estates/vn_tier1_02_nha_tranh_vuon.png" },
+  { alias: "estate-vn_tier2_01_nha_ngoi_bac_bo", src: "assets/world/estates/vn_tier2_01_nha_ngoi_bac_bo.png" },
+  { alias: "estate-vn_tier2_02_biet_thu_pho_co", src: "assets/world/estates/vn_tier2_02_biet_thu_pho_co.png" },
+  { alias: "estate-vn_tier3_01_dinh_thu_tam_quan", src: "assets/world/estates/vn_tier3_01_dinh_thu_tam_quan.png" },
+  { alias: "estate-vn_tier3_02_phu_de_indochine", src: "assets/world/estates/vn_tier3_02_phu_de_indochine.png" },
+  { alias: "estate-vn_tier4_01_hoang_thanh_thang_long", src: "assets/world/estates/vn_tier4_01_hoang_thanh_thang_long.png" },
+  { alias: "estate-vn_tier4_02_dai_biet_phu_tay_ho", src: "assets/world/estates/vn_tier4_02_dai_biet_phu_tay_ho.png" },
+  // Japan / Tokyo Residential Estate Models
+  { alias: "estate-jp_tier1_01_machiya_home", src: "assets/world/estates/jp_tier1_01_machiya_home.png" },
+  { alias: "estate-jp_tier1_02_shibuya_micro", src: "assets/world/estates/jp_tier1_02_shibuya_micro.png" },
+  { alias: "estate-jp_tier2_01_sakura_engawa", src: "assets/world/estates/jp_tier2_01_sakura_engawa.png" },
+  { alias: "estate-jp_tier2_02_ginza_townhouse", src: "assets/world/estates/jp_tier2_02_ginza_townhouse.png" },
+  { alias: "estate-jp_tier3_01_kyoto_ryokan_villa", src: "assets/world/estates/jp_tier3_01_kyoto_ryokan_villa.png" },
+  { alias: "estate-jp_tier3_02_roppongi_sky_villa", src: "assets/world/estates/jp_tier3_02_roppongi_sky_villa.png" },
+  { alias: "estate-jp_tier4_01_imperial_tenshu", src: "assets/world/estates/jp_tier4_01_imperial_tenshu.png" },
+  { alias: "estate-jp_tier4_02_tokyo_imperial_palace", src: "assets/world/estates/jp_tier4_02_tokyo_imperial_palace.png" },
 
   // World-space interactive chests (item PNGs are lazy-loaded by HTML <img> inside UI modals)
   { alias: "chest-closed", src: "assets/world/chest_closed.png" },

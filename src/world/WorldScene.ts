@@ -1755,6 +1755,10 @@ export class WorldScene {
   }
 
   public applyRemoteLiveState(live: LiveStatePayload): void {
+    // Bỏ qua gói live đang ngất/chết hoặc dữ liệu lỗi để không kéo phiên đang chơi khỏe mạnh về bệnh viện oan
+    if (!Number.isFinite(live.hp) || live.hp <= 0) {
+      return;
+    }
     if (live.map_id !== this.activeMapId) {
       this.switchMapWithoutFee(live.map_id, live.x, live.y);
     } else {
@@ -1770,10 +1774,10 @@ export class WorldScene {
       }
     }
     this.player.setFacing(live.facing);
-    this.survival.hp = live.hp;
-    this.survival.hunger = live.hunger;
-    this.survival.stamina = live.stamina;
-    this.survival.bodyTempC = live.body_temp_c;
+    this.survival.hp = Math.max(1, Math.min(100, live.hp));
+    if (Number.isFinite(live.hunger)) this.survival.hunger = Math.max(0, Math.min(100, live.hunger));
+    if (Number.isFinite(live.stamina)) this.survival.stamina = Math.max(0, live.stamina);
+    if (Number.isFinite(live.body_temp_c)) this.survival.bodyTempC = Math.max(34, Math.min(41, live.body_temp_c));
   }
 
   public applyRemoteSaveState(save: PlayerGameSaveV3): void {
@@ -1795,6 +1799,10 @@ export class WorldScene {
       this.savedOutfits = (save.savedOutfits ?? []).map((p) => ({ ...p, gear: { ...p.gear } }));
       this.survival = {
         ...save.survival,
+        hp:
+          Number.isFinite(save.survival.hp) && save.survival.hp > 0
+            ? Math.min(100, save.survival.hp)
+            : 75,
         staminaBuff: save.survival.staminaBuff ? { ...save.survival.staminaBuff } : null,
       };
       this.onboardingDone = save.profile.onboardingDone ?? true;

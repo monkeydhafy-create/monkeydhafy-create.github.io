@@ -502,7 +502,11 @@ export function stepSurvivalState(
     hpDelta += 0.55;
   }
 
-  state.hp = clamp(state.hp + hpDelta * dt, 0, 100);
+  if (!Number.isFinite(state.hp)) {
+    state.hp = 75;
+  }
+  const safeHpDelta = Number.isFinite(hpDelta) ? hpDelta : 0;
+  state.hp = clamp(state.hp + safeHpDelta * dt, 0, 100);
 
   // Vision blur intensity grows when hungry (<30), fatigued (<30), critically wounded (<35), or Hanoi smog/heat
   const hungerBlur = state.hunger < 30 ? (30 - state.hunger) / 30 : 0;
