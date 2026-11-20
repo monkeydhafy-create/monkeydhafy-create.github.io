@@ -107,6 +107,8 @@ interface PoliceOfficerAgent {
   patrolZone: "yellow" | "red";
   sectorMinCol: number;
   sectorMaxCol: number;
+  sectorMinRow?: number;
+  sectorMaxRow?: number;
   x: number;
   y: number;
   facing: FacingDir;
@@ -144,33 +146,58 @@ export const OFFICER_SPECS: ReadonlyArray<{
   patrolZone: "yellow" | "red";
   sectorMinCol: number;
   sectorMaxCol: number;
+  sectorMinRow?: number;
+  sectorMaxRow?: number;
 }> = [
-  { id: "pol_yellow_1", name: "Cảnh Sát Phố Đông", japanName: "Cảnh Sát Tokyo Đông", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56 },
-  { id: "pol_yellow_2", name: "Cảnh Sát Khu Nam Phố", japanName: "Tuần Tra Shibuya Nam", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56 },
-  { id: "pol_yellow_3", name: "Cảnh Sát Bờ Tây Sông Hồng", japanName: "Cảnh Sát Kyoto Tây", biome: "plains", patrolZone: "yellow", sectorMinCol: 56, sectorMaxCol: 86 },
-  { id: "pol_yellow_4", name: "Cảnh Sát Chợ Đồng Bằng Tây", japanName: "Cảnh Sát Đền Inari", biome: "plains", patrolZone: "yellow", sectorMinCol: 60, sectorMaxCol: 90 },
-  { id: "pol_yellow_5", name: "Cảnh Sát Cầu Bắc Sông Hồng", japanName: "Tuần Tra Rừng Trúc Bắc", biome: "plains", patrolZone: "yellow", sectorMinCol: 82, sectorMaxCol: 118 },
-  { id: "pol_yellow_6", name: "Cảnh Sát Cầu Nam Sông Hồng", japanName: "Tuần Tra Rừng Trúc Nam", biome: "plains", patrolZone: "yellow", sectorMinCol: 82, sectorMaxCol: 118 },
-  { id: "pol_yellow_7", name: "Cảnh Sát Bờ Đông Sông Hồng", japanName: "Cảnh Sát Phủ Samurai Đông", biome: "plains", patrolZone: "yellow", sectorMinCol: 106, sectorMaxCol: 136 },
-  { id: "pol_yellow_8", name: "Cảnh Sát Biên Giới Đông", japanName: "Cảnh Sát Biên Giới Kyoto", biome: "plains", patrolZone: "yellow", sectorMinCol: 116, sectorMaxCol: 141 },
-  { id: "pol_red_1", name: "Đặc Nhiệm Cổng Đỏ Bắc", japanName: "Đặc Nhiệm Làng Iga Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 142, sectorMaxCol: 164 },
-  { id: "pol_red_2", name: "Đặc Nhiệm Cổng Đỏ Nam", japanName: "Đặc Nhiệm Làng Iga Nam", biome: "countryside", patrolZone: "red", sectorMinCol: 142, sectorMaxCol: 164 },
-  { id: "pol_red_3", name: "Đặc Nhiệm Khu Đỏ Bắc", japanName: "Đặc Nhiệm Thành Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 156, sectorMaxCol: 180 },
-  { id: "pol_red_4", name: "Đặc Nhiệm Khu Đỏ Nam", japanName: "Đặc Nhiệm Thành Nam", biome: "countryside", patrolZone: "red", sectorMinCol: 156, sectorMaxCol: 180 },
-  { id: "pol_red_5", name: "Đặc Nhiệm Đồn Trung Tâm", japanName: "Đặc Nhiệm Cổng Thành Iga", biome: "countryside", patrolZone: "red", sectorMinCol: 166, sectorMaxCol: 190 },
-  { id: "pol_red_6", name: "Đặc Nhiệm Thung Lũng Đỏ", japanName: "Đặc Nhiệm Hào Nước Osaka", biome: "countryside", patrolZone: "red", sectorMinCol: 168, sectorMaxCol: 192 },
-  { id: "pol_red_7", name: "Đặc Nhiệm Cơ Động Rừng Sâu", japanName: "Đặc Nhiệm Rừng Phong Đỏ", biome: "countryside", patrolZone: "red", sectorMinCol: 178, sectorMaxCol: 202 },
-  { id: "pol_red_8", name: "Đặc Nhiệm Rừng Sâu Đông", japanName: "Đặc Nhiệm Shogun Osaka", biome: "countryside", patrolZone: "red", sectorMinCol: 180, sectorMaxCol: 203 },
-  { id: "pol_red_9", name: "Đặc Nhiệm Trấn Ải Đỉnh Đông", japanName: "Đặc Nhiệm Đỉnh Tuyết Shogun", biome: "countryside", patrolZone: "red", sectorMinCol: 184, sectorMaxCol: 203 },
-  { id: "pol_red_10", name: "Đặc Nhiệm Bảo Vệ Kho Báu", japanName: "Đặc Nhiệm Nội Thành Shogun", biome: "countryside", patrolZone: "red", sectorMinCol: 186, sectorMaxCol: 203 },
+  { id: "pol_yellow_1", name: "Cảnh Sát Phố Đông", japanName: "Cảnh Sát Tokyo Đông", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56, sectorMinRow: 4, sectorMaxRow: 38 },
+  { id: "pol_yellow_2", name: "Cảnh Sát Khu Nam Phố", japanName: "Tuần Tra Shibuya Nam", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56, sectorMinRow: 44, sectorMaxRow: 78 },
+  { id: "pol_yellow_3", name: "Cảnh Sát Bờ Tây Sông Hồng", japanName: "Cảnh Sát Kyoto Tây", biome: "plains", patrolZone: "yellow", sectorMinCol: 57, sectorMaxCol: 84, sectorMinRow: 4, sectorMaxRow: 38 },
+  { id: "pol_yellow_4", name: "Cảnh Sát Chợ Đồng Bằng Tây", japanName: "Cảnh Sát Đền Inari", biome: "plains", patrolZone: "yellow", sectorMinCol: 57, sectorMaxCol: 84, sectorMinRow: 44, sectorMaxRow: 78 },
+  { id: "pol_yellow_5", name: "Cảnh Sát Cầu Bắc Sông Hồng", japanName: "Tuần Tra Tuyết Tây", biome: "plains", patrolZone: "yellow", sectorMinCol: 85, sectorMaxCol: 112, sectorMinRow: 4, sectorMaxRow: 36 },
+  { id: "pol_yellow_6", name: "Cảnh Sát Cầu Nam Sông Hồng", japanName: "Tuần Tra Bến Cảng Nam", biome: "plains", patrolZone: "yellow", sectorMinCol: 85, sectorMaxCol: 112, sectorMinRow: 44, sectorMaxRow: 78 },
+  { id: "pol_yellow_7", name: "Cảnh Sát Bờ Đông Sông Hồng", japanName: "Cảnh Sát Phủ Samurai Đông", biome: "plains", patrolZone: "yellow", sectorMinCol: 113, sectorMaxCol: 141, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "pol_yellow_8", name: "Cảnh Sát Biên Giới Đông", japanName: "Cảnh Sát Mép Tuyết Đông", biome: "plains", patrolZone: "yellow", sectorMinCol: 113, sectorMaxCol: 141, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "pol_red_1", name: "Đặc Nhiệm Cổng Đỏ Bắc", japanName: "Đặc Nhiệm Núi Tuyết Tây", biome: "countryside", patrolZone: "red", sectorMinCol: 142, sectorMaxCol: 162, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "pol_red_2", name: "Đặc Nhiệm Cổng Đỏ Nam", japanName: "Đặc Nhiệm Đảo Tây Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 142, sectorMaxCol: 162, sectorMinRow: 47, sectorMaxRow: 78 },
+  { id: "pol_red_3", name: "Đặc Nhiệm Khu Đỏ Bắc", japanName: "Đặc Nhiệm Thành Tuyết Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 162, sectorMaxCol: 182, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "pol_red_4", name: "Đặc Nhiệm Khu Đỏ Nam", japanName: "Đặc Nhiệm Đảo Giữa Nam", biome: "countryside", patrolZone: "red", sectorMinCol: 158, sectorMaxCol: 180, sectorMinRow: 47, sectorMaxRow: 78 },
+  { id: "pol_red_5", name: "Đặc Nhiệm Đồn Trung Tâm", japanName: "Đặc Nhiệm Đèo Tuyết Giữa", biome: "countryside", patrolZone: "red", sectorMinCol: 164, sectorMaxCol: 184, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "pol_red_6", name: "Đặc Nhiệm Thung Lũng Đỏ", japanName: "Đặc Nhiệm Làng Chài Giữa", biome: "countryside", patrolZone: "red", sectorMinCol: 170, sectorMaxCol: 192, sectorMinRow: 47, sectorMaxRow: 78 },
+  { id: "pol_red_7", name: "Đặc Nhiệm Cơ Động Rừng Sâu", japanName: "Đặc Nhiệm Tuyết Đông Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 182, sectorMaxCol: 201, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "pol_red_8", name: "Đặc Nhiệm Rừng Sâu Đông", japanName: "Đặc Nhiệm Đảo Đông Nam", biome: "countryside", patrolZone: "red", sectorMinCol: 182, sectorMaxCol: 201, sectorMinRow: 47, sectorMaxRow: 78 },
+  { id: "pol_red_9", name: "Đặc Nhiệm Trấn Ải Đỉnh Đông", japanName: "Đặc Nhiệm Đỉnh Tuyết Shogun", biome: "countryside", patrolZone: "red", sectorMinCol: 185, sectorMaxCol: 201, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "pol_red_10", name: "Đặc Nhiệm Bảo Vệ Kho Báu", japanName: "Đặc Nhiệm Bờ Đông Đảo", biome: "countryside", patrolZone: "red", sectorMinCol: 185, sectorMaxCol: 201, sectorMinRow: 47, sectorMaxRow: 78 },
+];
+
+export const JP_EXTRA_OFFICER_SPECS: ReadonlyArray<{
+  id: string;
+  name: string;
+  japanName: string;
+  biome: BiomeId;
+  patrolZone: "yellow" | "red";
+  sectorMinCol: number;
+  sectorMaxCol: number;
+  sectorMinRow?: number;
+  sectorMaxRow?: number;
+}> = [
+  { id: "jp_pol_yellow_9", name: "Shinsengumi Ueno Bắc", japanName: "Shinsengumi Ueno Bắc", biome: "city", patrolZone: "yellow", sectorMinCol: 32, sectorMaxCol: 56, sectorMinRow: 4, sectorMaxRow: 38 },
+  { id: "jp_pol_yellow_10", name: "Tuần Tra Akihabara", japanName: "Tuần Tra Akihabara", biome: "city", patrolZone: "yellow", sectorMinCol: 42, sectorMaxCol: 68, sectorMinRow: 44, sectorMaxRow: 78 },
+  { id: "jp_pol_yellow_11", name: "Kiếm Sĩ Samurai Tây", japanName: "Kiếm Sĩ Samurai Tây", biome: "plains", patrolZone: "yellow", sectorMinCol: 70, sectorMaxCol: 100, sectorMinRow: 4, sectorMaxRow: 38 },
+  { id: "jp_pol_yellow_12", name: "Tuần Tra Kyoto Đông", japanName: "Tuần Tra Kyoto Đông", biome: "plains", patrolZone: "yellow", sectorMinCol: 76, sectorMaxCol: 112, sectorMinRow: 44, sectorMaxRow: 78 },
+  { id: "jp_pol_red_11", name: "Ninja Ám Sát Iga Tây", japanName: "Ninja Ám Sát Iga Tây", biome: "countryside", patrolZone: "red", sectorMinCol: 142, sectorMaxCol: 162, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "jp_pol_red_12", name: "Cấm Vệ Quân Tuyết Sơn", japanName: "Cấm Vệ Quân Tuyết Sơn", biome: "countryside", patrolZone: "red", sectorMinCol: 162, sectorMaxCol: 182, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "jp_pol_red_13", name: "Tuần Tra Bến Tây Đảo", japanName: "Tuần Tra Bến Tây Đảo", biome: "countryside", patrolZone: "red", sectorMinCol: 136, sectorMaxCol: 158, sectorMinRow: 47, sectorMaxRow: 78 },
+  { id: "jp_pol_red_14", name: "Cấm Vệ Làng Chài", japanName: "Cấm Vệ Làng Chài", biome: "countryside", patrolZone: "red", sectorMinCol: 158, sectorMaxCol: 180, sectorMinRow: 47, sectorMaxRow: 78 },
+  { id: "jp_pol_red_15", name: "Đặc Nhiệm Bão Tuyết Bắc", japanName: "Đặc Nhiệm Bão Tuyết Bắc", biome: "countryside", patrolZone: "red", sectorMinCol: 182, sectorMaxCol: 201, sectorMinRow: 4, sectorMaxRow: 28 },
+  { id: "jp_pol_red_16", name: "Thủ Vệ Đông Đảo", japanName: "Thủ Vệ Đông Đảo", biome: "countryside", patrolZone: "red", sectorMinCol: 180, sectorMaxCol: 201, sectorMinRow: 47, sectorMaxRow: 78 },
 ];
 
 const PATROL_SPEED = 58;
 const INVESTIGATE_SPEED = 77;
 const CHASE_SPEED = 118;
-const JP_PATROL_SPEED = 68;
-const JP_INVESTIGATE_SPEED = 90;
-const JP_CHASE_SPEED = 134;
+const JP_PATROL_SPEED = 76;
+const JP_INVESTIGATE_SPEED = 100;
+const JP_CHASE_SPEED = 146;
 const AI_THINK_INTERVAL = 0.16;
 const CATCH_RADIUS = 38;
 const LOOT_WAYPOINT_REJECT_PROB = 0.82;
@@ -242,8 +269,12 @@ export class PoliceSystem {
     const fullPool = this.zoneWaypoints[agent.patrolZone];
     const minX = agent.sectorMinCol * TILE_SIZE;
     const maxX = (agent.sectorMaxCol + 1) * TILE_SIZE;
-    const sector = fullPool.filter((w) => w.x >= minX && w.x <= maxX);
-    return sector.length >= 6 ? sector : fullPool;
+    const minY = (agent.sectorMinRow ?? 0) * TILE_SIZE;
+    const maxY = ((agent.sectorMaxRow ?? 999) + 1) * TILE_SIZE;
+    const sector = fullPool.filter((w) => w.x >= minX && w.x <= maxX && w.y >= minY && w.y <= maxY);
+    if (sector.length >= 6) return sector;
+    const colOnly = fullPool.filter((w) => w.x >= minX && w.x <= maxX);
+    return colOnly.length >= 6 ? colOnly : fullPool;
   }
 
   private pickZoneWaypoint(agent: PoliceOfficerAgent, preferNearby: boolean): Point {
@@ -282,19 +313,43 @@ export class PoliceSystem {
   }
 
   private spawnOfficers(entityLayer: Container): void {
-    OFFICER_SPECS.forEach((spec, idx) => {
+    const specs =
+      this.world.mapId === "japan"
+        ? [...OFFICER_SPECS, ...JP_EXTRA_OFFICER_SPECS]
+        : OFFICER_SPECS;
+    specs.forEach((spec, idx) => {
       const minX = spec.sectorMinCol * TILE_SIZE;
       const maxX = (spec.sectorMaxCol + 1) * TILE_SIZE;
+      const minY = (spec.sectorMinRow ?? 0) * TILE_SIZE;
+      const maxY = ((spec.sectorMaxRow ?? 999) + 1) * TILE_SIZE;
       const pool = this.zoneWaypoints[spec.patrolZone];
-      const sectorPool = pool.filter((w) => w.x >= minX && w.x <= maxX);
-      const basePool = sectorPool.length > 0 ? sectorPool : pool;
+      const exactSector = pool.filter((w) => w.x >= minX && w.x <= maxX && w.y >= minY && w.y <= maxY);
+      const colSector = pool.filter((w) => w.x >= minX && w.x <= maxX);
+      const basePool = exactSector.length > 0 ? exactSector : colSector.length > 0 ? colSector : pool;
       const roadNonLoot = basePool.filter((w) => w.onRoad && !w.nearLoot);
       const nonLootPool = basePool.filter((w) => !w.nearLoot);
       const startPool = roadNonLoot.length > 0 ? roadNonLoot : nonLootPool.length > 0 ? nonLootPool : basePool;
       let start: Point = { x: WORLD_WIDTH * 0.55, y: WORLD_HEIGHT * 0.5 };
       if (startPool.length > 0) {
-        const picked = startPool[(idx * 37 + 13) % startPool.length];
-        start = { x: picked.x, y: picked.y };
+        // Chọn điểm cách xa các cảnh sát đã spawn nhất để rải đều khắp bản đồ
+        let bestWp = startPool[(idx * 37 + 13) % startPool.length];
+        if (this.officers.length > 0) {
+          let bestMinDist = -1;
+          const step = Math.max(1, Math.floor(startPool.length / 24));
+          for (let i = 0; i < startPool.length; i += step) {
+            const cand = startPool[i];
+            let minD = Number.POSITIVE_INFINITY;
+            for (const other of this.officers) {
+              const d = Math.hypot(cand.x - other.x, cand.y - other.y);
+              if (d < minD) minD = d;
+            }
+            if (minD > bestMinDist) {
+              bestMinDist = minD;
+              bestWp = cand;
+            }
+          }
+        }
+        start = { x: bestWp.x, y: bestWp.y };
       }
 
       const container = new Container();
@@ -377,6 +432,8 @@ export class PoliceSystem {
         patrolZone: spec.patrolZone,
         sectorMinCol: spec.sectorMinCol,
         sectorMaxCol: spec.sectorMaxCol,
+        sectorMinRow: spec.sectorMinRow,
+        sectorMaxRow: spec.sectorMaxRow,
         x: start.x,
         y: start.y,
         facing: "down",
@@ -465,10 +522,10 @@ export class PoliceSystem {
     const dist = Math.hypot(dx, dy);
     const lootSightBonus = isLooting ? 45 : 0;
     const isRed = agent.patrolZone === "red";
-    const jpSightBonus = this.world.mapId === "japan" ? (isRed ? 24 : 35) : 0;
+    const jpSightBonus = this.world.mapId === "japan" ? (isRed ? 48 : 56) : 0;
     const sightRange =
       (isRed ? 235 : 255) + jpSightBonus - nightFactor * 42 + lootSightBonus;
-    const hearRange = (isRed ? 84 : 104) + (this.world.mapId === "japan" ? (isRed ? 12 : 18) : 0) + (isLooting ? 28 : 0);
+    const hearRange = (isRed ? 84 : 104) + (this.world.mapId === "japan" ? (isRed ? 24 : 30) : 0) + (isLooting ? 28 : 0);
 
     if (dist > sightRange) return false;
     if (dist <= hearRange) {

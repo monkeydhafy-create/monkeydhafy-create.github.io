@@ -1,3 +1,5 @@
+import type { MapId } from "./types.ts";
+
 export interface PlotTierDef {
   tier: number;
   name: string;
@@ -63,7 +65,7 @@ export interface EstateDistrictLot {
   rows: number;
 }
 
-// Toàn bộ 15 lô 4x4 (240 ô đất 1x1) nằm trọn trong Khu Biệt Thự Vùng Xanh
+// Toàn bộ 15 lô 4x4 (240 ô đất 1x1) nằm trọn trong Khu Biệt Thự Vùng Xanh Việt Nam (row 2..16)
 export const ESTATE_DISTRICT_LOTS: EstateDistrictLot[] = [
   // 6 Lô Hàng Bắc (row 2..5)
   { id: "north_1", name: "Bắc Tây 1", col0: 3, row0: 2, cols: 4, rows: 4 },
@@ -84,6 +86,41 @@ export const ESTATE_DISTRICT_LOTS: EstateDistrictLot[] = [
   { id: "south_5", name: "Nam Đông 1", col0: 22, row0: 13, cols: 4, rows: 4 },
   { id: "south_6", name: "Nam Đông 2", col0: 27, row0: 13, cols: 4, rows: 4 },
 ];
+
+// Khu Biệt Thự Sakura & Hồ Koi Nhật Bản (bố trí riêng tại Trung tâm Nam Vùng Xanh: row 42..56)
+export const JAPAN_ESTATE_DISTRICT_LOTS: EstateDistrictLot[] = [
+  // 6 Lô Hàng Bắc Sakura (row 42..45)
+  { id: "jp_north_1", name: "Sakura Bắc 1", col0: 3, row0: 42, cols: 4, rows: 4 },
+  { id: "jp_north_2", name: "Sakura Bắc 2", col0: 8, row0: 42, cols: 4, rows: 4 },
+  { id: "jp_north_3", name: "Ven Hồ Koi Bắc Tây", col0: 13, row0: 42, cols: 4, rows: 4 },
+  { id: "jp_north_4", name: "Ven Hồ Koi Bắc Đông", col0: 17, row0: 42, cols: 4, rows: 4 },
+  { id: "jp_north_5", name: "Zen Bắc Đông 1", col0: 22, row0: 42, cols: 4, rows: 4 },
+  { id: "jp_north_6", name: "Zen Bắc Đông 2", col0: 27, row0: 42, cols: 4, rows: 4 },
+  // 3 Lô Hàng Giữa Hồ Koi (row 47..50)
+  { id: "jp_mid_west", name: "Vườn Trúc Tây", col0: 8, row0: 47, cols: 4, rows: 4 },
+  { id: "jp_mid_east_1", name: "Vườn Trúc Đông", col0: 22, row0: 47, cols: 4, rows: 4 },
+  { id: "jp_mid_east_2", name: "Biệt Thự Shinkansen", col0: 27, row0: 47, cols: 4, rows: 4 },
+  // 6 Lô Hàng Nam Sakura (row 53..56)
+  { id: "jp_south_1", name: "Sakura Nam 1", col0: 3, row0: 53, cols: 4, rows: 4 },
+  { id: "jp_south_2", name: "Sakura Nam 2", col0: 8, row0: 53, cols: 4, rows: 4 },
+  { id: "jp_south_3", name: "Ven Hồ Koi Nam Tây", col0: 13, row0: 53, cols: 4, rows: 4 },
+  { id: "jp_south_4", name: "Ven Hồ Koi Nam Đông", col0: 17, row0: 53, cols: 4, rows: 4 },
+  { id: "jp_south_5", name: "Zen Nam Đông 1", col0: 22, row0: 53, cols: 4, rows: 4 },
+  { id: "jp_south_6", name: "Zen Nam Đông 2", col0: 27, row0: 53, cols: 4, rows: 4 },
+];
+
+export const JAPAN_DEFAULT_LOT_COL = 13;
+export const JAPAN_DEFAULT_LOT_ROW = 53;
+
+export function getEstateDistrictLots(mapId: MapId = "vietnam"): EstateDistrictLot[] {
+  return mapId === "japan" ? JAPAN_ESTATE_DISTRICT_LOTS : ESTATE_DISTRICT_LOTS;
+}
+
+export function getDefaultEstateLotOrigin(mapId: MapId = "vietnam"): { c: number; r: number } {
+  return mapId === "japan"
+    ? { c: JAPAN_DEFAULT_LOT_COL, r: JAPAN_DEFAULT_LOT_ROW }
+    : { c: LEGACY_DEFAULT_LOT_COL, r: LEGACY_DEFAULT_LOT_ROW };
+}
 
 export const TOTAL_DISTRICT_TILES = 240;
 
@@ -151,7 +188,8 @@ export const HOUSE_TIER_AURA_CONFIG: Record<number, HouseTierAuraConfig> = {
   },
 };
 
-export function createDefaultPlayerEstateState(): PlayerEstateState {
+export function createDefaultPlayerEstateState(mapId: MapId = "vietnam"): PlayerEstateState {
+  const origin = getDefaultEstateLotOrigin(mapId);
   return {
     plotTier: 0,
     houseId: null,
@@ -159,7 +197,7 @@ export function createDefaultPlayerEstateState(): PlayerEstateState {
     lastDividendDay: 0,
     ownedTileIndices: [],
     ownedWorldTiles: [],
-    houseOrigin: { c: LEGACY_DEFAULT_LOT_COL, r: LEGACY_DEFAULT_LOT_ROW },
+    houseOrigin: { c: origin.c, r: origin.r },
   };
 }
 
@@ -670,6 +708,9 @@ export interface WorldTileCoord {
 const PURCHASABLE_TILE_MAP = new Map<string, WorldTileCoord>();
 export const ALL_PURCHASABLE_ESTATE_TILES: WorldTileCoord[] = [];
 
+const JP_PURCHASABLE_TILE_MAP = new Map<string, WorldTileCoord>();
+export const ALL_JP_PURCHASABLE_ESTATE_TILES: WorldTileCoord[] = [];
+
 for (const lot of ESTATE_DISTRICT_LOTS) {
   for (let r = lot.row0; r < lot.row0 + lot.rows; r++) {
     for (let c = lot.col0; c < lot.col0 + lot.cols; c++) {
@@ -683,12 +724,31 @@ for (const lot of ESTATE_DISTRICT_LOTS) {
   }
 }
 
-export function isPurchasableEstateTile(col: number, row: number): boolean {
-  return PURCHASABLE_TILE_MAP.has(makeWorldTileKey(col, row));
+for (const lot of JAPAN_ESTATE_DISTRICT_LOTS) {
+  for (let r = lot.row0; r < lot.row0 + lot.rows; r++) {
+    for (let c = lot.col0; c < lot.col0 + lot.cols; c++) {
+      const key = makeWorldTileKey(c, r);
+      if (!JP_PURCHASABLE_TILE_MAP.has(key)) {
+        const entry: WorldTileCoord = { c, r, key, lotId: lot.id, lotName: lot.name };
+        JP_PURCHASABLE_TILE_MAP.set(key, entry);
+        ALL_JP_PURCHASABLE_ESTATE_TILES.push(entry);
+      }
+    }
+  }
 }
 
-export function getEstateTileInfo(col: number, row: number): WorldTileCoord | null {
-  return PURCHASABLE_TILE_MAP.get(makeWorldTileKey(col, row)) ?? null;
+export function getAllPurchasableEstateTiles(mapId: MapId = "vietnam"): WorldTileCoord[] {
+  return mapId === "japan" ? ALL_JP_PURCHASABLE_ESTATE_TILES : ALL_PURCHASABLE_ESTATE_TILES;
+}
+
+export function isPurchasableEstateTile(col: number, row: number, mapId: MapId = "vietnam"): boolean {
+  const tileMap = mapId === "japan" ? JP_PURCHASABLE_TILE_MAP : PURCHASABLE_TILE_MAP;
+  return tileMap.has(makeWorldTileKey(col, row));
+}
+
+export function getEstateTileInfo(col: number, row: number, mapId: MapId = "vietnam"): WorldTileCoord | null {
+  const tileMap = mapId === "japan" ? JP_PURCHASABLE_TILE_MAP : PURCHASABLE_TILE_MAP;
+  return tileMap.get(makeWorldTileKey(col, row)) ?? null;
 }
 
 export function canBuildHouseAtWorld(
@@ -696,6 +756,7 @@ export function canBuildHouseAtWorld(
   tier: number,
   originC: number,
   originR: number,
+  mapId: MapId = "vietnam",
 ): {
   ok: boolean;
   requiredKeys: string[];
@@ -713,7 +774,7 @@ export function canBuildHouseAtWorld(
       const curR = originR + dr;
       const key = makeWorldTileKey(curC, curR);
       requiredKeys.push(key);
-      if (!isPurchasableEstateTile(curC, curR)) {
+      if (!isPurchasableEstateTile(curC, curR, mapId)) {
         blockedKeys.push(key);
       } else if (!ownedSet.has(key)) {
         missingKeys.push(key);
@@ -732,28 +793,30 @@ export function canBuildHouseAtWorld(
 export function findFirstValidHouseAnchorWorld(
   ownedWorldTiles: string[],
   tier: number,
+  mapId: MapId = "vietnam",
 ): { c: number; r: number } | null {
   if (ownedWorldTiles.length < tier * tier) return null;
   for (const key of ownedWorldTiles) {
     const pt = parseWorldTileKey(key);
     if (!pt) continue;
-    const check = canBuildHouseAtWorld(ownedWorldTiles, tier, pt.c, pt.r);
+    const check = canBuildHouseAtWorld(ownedWorldTiles, tier, pt.c, pt.r, mapId);
     if (check.ok) return pt;
   }
   return null;
 }
 
-export function computeMaxOwnedTierWorld(ownedWorldTiles: string[]): number {
+export function computeMaxOwnedTierWorld(ownedWorldTiles: string[], mapId: MapId = "vietnam"): number {
   if (ownedWorldTiles.length === 0) return 0;
   for (let tier = 4; tier >= 1; tier--) {
-    if (findFirstValidHouseAnchorWorld(ownedWorldTiles, tier) !== null) {
+    if (findFirstValidHouseAnchorWorld(ownedWorldTiles, tier, mapId) !== null) {
       return tier;
     }
   }
   return 0;
 }
 
-export function normalizeEstateOwnedTiles(estate: PlayerEstateState): void {
+export function normalizeEstateOwnedTiles(estate: PlayerEstateState, mapId: MapId = "vietnam"): void {
+  const defaultOrigin = getDefaultEstateLotOrigin(mapId);
   if (!Array.isArray(estate.ownedTileIndices)) {
     estate.ownedTileIndices = [];
   }
@@ -763,9 +826,9 @@ export function normalizeEstateOwnedTiles(estate: PlayerEstateState): void {
       for (const idx of estate.ownedTileIndices) {
         if (idx >= 0 && idx < 16) {
           const { c, r } = getTileCoord(idx);
-          const wc = LEGACY_DEFAULT_LOT_COL + c;
-          const wr = LEGACY_DEFAULT_LOT_ROW + r;
-          if (isPurchasableEstateTile(wc, wr)) {
+          const wc = defaultOrigin.c + c;
+          const wr = defaultOrigin.r + r;
+          if (isPurchasableEstateTile(wc, wr, mapId)) {
             migrated.push(makeWorldTileKey(wc, wr));
           }
         }
@@ -782,32 +845,36 @@ export function normalizeEstateOwnedTiles(estate: PlayerEstateState): void {
       estate.ownedTileIndices = legacyIndices;
       for (const idx of legacyIndices) {
         const { c, r } = getTileCoord(idx);
-        migrated.push(makeWorldTileKey(LEGACY_DEFAULT_LOT_COL + c, LEGACY_DEFAULT_LOT_ROW + r));
+        migrated.push(makeWorldTileKey(defaultOrigin.c + c, defaultOrigin.r + r));
       }
     }
     estate.ownedWorldTiles = Array.from(new Set(migrated));
   }
 
-  // Migrate legacy houseOrigin (0..3) to world coordinates (13..16)
   if (!estate.houseOrigin) {
-    estate.houseOrigin = { c: LEGACY_DEFAULT_LOT_COL, r: LEGACY_DEFAULT_LOT_ROW };
-  } else if (estate.houseOrigin.c <= 3 && estate.houseOrigin.r <= 3 && !isPurchasableEstateTile(estate.houseOrigin.c, estate.houseOrigin.r)) {
+    estate.houseOrigin = { c: defaultOrigin.c, r: defaultOrigin.r };
+  } else if (
+    estate.houseOrigin.c <= 3 &&
+    estate.houseOrigin.r <= 3 &&
+    !isPurchasableEstateTile(estate.houseOrigin.c, estate.houseOrigin.r, mapId)
+  ) {
     estate.houseOrigin = {
-      c: LEGACY_DEFAULT_LOT_COL + estate.houseOrigin.c,
-      r: LEGACY_DEFAULT_LOT_ROW + estate.houseOrigin.r,
+      c: defaultOrigin.c + estate.houseOrigin.c,
+      r: defaultOrigin.r + estate.houseOrigin.r,
     };
   }
 
-  estate.plotTier = computeMaxOwnedTierWorld(estate.ownedWorldTiles);
+  estate.plotTier = computeMaxOwnedTierWorld(estate.ownedWorldTiles, mapId);
 }
 
-export function getHouseOccupiedWorldTileSet(estate: PlayerEstateState): Set<string> {
+export function getHouseOccupiedWorldTileSet(estate: PlayerEstateState, mapId: MapId = "vietnam"): Set<string> {
   const occupied = new Set<string>();
   if (!estate.houseId) return occupied;
   const model = getHouseModelDef(estate.houseId);
   if (!model) return occupied;
-  const originC = estate.houseOrigin?.c ?? LEGACY_DEFAULT_LOT_COL;
-  const originR = estate.houseOrigin?.r ?? LEGACY_DEFAULT_LOT_ROW;
+  const defaultOrigin = getDefaultEstateLotOrigin(mapId);
+  const originC = estate.houseOrigin?.c ?? defaultOrigin.c;
+  const originR = estate.houseOrigin?.r ?? defaultOrigin.r;
   for (let dr = 0; dr < model.tier; dr++) {
     for (let dc = 0; dc < model.tier; dc++) {
       occupied.add(makeWorldTileKey(originC + dc, originR + dr));

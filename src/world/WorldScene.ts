@@ -7,6 +7,7 @@ import type {
   RemotePlayerAppearance,
   RemotePlayerEstateSummary,
   RemotePlayerMovePacket,
+  JapanDisasterEvent,
 } from "../cloud/SupabaseSync.ts";
 import type { PlayerGameSaveV3 } from "../security/SaveVault.ts";
 import type { ArcadeMinigameKind } from "../ui/ArcadeMinigames.ts";
@@ -80,10 +81,12 @@ import {
   type CharacterGender,
   type CharacterSkinId,
   type FacingDir,
+  type FerryRouteMeta,
   type MapId,
   type Point,
   type PropKind,
   type SecurityZone,
+  type ShinkansenRouteMeta,
   type SurfaceState,
   type TileType,
   type WorldChest,
@@ -119,20 +122,19 @@ import {
   type PetDef,
 } from "./PetSystem.ts";
 import {
-  ALL_PURCHASABLE_ESTATE_TILES,
   canBuildHouseAtWorld,
   canClaimDailyDividend,
   computeMaxOwnedTierWorld,
   createDefaultPlayerEstateState,
   findFirstValidHouseAnchorWorld,
+  getAllPurchasableEstateTiles,
+  getDefaultEstateLotOrigin,
   getEstateTileInfo,
   getHouseModelDef,
   getHouseOccupiedWorldTileSet,
   getPlotTierDef,
   HOUSE_TIER_AURA_CONFIG,
   isPurchasableEstateTile,
-  LEGACY_DEFAULT_LOT_COL,
-  LEGACY_DEFAULT_LOT_ROW,
   makeWorldTileKey,
   normalizeEstateOwnedTiles,
   parseWorldTileKey,
@@ -229,6 +231,14 @@ export type NearbyInteraction =
       name: string;
     }
   | {
+      type: "ferry";
+      route: FerryRouteMeta;
+    }
+  | {
+      type: "shinkansen";
+      route: ShinkansenRouteMeta;
+    }
+  | {
       type: "quest";
       name: string;
     }
@@ -315,7 +325,7 @@ export interface WorldCallbacks {
   onPoliceDetained?: (lostItemCount: number, durationMs: number, lostBackpack?: boolean) => void;
   onDetentionEnded?: () => void;
   onContainersRefreshed?: (containerIds: string[]) => void;
-  onFaintedToHospital?: (reason: string, hospitalFeeGold: number) => void;
+  onFaintedToHospital?: (reason: string, hospitalFeeGold: number, confiscatedCount?: number) => void;
   onRequestSave?: (immediate: boolean) => void;
   onPlayerMoveSample?: (sample: {
     mapId: MapId;
@@ -399,7 +409,13 @@ export class WorldScene {
     rx?: number;
     ry?: number;
   } | null = null;
-  private estate: PlayerEstateState;
+  private estatesByMap: Record<MapId, PlayerEstateState>;
+  private get estate(): PlayerEstateState {
+    return this.estatesByMap[this.activeMapId];
+  }
+  private set estate(next: PlayerEstateState) {
+    this.estatesByMap[this.activeMapId] = next;
+  }
   private collectionHallPropContainer: Container | null = null;
   private collectionHallSprite: Sprite | null = null;
   private homeHousePropContainer: Container | null = null;
@@ -569,6 +585,32 @@ export class WorldScene {
   private activeJailStationId: string | null = null;
   private isLootingContainerOpen = false;
   private lootingCheckAccum = 0;
+  private readonly appliedDisasterIds = new Set<string>();
+  private cameraShakeTimer = 0;
+  private cameraShakeIntensity = 0;
+  private ferryDockNodes: Array<{ route: FerryRouteMeta; boat: Container; x: number; y: number; phase: number }> = [];
+  private activeFerryRide: {
+    route: FerryRouteMeta;
+    boat: Container;
+    wakeGfx: Graphics;
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    elapsed: number;
+    duration: number;
+  } | null = null;
+  private activeShinkansenRide: {
+    route: ShinkansenRouteMeta;
+    train: Container;
+    windGfx: Graphics;
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    elapsed: number;
+    duration: number;
+  } | null = null;
   private pendingConsume: {
     consumable: ConsumableDef;
     backpackUid: string | null;
@@ -592,6 +634,7 @@ export class WorldScene {
         this.callbacks.onRequestSave?.(true);
       }
     });
+    this.inventory.setActiveMapId(this.activeMapId);
     this.inventory.onItemLooted = (def) => {
       if (def.rarity === "A" || def.rarity === "S") {
         this.reputation.rareItemsLooted += 1;
@@ -646,10 +689,15 @@ export class WorldScene {
         ? initialSave.hairId
         : HAIR_OPTIONS[0].id;
     this.gender = initialSave?.profile?.gender === "female" ? "female" : "male";
-    this.estate = initialSave?.estate
+    const vnEstate = initialSave?.estate
       ? { ...initialSave.estate }
-      : createDefaultPlayerEstateState();
-    normalizeEstateOwnedTiles(this.estate);
+      : createDefaultPlayerEstateState("vietnam");
+    const jpEstate = initialSave?.jpEstate
+      ? { ...initialSave.jpEstate }
+      : createDefaultPlayerEstateState("japan");
+    normalizeEstateOwnedTiles(vnEstate, "vietnam");
+    normalizeEstateOwnedTiles(jpEstate, "japan");
+    this.estatesByMap = { vietnam: vnEstate, japan: jpEstate };
     if (this.estate.houseId) {
       const model = getHouseModelDef(this.estate.houseId);
       if (model) {
@@ -883,7 +931,8 @@ export class WorldScene {
       },
       ownedPetIds: Array.from(this.ownedPetIds),
       equippedPetId: this.equippedPetId,
-      estate: { ...this.estate },
+      estate: { ...this.estatesByMap.vietnam },
+      jpEstate: { ...this.estatesByMap.japan },
     };
   }
 
@@ -1033,7 +1082,14 @@ export class WorldScene {
       }
     }
 
+    this.exitEstateInteractMode();
     this.activeMapId = targetMapId;
+    this.inventory.setActiveMapId(targetMapId);
+    const activeEstModel = this.estate.houseId ? getHouseModelDef(this.estate.houseId) : null;
+    this.inventory.setEstateStorageBonus(
+      activeEstModel ? activeEstModel.storageCols : 0,
+      activeEstModel ? activeEstModel.storageRows : 0,
+    );
     this.data = nextWorld;
     this.pathfinder = nextPathfinder;
     this.forceCullUpdate = true;
@@ -1052,6 +1108,11 @@ export class WorldScene {
 
     this.police.destroy();
     this.entityLayer.removeChild(this.player);
+    for (const rp of this.remotePlayers.values()) {
+      this.entityLayer.removeChild(rp.actor);
+      this.entityLayer.removeChild(rp.label);
+      if (rp.petNode) this.entityLayer.removeChild(rp.petNode);
+    }
     const oldEntities = this.entityLayer.removeChildren();
     for (const child of oldEntities) {
       child.destroy({ children: true });
@@ -1067,24 +1128,35 @@ export class WorldScene {
     this.waterDroplets.length = 0;
     this.collectionOrbitHost = null;
     this.collectionOrbitItems.length = 0;
+    this.remoteEstateDisplays.clear();
+    this.remoteOwnedTilesByUid.clear();
+    this.persistentWorldEstates.clear();
 
     this.buildTerrainChunks();
     this.buildZoneBoundaryMarkers();
     this.buildLilypads();
     this.buildPropsAndBuildings();
     this.buildChests();
-    this.refreshPetFollower();
     this.entityLayer.addChild(this.player);
     this.refreshPetFollower();
+    this.syncEstateAndCollectionDisplay();
     this.police = new PoliceSystem(nextWorld, this.atlas, this.entityLayer);
     this.atmosphere.rebuildForWorld(nextWorld);
 
-    const landingCandidates: Array<[number, number]> = [
-      [19.5 * TILE_SIZE, 53.2 * TILE_SIZE],
-      [19.5 * TILE_SIZE, 54.0 * TILE_SIZE],
-      [19.5 * TILE_SIZE, 55.2 * TILE_SIZE],
-      [nextWorld.spawn.x, nextWorld.spawn.y],
-    ];
+    const landingCandidates: Array<[number, number]> =
+      targetMapId === "japan"
+        ? [
+            [19.5 * TILE_SIZE, 77.2 * TILE_SIZE],
+            [19.5 * TILE_SIZE, 73.2 * TILE_SIZE],
+            [16.5 * TILE_SIZE, 11.2 * TILE_SIZE],
+            [nextWorld.spawn.x, nextWorld.spawn.y],
+          ]
+        : [
+            [19.5 * TILE_SIZE, 53.2 * TILE_SIZE],
+            [19.5 * TILE_SIZE, 54.0 * TILE_SIZE],
+            [19.5 * TILE_SIZE, 55.2 * TILE_SIZE],
+            [nextWorld.spawn.x, nextWorld.spawn.y],
+          ];
     let landX = nextWorld.spawn.x;
     let landY = nextWorld.spawn.y;
     for (const [cx, cy] of landingCandidates) {
@@ -1124,6 +1196,7 @@ export class WorldScene {
     for (const rp of this.remotePlayers.values()) {
       this.entityLayer.addChild(rp.actor);
       this.entityLayer.addChild(rp.label);
+      if (rp.petNode) this.entityLayer.addChild(rp.petNode);
     }
   }
 
@@ -1133,6 +1206,64 @@ export class WorldScene {
 
   public applyRemotePoliceChase(officerId: string, x: number, y: number, untilMs: number): void {
     this.police.applyRemoteChase(officerId, x, y, untilMs);
+  }
+
+  public applyServerJapanDisaster(event: JapanDisasterEvent): void {
+    if (this.activeMapId !== "japan" || this.isInJail) return;
+    if (this.appliedDisasterIds.has(event.id)) return;
+    this.appliedDisasterIds.add(event.id);
+
+    const pCol = Math.floor(this.player.x / TILE_SIZE);
+    const pRow = Math.floor(this.player.y / TILE_SIZE);
+    const onFishingIsland = pCol >= 135 && pRow >= 46;
+    const onSeaOrBoat = Boolean(this.activeFerryRide) || this.player.getSurfaceState() === "swim";
+    const zone = this.getCurrentSecurityZone();
+
+    if (event.kind === "island_tsunami") {
+      // Sóng thần chỉ xảy ra riêng ở vùng Đảo Làng Chài & mặt biển
+      if (!onFishingIsland && !onSeaOrBoat) {
+        this.showFerryFloatingNotice(
+          "🌊 Tin khẩn: Sóng thần đang ập vào Đảo Làng Chài ngoài khơi!",
+          0x38bdf8,
+          this.player.x,
+          this.player.y,
+        );
+        return;
+      }
+      const onCoast = onSeaOrBoat || pCol <= 142 || pCol >= 195 || pRow <= 50 || pRow >= 77;
+      const scale = onCoast ? 1.0 : 0.7;
+      const hpLoss = Math.round(event.hpLoss * scale);
+      const staminaLoss = Math.round(event.staminaLoss * scale);
+      this.survival.hp = Math.max(0, this.survival.hp - hpLoss);
+      this.survival.stamina = Math.max(0, this.survival.stamina - staminaLoss);
+      this.cameraShakeTimer = 2.8;
+      this.cameraShakeIntensity = 12;
+      this.showFerryFloatingNotice(
+        `🌊 SÓNG THẦN ĐẢO LÀNG CHÀI! (-${hpLoss}❤️, -${staminaLoss}⚡)`,
+        0x38bdf8,
+        this.player.x,
+        this.player.y,
+      );
+      this.callbacks.onRequestSave?.(true);
+      return;
+    }
+
+    // Động đất + Tuyết lở: trừ hợp lý theo khu vực (Núi tuyết đỏ 100%, Vàng 65%, An toàn 30%, Đảo ngoài khơi 25%)
+    const isRedSnow = zone === "red" && !onFishingIsland;
+    const scale = onFishingIsland ? 0.25 : isRedSnow ? 1.0 : zone === "yellow" ? 0.65 : 0.3;
+    const hpLoss = Math.max(3, Math.round(event.hpLoss * scale));
+    const staminaLoss = Math.max(6, Math.round(event.staminaLoss * scale));
+
+    this.survival.hp = Math.max(0, this.survival.hp - hpLoss);
+    this.survival.stamina = Math.max(0, this.survival.stamina - staminaLoss);
+    this.cameraShakeTimer = isRedSnow ? 2.8 : 1.8;
+    this.cameraShakeIntensity = isRedSnow ? 11 : 6;
+
+    const label = isRedSnow
+      ? `🌋 ĐỘNG ĐẤT & TUYẾT LỞ! (-${hpLoss}❤️, -${staminaLoss}⚡)`
+      : `🌋 RUNG CHẤN ĐỘNG ĐẤT! (-${hpLoss}❤️, -${staminaLoss}⚡)`;
+    this.showFerryFloatingNotice(label, 0xef4444, this.player.x, this.player.y);
+    this.callbacks.onRequestSave?.(true);
   }
 
   public syncRemotePlayers(
@@ -1352,12 +1483,10 @@ export class WorldScene {
       }
     }
 
-    // Hiển thị toàn bộ nhà & đất của tất cả người chơi khác (kể cả khi họ đã offline)
-    if (this.activeMapId === "vietnam") {
-      for (const [uid, est] of this.persistentWorldEstates.entries()) {
-        if (localUserId && uid === localUserId) continue;
-        this.syncRemoteEstateDisplay(uid, est);
-      }
+    // Hiển thị toàn bộ nhà & đất của tất cả người chơi khác trên map hiện tại (kể cả khi họ đã offline)
+    for (const [uid, est] of this.persistentWorldEstates.entries()) {
+      if (localUserId && uid === localUserId) continue;
+      this.syncRemoteEstateDisplay(uid, est);
     }
     if (this.estateInteractMode !== "none") {
       this.refreshEstateOverlays();
@@ -1699,21 +1828,18 @@ export class WorldScene {
         this.ownedPetIds.add(pid);
       }
       this.equippedPetId = save.equippedPetId ?? null;
-      this.estate = save.estate ? { ...save.estate } : createDefaultPlayerEstateState();
-      normalizeEstateOwnedTiles(this.estate);
-      if (this.estate.houseId) {
-        const m = getHouseModelDef(this.estate.houseId);
-        this.inventory.setEstateStorageBonus(m ? m.storageCols : 0, m ? m.storageRows : 0);
-      } else {
-        this.inventory.setEstateStorageBonus(0, 0);
-      }
-      this.syncEstateAndCollectionDisplay();
-      this.refreshCollectionOrbitSprites();
+      this.estatesByMap = {
+        vietnam: save.estate ? { ...save.estate } : createDefaultPlayerEstateState("vietnam"),
+        japan: save.jpEstate ? { ...save.jpEstate } : createDefaultPlayerEstateState("japan"),
+      };
+      normalizeEstateOwnedTiles(this.estatesByMap.vietnam, "vietnam");
+      normalizeEstateOwnedTiles(this.estatesByMap.japan, "japan");
 
       const targetMap: MapId = save.profile.activeMapId === "japan" ? "japan" : "vietnam";
       if (targetMap !== this.activeMapId) {
         this.switchMapWithoutFee(targetMap, save.profile.x, save.profile.y);
       } else {
+        this.inventory.setActiveMapId(this.activeMapId);
         this.player.clearPath();
         this.player.setManualDirection(0, 0);
         this.player.position.set(save.profile.x, save.profile.y);
@@ -1722,6 +1848,14 @@ export class WorldScene {
         this.camY = save.profile.y;
         this.syncCameraTransform();
       }
+      if (this.estate.houseId) {
+        const m = getHouseModelDef(this.estate.houseId);
+        this.inventory.setEstateStorageBonus(m ? m.storageCols : 0, m ? m.storageRows : 0);
+      } else {
+        this.inventory.setEstateStorageBonus(0, 0);
+      }
+      this.syncEstateAndCollectionDisplay();
+      this.refreshCollectionOrbitSprites();
       this.player.setSkin(save.profile.skinId);
       this.player.setAppearance(this.equipment, this.hairId, this.gender);
       this.player.setFacing(save.profile.facing);
@@ -1746,6 +1880,12 @@ export class WorldScene {
       if (this.discoveredLandmarkIds.has(lm.id)) lm.discovered = true;
     }
     this.activeMapId = targetMapId;
+    this.inventory.setActiveMapId(targetMapId);
+    const activeEstModel = this.estate.houseId ? getHouseModelDef(this.estate.houseId) : null;
+    this.inventory.setEstateStorageBonus(
+      activeEstModel ? activeEstModel.storageCols : 0,
+      activeEstModel ? activeEstModel.storageRows : 0,
+    );
     this.data = nextWorld;
     this.pathfinder = nextPathfinder;
     this.forceCullUpdate = true;
@@ -1760,6 +1900,7 @@ export class WorldScene {
     for (const rp of this.remotePlayers.values()) {
       this.entityLayer.removeChild(rp.actor);
       this.entityLayer.removeChild(rp.label);
+      if (rp.petNode) this.entityLayer.removeChild(rp.petNode);
     }
     for (const child of this.entityLayer.removeChildren()) child.destroy({ children: true });
 
@@ -1783,12 +1924,11 @@ export class WorldScene {
     this.buildChests();
     this.entityLayer.addChild(this.player);
     this.reattachRemotePlayersToEntityLayer();
-    if (targetMapId === "vietnam") {
-      for (const [uid, est] of this.persistentWorldEstates.entries()) {
-        if (this.localCloudUserId && uid === this.localCloudUserId) continue;
-        this.syncRemoteEstateDisplay(uid, est);
-      }
+    for (const [uid, est] of this.persistentWorldEstates.entries()) {
+      if (this.localCloudUserId && uid === this.localCloudUserId) continue;
+      this.syncRemoteEstateDisplay(uid, est);
     }
+    this.syncEstateAndCollectionDisplay();
     this.refreshPetFollower();
     this.police = new PoliceSystem(nextWorld, this.atlas, this.entityLayer);
     this.atmosphere.rebuildForWorld(nextWorld);
@@ -2846,10 +2986,21 @@ export class WorldScene {
     return this.data.securityZones[row * this.data.cols + col];
   }
 
-  private isInSnowZoneAt(x: number): boolean {
+  private prevStepElevation = 0;
+
+  private isInSnowZoneAt(x: number, y = this.player?.y ?? 0): boolean {
     if (this.activeMapId !== "japan") return false;
     const col = Math.floor(x / TILE_SIZE);
-    return col >= JAPAN_SNOW_START_COL;
+    const row = Math.floor(y / TILE_SIZE);
+    return col >= JAPAN_SNOW_START_COL && row <= 29;
+  }
+
+  private getElevationAt(x: number, y: number): number {
+    const elev = this.data.elevation;
+    if (!elev) return 0;
+    const col = Math.max(0, Math.min(this.data.cols - 1, Math.floor(x / TILE_SIZE)));
+    const row = Math.max(0, Math.min(this.data.rows - 1, Math.floor(y / TILE_SIZE)));
+    return elev[row * this.data.cols + col] ?? 0;
   }
 
   public getCurrentSecurityZone(): SecurityZone {
@@ -3452,6 +3603,28 @@ export class WorldScene {
       };
     }
 
+    for (const route of this.data.shinkansenRoutes ?? []) {
+      const sx = (route.stationCol + 0.5) * TILE_SIZE;
+      const sy = (route.stationRow + 0.5) * TILE_SIZE;
+      if (Math.hypot(px - sx, py - sy) <= 78) {
+        return {
+          type: "shinkansen",
+          route,
+        };
+      }
+    }
+
+    for (const route of this.data.ferryRoutes ?? []) {
+      const dockX = (route.dockCol + 0.5) * TILE_SIZE;
+      const dockY = (route.dockRow + 0.5) * TILE_SIZE;
+      if (Math.hypot(px - dockX, py - dockY) <= 68) {
+        return {
+          type: "ferry",
+          route,
+        };
+      }
+    }
+
     let closestBuilding: OccludableProp | null = null;
     let bestBldDist = Number.POSITIVE_INFINITY;
     const hasOwnHouse = Boolean(this.estate.houseId);
@@ -3630,6 +3803,18 @@ export class WorldScene {
       return true;
     }
 
+    if (target.type === "ferry") {
+      this.playPressSfx();
+      this.startFerryCrossing(target.route);
+      return true;
+    }
+
+    if (target.type === "shinkansen") {
+      this.playPressSfx();
+      this.startShinkansenRide(target.route);
+      return true;
+    }
+
     if (target.type === "quest") {
       this.playPressSfx();
       this.callbacks.onOpenQuestBoard?.();
@@ -3764,6 +3949,9 @@ export class WorldScene {
   public update(dtSeconds: number): void {
     const dt = Math.min(dtSeconds, 0.05);
     this.elapsed += dt;
+    if (this.cameraShakeTimer > 0) {
+      this.cameraShakeTimer = Math.max(0, this.cameraShakeTimer - dt);
+    }
 
     let kx = 0;
     let ky = 0;
@@ -3788,8 +3976,9 @@ export class WorldScene {
       this.player.clearPath();
       if (kx !== 0 || ky !== 0) {
         const panSpeed = 420 * dt;
-        this.estateCamX = Math.max(2 * TILE_SIZE, Math.min(32 * TILE_SIZE, this.estateCamX + kx * panSpeed));
-        this.estateCamY = Math.max(1 * TILE_SIZE, Math.min(18 * TILE_SIZE, this.estateCamY + ky * panSpeed));
+        const b = this.getEstateCamBounds();
+        this.estateCamX = Math.max(b.minX, Math.min(b.maxX, this.estateCamX + kx * panSpeed));
+        this.estateCamY = Math.max(b.minY, Math.min(b.maxY, this.estateCamY + ky * panSpeed));
       }
     } else if (kx !== 0 || ky !== 0) {
       this.player.setManualDirection(kx, ky);
@@ -3821,6 +4010,21 @@ export class WorldScene {
         this.player.y,
       );
       return;
+    }
+
+    if (this.activeShinkansenRide) {
+      this.stepShinkansenRide(dt);
+      return;
+    }
+
+    if (this.activeFerryRide) {
+      this.stepFerryCrossing(dt);
+      return;
+    }
+
+    for (const dock of this.ferryDockNodes) {
+      dock.phase += dt * 2.4;
+      dock.boat.y = dock.y + Math.sin(dock.phase) * 2.2;
     }
 
     this.player.update(dt, this.pathfinder);
@@ -3862,12 +4066,26 @@ export class WorldScene {
     this.renderPathAndRipples(dt);
     this.animateLilypads();
 
+    if (this.activeMapId === "japan") {
+      const pCol = Math.floor(this.player.x / TILE_SIZE);
+      const pRow = Math.floor(this.player.y / TILE_SIZE);
+      const jpRegion =
+        pCol <= GREEN_END_COL
+          ? "city"
+          : pCol >= JAPAN_SNOW_START_COL && pRow <= 29
+            ? "snow-mountain"
+            : pCol >= 135 && pRow >= 46
+              ? "fishing-island"
+              : "plains";
+      this.weatherService.setJapanRegion(jpRegion);
+    }
+
     const env = this.weatherService.getEnvironmentState();
     const playerZone = this.getCurrentSecurityZone();
     if (!this.isInJail) {
       if (playerZone === "yellow") this.advanceExploreQuests("visit_yellow", 1);
       else if (playerZone === "red") this.advanceExploreQuests("visit_red", 1);
-      if (this.isInSnowZoneAt(this.player.x)) this.advanceExploreQuests("visit_snow", 1);
+      if (this.isInSnowZoneAt(this.player.x, this.player.y)) this.advanceExploreQuests("visit_snow", 1);
     }
     let caughtOfficer = this.police.step(dt, {
       playerX: this.player.x,
@@ -3944,12 +4162,17 @@ export class WorldScene {
     if (!this.isMovementLocked()) {
       this.stepPendingConsume(dt);
       const activePet = this.getEquippedPet();
+      const curElevation = this.getElevationAt(this.player.x, this.player.y);
+      const elevationDelta = this.player.isMoving() ? curElevation - this.prevStepElevation : 0;
+      this.prevStepElevation = curElevation;
       const survivalTick = stepSurvivalState(this.survival, dt, {
         isMoving: this.player.isMoving(),
         surface: this.player.getSurfaceState(),
         env,
         equip: this.cachedEquipStats,
-        inSnowZone: this.isInSnowZoneAt(this.player.x),
+        inSnowZone: this.isInSnowZoneAt(this.player.x, this.player.y),
+        elevation: curElevation,
+        elevationDelta,
         securityZone: playerZone,
         mapId: this.activeMapId,
         biome: this.getCurrentBiome(),
@@ -3969,11 +4192,24 @@ export class WorldScene {
       if (survivalTick.fainted) {
         this.pendingConsume = null;
         this.faintRespawnCooldown = 2.6;
+        const HOSPITAL_FEE_GOLD = 2000;
         const walletGold = this.inventory.getGold();
-        const maxHospitalFee = this.activeMapId === "japan" ? 150 : 30;
-        const fee = Math.min(walletGold, maxHospitalFee);
-        if (fee > 0) {
-          this.inventory.trySpendGold(fee);
+        let fee = 0;
+        let confiscatedCount = 0;
+        if (walletGold >= HOSPITAL_FEE_GOLD) {
+          fee = HOSPITAL_FEE_GOLD;
+          this.inventory.trySpendGold(HOSPITAL_FEE_GOLD);
+        } else {
+          // Không đủ 2.000 Vàng viện phí -> mất sạch tiền đang có & mất hết đồ như bị cảnh sát bắt!
+          if (walletGold > 0) {
+            this.inventory.trySpendGold(walletGold);
+          }
+          const { lostItemCount } = this.inventory.confiscateOnArrest();
+          confiscatedCount = lostItemCount;
+          this.equipment = createPrisonerEquippedGear();
+          this.cachedEquipStats = computeEquipmentStats(this.equipment);
+          this.inventory.setEquippedGear(this.equipment);
+          this.player.setAppearance(this.equipment, this.hairId, this.gender);
         }
         this.survival = {
           hp: 75,
@@ -4017,7 +4253,7 @@ export class WorldScene {
           isShivering: false,
         });
         this.callbacks.onRequestSave?.(true);
-        this.callbacks.onFaintedToHospital?.(survivalTick.faintReason ?? "kiệt sức", fee);
+        this.callbacks.onFaintedToHospital?.(survivalTick.faintReason ?? "kiệt sức", fee, confiscatedCount);
       }
     }
 
@@ -4196,7 +4432,8 @@ export class WorldScene {
         sprite.width = TILE_SIZE + 0.5;
         sprite.height = TILE_SIZE + 0.5;
 
-        const isSnowMountain = this.data.mapId === "japan" && col >= JAPAN_SNOW_START_COL;
+        const isSnowMountain = this.data.mapId === "japan" && col >= JAPAN_SNOW_START_COL && row <= 29;
+        const tileElev = this.data.elevation ? (this.data.elevation[row * cols + col] ?? 0) : 0;
         if (tile === "water") {
           sprite.tint = isSnowMountain ? 0x0369a1 : 0x0284c7;
         } else if (tile === "shallow") {
@@ -4218,6 +4455,27 @@ export class WorldScene {
               .fill({ color: 0xf8fafc, alpha: 0.45 })
               .rect(px + TILE_SIZE - 14, py + TILE_SIZE - 9, 9, 3)
               .fill({ color: 0xe0f2fe, alpha: 0.45 });
+          }
+          // Vẽ hiệu ứng độ cao & độ dốc núi tuyết (đường đồng mức sườn núi & bóng dốc)
+          if (tileElev > 0.15) {
+            const leftElev = col > 0 && this.data.elevation ? (this.data.elevation[row * cols + (col - 1)] ?? 0) : tileElev;
+            const upElev = row > 0 && this.data.elevation ? (this.data.elevation[(row - 1) * cols + col] ?? 0) : tileElev;
+            const slopeX = tileElev - leftElev;
+            const slopeY = tileElev - upElev;
+            if (Math.abs(slopeX) > 0.028 || Math.abs(slopeY) > 0.028) {
+              decorGfx
+                .rect(px, py, TILE_SIZE, TILE_SIZE)
+                .fill({ color: slopeX > 0 ? 0xf8fafc : 0x64748b, alpha: Math.min(0.24, Math.abs(slopeX + slopeY) * 2.4) });
+            }
+            const band = Math.floor(tileElev * 5);
+            const leftBand = Math.floor(leftElev * 5);
+            const upBand = Math.floor(upElev * 5);
+            if (band !== leftBand) {
+              decorGfx.rect(px, py, 2, TILE_SIZE).fill({ color: 0x94a3b8, alpha: 0.35 });
+            }
+            if (band !== upBand) {
+              decorGfx.rect(px, py, TILE_SIZE, 2).fill({ color: 0x94a3b8, alpha: 0.35 });
+            }
           }
           if ((tile === "grass" || tile === "meadow" || tile === "forest") && (col * 13 + row * 7) % 5 === 0) {
             decorGfx.ellipse(px + 24, py + 24, 14, 7).fill({ color: 0xffffff, alpha: 0.36 });
@@ -4536,6 +4794,329 @@ export class WorldScene {
       }
     }
     this.groundLayer.addChild(g);
+    this.buildFerryDocks();
+  }
+
+  private createJapaneseBoatGraphic(facingRight: boolean): Container {
+    const boat = new Container();
+    const gfx = new Graphics();
+    // Bóng nước dưới thân thuyền
+    gfx.ellipse(0, 10, 28, 10).fill({ color: 0x0f172a, alpha: 0.35 });
+    // Thân thuyền gỗ Wasen Nhật Bản
+    gfx.poly([-26, 2, -18, 11, 18, 11, 28, -2, 16, 4, -18, 4]).fill({ color: 0x78350f });
+    gfx.poly([-24, 1, -16, 6, 16, 6, 25, -2, 14, -4, -16, -4]).fill({ color: 0xb45309 });
+    // Mui thuyền & đèn lồng đỏ
+    gfx.roundRect(-12, -11, 20, 11, 3).fill({ color: 0x451a03 });
+    gfx.roundRect(-14, -13, 24, 4, 2).fill({ color: 0x92400e });
+    const lanternX = facingRight ? 18 : -18;
+    gfx.circle(lanternX, -6, 3.2).fill({ color: 0xfef08a });
+    gfx.circle(lanternX, -6, 5.5).fill({ color: 0xf97316, alpha: 0.25 });
+    boat.addChild(gfx);
+    return boat;
+  }
+
+  private buildFerryDocks(): void {
+    this.ferryDockNodes = [];
+    const routes = this.data.ferryRoutes ?? [];
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i];
+      const pierX = (route.dockCol + 0.5) * TILE_SIZE;
+      const pierY = (route.dockRow + 0.5) * TILE_SIZE;
+      const isVertical = route.dockCol === route.toCol;
+      const boatOffsetX = isVertical ? 0 : route.toCol > route.dockCol ? 26 : -26;
+      const boatOffsetY = isVertical ? (route.toRow > route.dockRow ? 26 : -26) : 12;
+      const boatX = pierX + boatOffsetX;
+      const boatY = pierY + boatOffsetY;
+      const boat = this.createJapaneseBoatGraphic(route.toCol >= route.dockCol);
+      boat.position.set(boatX, boatY);
+      this.entityLayer.addChild(boat);
+
+      const label = new Text({
+        text: `${route.label} (${route.costGold}🪙)`,
+        style: {
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          fontSize: 12,
+          fontWeight: "800",
+          fill: route.direction === "to-island" ? 0xfef08a : 0x7dd3fc,
+          stroke: { color: 0x0f172a, width: 4 },
+        },
+      });
+      label.anchor.set(0.5, 1);
+      label.position.set(pierX, pierY - 22);
+      this.groundLayer.addChild(label);
+
+      this.ferryDockNodes.push({ route, boat, x: boatX, y: boatY, phase: i * 1.1 });
+    }
+
+    // Tuyến đường sắt & nhãn Ga Tàu Cao Tốc Shinkansen
+    const skRoutes = this.data.shinkansenRoutes ?? [];
+    if (skRoutes.length > 0) {
+      const railGfx = new Graphics();
+      const railY = 16.5 * TILE_SIZE;
+      const startRailX = 30 * TILE_SIZE;
+      const endRailX = 140 * TILE_SIZE;
+      railGfx.rect(startRailX, railY - 6, endRailX - startRailX, 12).fill({ color: 0x334155, alpha: 0.75 });
+      for (let rx = startRailX; rx <= endRailX; rx += 14) {
+        railGfx.rect(rx, railY - 7, 4, 14).fill({ color: 0x94a3b8, alpha: 0.8 });
+      }
+      railGfx
+        .moveTo(startRailX, railY - 4)
+        .lineTo(endRailX, railY - 4)
+        .moveTo(startRailX, railY + 4)
+        .lineTo(endRailX, railY + 4)
+        .stroke({ color: 0xe2e8f0, width: 2 });
+      this.groundLayer.addChild(railGfx);
+
+      for (const sk of skRoutes) {
+        const sx = (sk.stationCol + 0.5) * TILE_SIZE;
+        const sy = (sk.stationRow + 0.5) * TILE_SIZE;
+        const tag = new Text({
+          text: `${sk.label} (${sk.costGold}🪙)`,
+          style: {
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: 12,
+            fontWeight: "800",
+            fill: 0x38bdf8,
+            stroke: { color: 0x0f172a, width: 4 },
+          },
+        });
+        tag.anchor.set(0.5, 1);
+        tag.position.set(sx, sy - 24);
+        this.groundLayer.addChild(tag);
+      }
+    }
+  }
+
+  private createShinkansenTrainGraphic(facingRight: boolean): Container {
+    const train = new Container();
+    const g = new Graphics();
+    const dir = facingRight ? 1 : -1;
+    // Thân tàu Shinkansen mũi nhọn trắng - xanh dương
+    g.ellipse(0, 10, 44, 9).fill({ color: 0x0f172a, alpha: 0.32 });
+    g.roundRect(-36, -12, 72, 18, 6).fill({ color: 0xf8fafc });
+    g.poly([30 * dir, -12, 48 * dir, 2, 30 * dir, 6]).fill({ color: 0xf8fafc });
+    // Dải xanh đặc trưng Shinkansen & cửa kính
+    g.rect(-34, -2, 68, 5).fill({ color: 0x0284c7 });
+    g.roundRect(14 * dir - 8, -9, 16, 6, 2).fill({ color: 0x0f172a });
+    for (let wx = -26; wx <= 8; wx += 11) {
+      g.roundRect(wx, -8, 7, 4, 1).fill({ color: 0xbae6fd });
+    }
+    train.addChild(g);
+    return train;
+  }
+
+  private startShinkansenRide(route: ShinkansenRouteMeta): void {
+    if (this.activeShinkansenRide || this.activeFerryRide) return;
+    if (!this.inventory.trySpendGold(route.costGold)) {
+      this.showFerryFloatingNotice(
+        `Cần ${route.costGold.toLocaleString("vi-VN")}🪙 để đi tàu Shinkansen!`,
+        0xf87171,
+        this.player.x,
+        this.player.y,
+      );
+      return;
+    }
+    this.callbacks.onRequestSave?.(true);
+
+    const startX = (route.stationCol + 0.5) * TILE_SIZE;
+    const startY = (route.stationRow + 0.5) * TILE_SIZE;
+    const endX = (route.toCol + 0.5) * TILE_SIZE;
+    const endY = (route.toRow + 0.5) * TILE_SIZE;
+
+    const windGfx = new Graphics();
+    const train = this.createShinkansenTrainGraphic(endX >= startX);
+    train.position.set(startX, startY);
+    this.entityLayer.addChild(windGfx);
+    this.entityLayer.addChild(train);
+    this.player.clearPath();
+    this.player.position.set(startX, startY - 6);
+
+    this.activeShinkansenRide = {
+      route,
+      train,
+      windGfx,
+      startX,
+      startY,
+      endX,
+      endY,
+      elapsed: 0,
+      duration: 1.85,
+    };
+    this.showFerryFloatingNotice(
+      `🚄 Đang phóng Shinkansen tới ${route.destLabel} (-${route.costGold}🪙)...`,
+      0x38bdf8,
+      startX,
+      startY,
+    );
+  }
+
+  private stepShinkansenRide(dt: number): void {
+    const ride = this.activeShinkansenRide;
+    if (!ride) return;
+    ride.elapsed += dt;
+    const rawT = Math.min(1, ride.elapsed / ride.duration);
+    const t = rawT < 0.5 ? 2 * rawT * rawT : 1 - Math.pow(-2 * rawT + 2, 2) / 2;
+    const curX = ride.startX + (ride.endX - ride.startX) * t;
+    const curY = ride.startY + (ride.endY - ride.startY) * t;
+
+    ride.train.position.set(curX, curY);
+    this.player.position.set(curX, curY - 4);
+
+    // Vệt gió tốc độ cao
+    const dir = ride.endX >= ride.startX ? -1 : 1;
+    ride.windGfx.clear();
+    for (let i = 0; i < 4; i++) {
+      const ly = curY - 8 + i * 5;
+      ride.windGfx
+        .moveTo(curX + dir * (40 + i * 10), ly)
+        .lineTo(curX + dir * (85 + i * 16), ly)
+        .stroke({ color: 0xe0f2fe, width: 2, alpha: 0.6 - i * 0.1 });
+    }
+
+    const camLerp = 1 - Math.exp(-14 * dt);
+    this.camX += (curX - this.camX) * camLerp;
+    this.camY += (curY - this.camY) * camLerp;
+    this.syncCameraTransform();
+
+    if (rawT >= 1) {
+      ride.train.destroy({ children: true });
+      ride.windGfx.destroy();
+      this.player.position.set(ride.endX, ride.endY + 26);
+      this.activeShinkansenRide = null;
+      this.showFerryFloatingNotice(
+        `🚄 Đã đến ${ride.route.destLabel}!`,
+        0x34d399,
+        ride.endX,
+        ride.endY + 26,
+      );
+      this.callbacks.onRequestSave?.(true);
+    }
+  }
+
+  private showFerryFloatingNotice(text: string, color: number, x: number, y: number): void {
+    const notice = new Text({
+      text,
+      style: {
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontSize: 14,
+        fontWeight: "800",
+        fill: color,
+        stroke: { color: 0x0f172a, width: 4 },
+      },
+    });
+    notice.anchor.set(0.5, 1);
+    notice.position.set(x, y - 34);
+    this.entityLayer.addChild(notice);
+    let elapsed = 0;
+    const tick = (ticker: { deltaMS: number }): void => {
+      elapsed += ticker.deltaMS / 1000;
+      notice.y -= (ticker.deltaMS / 1000) * 18;
+      notice.alpha = Math.max(0, 1 - elapsed / 2.0);
+      if (elapsed >= 2.0) {
+        this.app.ticker.remove(tick);
+        notice.destroy();
+      }
+    };
+    this.app.ticker.add(tick);
+  }
+
+  private startFerryCrossing(route: FerryRouteMeta): void {
+    if (this.activeFerryRide) return;
+    if (!this.inventory.trySpendGold(route.costGold)) {
+      this.showFerryFloatingNotice(
+        `Cần ${route.costGold.toLocaleString("vi-VN")}🪙 để đi thuyền!`,
+        0xf87171,
+        this.player.x,
+        this.player.y,
+      );
+      return;
+    }
+    this.callbacks.onRequestSave?.(true);
+
+    const startX = (route.dockCol + 0.5) * TILE_SIZE;
+    const startY = (route.dockRow + 0.5) * TILE_SIZE;
+    const endX = (route.toCol + 0.5) * TILE_SIZE;
+    const endY = (route.toRow + 0.5) * TILE_SIZE;
+
+    const wakeGfx = new Graphics();
+    const boat = this.createJapaneseBoatGraphic(endX >= startX);
+    boat.position.set(startX, startY);
+    this.entityLayer.addChild(wakeGfx);
+    this.entityLayer.addChild(boat);
+    this.player.visible = true;
+    this.player.clearPath();
+    this.player.position.set(startX, startY - 8);
+
+    this.activeFerryRide = {
+      route,
+      boat,
+      wakeGfx,
+      startX,
+      startY,
+      endX,
+      endY,
+      elapsed: 0,
+      duration: 2.6,
+    };
+    this.showFerryFloatingNotice(
+      `⛵ Đang giong thuyền (-${route.costGold}🪙)...`,
+      0x7dd3fc,
+      startX,
+      startY,
+    );
+  }
+
+  private stepFerryCrossing(dt: number): void {
+    const ride = this.activeFerryRide;
+    if (!ride) return;
+    ride.elapsed += dt;
+    const rawT = Math.min(1, ride.elapsed / ride.duration);
+    // Smooth easeInOutQuad
+    const t = rawT < 0.5 ? 2 * rawT * rawT : 1 - Math.pow(-2 * rawT + 2, 2) / 2;
+    const curX = ride.startX + (ride.endX - ride.startX) * t;
+    const bobY = Math.sin(ride.elapsed * 7.5) * 3.2;
+    const curY = ride.startY + (ride.endY - ride.startY) * t + bobY;
+
+    ride.boat.position.set(curX, curY + 6);
+    ride.boat.rotation = Math.sin(ride.elapsed * 5.2) * 0.04;
+    this.player.position.set(curX, curY - 7);
+
+    // Vệt sóng rẽ nước phía sau thuyền
+    const dir = ride.endX >= ride.startX ? -1 : 1;
+    ride.wakeGfx.clear();
+    for (let i = 1; i <= 4; i++) {
+      const wx = curX + dir * i * 15;
+      const alpha = Math.max(0.08, 0.55 - i * 0.12);
+      ride.wakeGfx
+        .moveTo(wx, curY + 4)
+        .lineTo(wx + dir * 10, curY - i * 3.5 + 4)
+        .moveTo(wx, curY + 10)
+        .lineTo(wx + dir * 10, curY + i * 3.5 + 10)
+        .stroke({ color: 0xe0f2fe, width: 2, alpha });
+    }
+
+    // Camera bám theo thuyền
+    const camLerp = 1 - Math.exp(-10 * dt);
+    this.camX += (curX - this.camX) * camLerp;
+    this.camY += (curY - this.camY) * camLerp;
+    this.syncCameraTransform();
+
+    if (rawT >= 1) {
+      ride.boat.destroy({ children: true });
+      ride.wakeGfx.destroy();
+      const isVertical = ride.route.dockCol === ride.route.toCol;
+      const landOffsetX = isVertical ? 0 : ride.route.toCol > ride.route.dockCol ? 28 : -28;
+      const landOffsetY = isVertical ? (ride.route.toRow > ride.route.dockRow ? 28 : -28) : 0;
+      this.player.position.set(ride.endX + landOffsetX, ride.endY + landOffsetY);
+      this.activeFerryRide = null;
+      this.showFerryFloatingNotice(
+        `⛵ Đã cập bến ${ride.route.destLabel}!`,
+        0x34d399,
+        ride.endX + landOffsetX,
+        ride.endY + landOffsetY,
+      );
+      this.callbacks.onRequestSave?.(true);
+    }
   }
 
   private buildLilypads(): void {
@@ -4614,17 +5195,17 @@ export class WorldScene {
     const isJapan = this.activeMapId === "japan";
     const JP_GREEN_BLD_TEXTURE_OVERRIDE: Partial<Record<PropKind, BuildingKind>> = {
       city_home_house: "jp_ryokan_inn",
-      city_collection_hall: "jp_tokyo_tower",
-      city_auction_house: "jp_shinkansen_station",
-      city_backpack_shop: "jp_akihabara_arcade",
-      city_clothing_shop: "jp_samurai_manor",
-      city_butcher_shop: "jp_village_machiya",
-      plains_garden_inn: "jp_snow_onsen_temple",
-      city_pharmacy: "plains_archway",
-      city_police_station: "jp_ninja_dojo",
-      city_quest_guild: "jp_shinkansen_station",
+      city_collection_hall: "jp_treasure_vault",
+      city_auction_house: "jp_auction_hall",
+      city_airport: "jp_airport_terminal",
+      city_backpack_shop: "jp_village_machiya",
+      city_clothing_shop: "jp_geisha_okiya",
+      city_butcher_shop: "jp_ramen_shop",
+      plains_garden_inn: "jp_izakaya_tavern",
+      city_pharmacy: "jp_zen_temple",
+      city_police_station: "jp_koban_police",
+      city_quest_guild: "jp_samurai_manor",
       city_reputation_hall: "jp_shinto_shrine",
-      city_pet_gacha: "jp_akihabara_arcade",
     };
     const overrideKind = isJapan ? JP_GREEN_BLD_TEXTURE_OVERRIDE[prop.kind] : undefined;
     const tex = overrideKind ? this.atlas.buildings[overrideKind] : this.atlas.props[prop.kind];
@@ -4639,8 +5220,8 @@ export class WorldScene {
         : isBld
           ? BUILDING_PIXEL_SCALE
           : prop.kind === "jp_torii_gate"
-            ? PIXEL_SCALE * 1.15
-            : PIXEL_SCALE,
+            ? PIXEL_SCALE * 0.92
+            : PIXEL_SCALE * 0.84,
     );
     if (prop.kind === "sakura_tree" || prop.kind === "sakura_small") {
       sprite.tint = 0xffb7d5;
@@ -4906,8 +5487,9 @@ export class WorldScene {
   private buildLocalEstateSummary(): RemotePlayerEstateSummary | null {
     const ownedWorldTiles = this.estate.ownedWorldTiles ?? [];
     if (!this.estate.houseId && ownedWorldTiles.length === 0) return null;
-    const originC = this.estate.houseOrigin?.c ?? LEGACY_DEFAULT_LOT_COL;
-    const originR = this.estate.houseOrigin?.r ?? LEGACY_DEFAULT_LOT_ROW;
+    const defOrigin = getDefaultEstateLotOrigin(this.activeMapId);
+    const originC = this.estate.houseOrigin?.c ?? defOrigin.c;
+    const originR = this.estate.houseOrigin?.r ?? defOrigin.r;
     const slots = this.inventory.getCollectionHallStates();
     const displayedItems: Array<{ itemId: string; lightLevel: 0 | 1 | 2 }> = [];
     if (this.estate.houseId) {
@@ -5146,14 +5728,14 @@ export class WorldScene {
     let hoverLotName: string | null = null;
 
     if (this.estateHoverTile) {
-      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r);
+      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r, this.activeMapId);
       hoverLotName = info?.lotName ?? null;
     }
 
     if (this.estateInteractMode === "place_house" && model) {
       hoverOrigin = this.getPlacingAnchorFromHover();
       if (hoverOrigin) {
-        const check = canBuildHouseAtWorld(ownedWorld, model.tier, hoverOrigin.c, hoverOrigin.r);
+        const check = canBuildHouseAtWorld(ownedWorld, model.tier, hoverOrigin.c, hoverOrigin.r, this.activeMapId);
         hoverCanBuild = check.ok;
         hoverMissingKeys = check.missingKeys;
         hoverBlockedCount = check.blockedKeys.length;
@@ -5180,9 +5762,26 @@ export class WorldScene {
     };
   }
 
+  private getEstateCamBounds(): { minX: number; maxX: number; minY: number; maxY: number } {
+    return this.activeMapId === "japan"
+      ? {
+          minX: 2 * TILE_SIZE,
+          maxX: 32 * TILE_SIZE,
+          minY: 41 * TILE_SIZE,
+          maxY: 58 * TILE_SIZE,
+        }
+      : {
+          minX: 2 * TILE_SIZE,
+          maxX: 32 * TILE_SIZE,
+          minY: 1 * TILE_SIZE,
+          maxY: 18 * TILE_SIZE,
+        };
+  }
+
   private initEstateCameraBounds(): void {
-    this.estateCamX = Math.max(2 * TILE_SIZE, Math.min(32 * TILE_SIZE, this.camX));
-    this.estateCamY = Math.max(1 * TILE_SIZE, Math.min(18 * TILE_SIZE, this.camY));
+    const b = this.getEstateCamBounds();
+    this.estateCamX = Math.max(b.minX, Math.min(b.maxX, this.camX));
+    this.estateCamY = Math.max(b.minY, Math.min(b.maxY, this.camY));
     this.isEstatePanning = false;
     this.estatePointerDownActive = false;
   }
@@ -5197,7 +5796,7 @@ export class WorldScene {
     if (preselectKeys) {
       for (const k of preselectKeys) {
         const parsed = parseWorldTileKey(k);
-        if (parsed && isPurchasableEstateTile(parsed.c, parsed.r) && !ownedSet.has(k)) {
+        if (parsed && isPurchasableEstateTile(parsed.c, parsed.r, this.activeMapId) && !ownedSet.has(k)) {
           this.estateSelectedTileKeys.add(k);
         }
       }
@@ -5326,12 +5925,12 @@ export class WorldScene {
   }
 
   public sellWorldTiles(tileKeys: string[]): { ok: boolean; message: string; soldCount?: number } {
-    normalizeEstateOwnedTiles(this.estate);
+    normalizeEstateOwnedTiles(this.estate, this.activeMapId);
     if (!tileKeys || tileKeys.length === 0) {
       return { ok: false, message: "Vui lòng chọn ít nhất một ô đất đã mua để bán." };
     }
     const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
-    const occupiedByHouse = getHouseOccupiedWorldTileSet(this.estate);
+    const occupiedByHouse = getHouseOccupiedWorldTileSet(this.estate, this.activeMapId);
     const validToSell: string[] = [];
     let blockedByHouseCount = 0;
 
@@ -5363,7 +5962,7 @@ export class WorldScene {
     const refundGold = validToSell.length * TILE_SELL_REFUND_GOLD;
     this.inventory.addGoldDirect(refundGold);
     this.estate.ownedWorldTiles = Array.from(ownedSet).sort();
-    this.estate.plotTier = computeMaxOwnedTierWorld(this.estate.ownedWorldTiles);
+    this.estate.plotTier = computeMaxOwnedTierWorld(this.estate.ownedWorldTiles, this.activeMapId);
     this.syncEstateAndCollectionDisplay();
     this.playPressSfx();
     this.callbacks.onRequestSave?.(true);
@@ -5522,11 +6121,11 @@ export class WorldScene {
     }
 
     const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
-    const houseOccupiedSet = getHouseOccupiedWorldTileSet(this.estate);
+    const houseOccupiedSet = getHouseOccupiedWorldTileSet(this.estate, this.activeMapId);
     const remoteOwnerMap = this.getRemoteTileOwnerMap();
 
     // 1. Vẽ lưới quy hoạch 240 ô chỉ khi đang ở chế độ Mua Đất, Bán Đất hoặc Đặt Nhà
-    for (const tile of ALL_PURCHASABLE_ESTATE_TILES) {
+    for (const tile of getAllPurchasableEstateTiles(this.activeMapId)) {
       const px = tile.c * TILE_SIZE;
       const py = tile.r * TILE_SIZE;
       const isOwned = ownedSet.has(tile.key);
@@ -5597,7 +6196,7 @@ export class WorldScene {
       if (model && anchor) {
         this.estateGhostContainer.visible = true;
         const tier = model.tier;
-        const check = canBuildHouseAtWorld(this.estate.ownedWorldTiles ?? [], tier, anchor.c, anchor.r);
+        const check = canBuildHouseAtWorld(this.estate.ownedWorldTiles ?? [], tier, anchor.c, anchor.r, this.activeMapId);
         const missingSet = new Set(check.missingKeys);
         const blockedSet = new Set(check.blockedKeys);
 
@@ -5659,7 +6258,7 @@ export class WorldScene {
       }
     } else if (this.estateInteractMode === "buy_tiles" && this.estateHoverTile) {
       // Hiện nhãn giá nhẹ ngay trên ô đang rê chuột khi mua đất
-      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r);
+      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r, this.activeMapId);
       this.estateGhostGrid.clear();
       this.estateGhostSprite.visible = false;
       if (info && this.estateGhostLabel) {
@@ -5688,7 +6287,7 @@ export class WorldScene {
         this.estateGhostContainer.visible = false;
       }
     } else if (this.estateInteractMode === "sell_tiles" && this.estateHoverTile) {
-      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r);
+      const info = getEstateTileInfo(this.estateHoverTile.c, this.estateHoverTile.r, this.activeMapId);
       this.estateGhostGrid.clear();
       this.estateGhostSprite.visible = false;
       if (info && this.estateGhostLabel) {
@@ -5724,7 +6323,7 @@ export class WorldScene {
   }
 
   public syncEstateAndCollectionDisplay(): void {
-    normalizeEstateOwnedTiles(this.estate);
+    normalizeEstateOwnedTiles(this.estate, this.activeMapId);
     const hasHouse = Boolean(this.estate.houseId);
     const houseModel = getHouseModelDef(this.estate.houseId);
 
@@ -5744,8 +6343,9 @@ export class WorldScene {
       this.estateHouseAura.clear();
 
       if (hasHouse && houseModel) {
-        const originC = this.estate.houseOrigin?.c ?? LEGACY_DEFAULT_LOT_COL;
-        const originR = this.estate.houseOrigin?.r ?? LEGACY_DEFAULT_LOT_ROW;
+        const defOrigin = getDefaultEstateLotOrigin(this.activeMapId);
+        const originC = this.estate.houseOrigin?.c ?? defOrigin.c;
+        const originR = this.estate.houseOrigin?.r ?? defOrigin.r;
         const tier = houseModel.tier;
 
         const { worldX, worldY } = this.getHouseWorldCenter(originC, originR, tier);
@@ -5846,7 +6446,7 @@ export class WorldScene {
   }
 
   public getEstateState(): PlayerEstateState {
-    normalizeEstateOwnedTiles(this.estate);
+    normalizeEstateOwnedTiles(this.estate, this.activeMapId);
     return {
       ...this.estate,
       ownedTileIndices: [...(this.estate.ownedTileIndices ?? [])],
@@ -5860,7 +6460,7 @@ export class WorldScene {
   }
 
   public purchaseWorldTiles(tileKeys: string[]): { ok: boolean; message: string; purchasedCount?: number } {
-    normalizeEstateOwnedTiles(this.estate);
+    normalizeEstateOwnedTiles(this.estate, this.activeMapId);
     if (!tileKeys || tileKeys.length === 0) {
       return { ok: false, message: "Vui lòng chọn ít nhất một ô đất để mua." };
     }
@@ -5873,7 +6473,7 @@ export class WorldScene {
       const pt = parseWorldTileKey(rawKey);
       if (!pt) continue;
       const normKey = makeWorldTileKey(pt.c, pt.r);
-      if (!isPurchasableEstateTile(pt.c, pt.r) || currentOwned.has(normKey)) continue;
+      if (!isPurchasableEstateTile(pt.c, pt.r, this.activeMapId) || currentOwned.has(normKey)) continue;
       const remoteOwner = remoteOwnerMap.get(normKey);
       if (remoteOwner) {
         contestedCount++;
@@ -5908,7 +6508,7 @@ export class WorldScene {
       currentOwned.add(k);
     }
     this.estate.ownedWorldTiles = Array.from(currentOwned).sort();
-    this.estate.plotTier = computeMaxOwnedTierWorld(this.estate.ownedWorldTiles);
+    this.estate.plotTier = computeMaxOwnedTierWorld(this.estate.ownedWorldTiles, this.activeMapId);
     this.estate.purchasedAt = Date.now();
     this.estate.ownerName = this.getPlayerDisplayName();
     this.syncEstateAndCollectionDisplay();
@@ -5927,26 +6527,28 @@ export class WorldScene {
   }
 
   public purchaseTiles(tileIndices: number[]): { ok: boolean; message: string; purchasedCount?: number } {
+    const defOrigin = getDefaultEstateLotOrigin(this.activeMapId);
     const keys = tileIndices
       .filter((idx) => idx >= 0 && idx < 16)
-      .map((idx) => makeWorldTileKey(LEGACY_DEFAULT_LOT_COL + (idx % 4), LEGACY_DEFAULT_LOT_ROW + Math.floor(idx / 4)));
+      .map((idx) => makeWorldTileKey(defOrigin.c + (idx % 4), defOrigin.r + Math.floor(idx / 4)));
     return this.purchaseWorldTiles(keys);
   }
 
   public purchasePlot(tier: number): { ok: boolean; message: string } {
     const plotDef = getPlotTierDef(tier);
     if (!plotDef) return { ok: false, message: "Cấp độ đất không hợp lệ." };
+    const defOrigin = getDefaultEstateLotOrigin(this.activeMapId);
     const targetKeys: string[] = [];
     for (let r = 0; r < tier; r++) {
       for (let c = 0; c < tier; c++) {
-        targetKeys.push(makeWorldTileKey(LEGACY_DEFAULT_LOT_COL + c, LEGACY_DEFAULT_LOT_ROW + r));
+        targetKeys.push(makeWorldTileKey(defOrigin.c + c, defOrigin.r + r));
       }
     }
     return this.purchaseWorldTiles(targetKeys);
   }
 
   public buildHouse(modelId: string, originC?: number, originR?: number): { ok: boolean; message: string } {
-    normalizeEstateOwnedTiles(this.estate);
+    normalizeEstateOwnedTiles(this.estate, this.activeMapId);
     const model = getHouseModelDef(modelId);
     if (!model) return { ok: false, message: "Mẫu nhà không tồn tại." };
     if (this.estate.houseId) {
@@ -5961,7 +6563,7 @@ export class WorldScene {
     let chosenR = originR;
 
     if (chosenC === undefined || chosenR === undefined) {
-      const found = findFirstValidHouseAnchorWorld(ownedWorld, model.tier);
+      const found = findFirstValidHouseAnchorWorld(ownedWorld, model.tier, this.activeMapId);
       if (!found) {
         return {
           ok: false,
@@ -5972,7 +6574,7 @@ export class WorldScene {
       chosenR = found.r;
     }
 
-    const check = canBuildHouseAtWorld(ownedWorld, model.tier, chosenC, chosenR);
+    const check = canBuildHouseAtWorld(ownedWorld, model.tier, chosenC, chosenR, this.activeMapId);
     if (!check.ok) {
       if (check.blockedKeys.length > 0) {
         return {
@@ -6665,6 +7267,11 @@ export class WorldScene {
 
     let clampedCamX = this.camX;
     let clampedCamY = this.camY;
+    if (this.cameraShakeTimer > 0) {
+      const s = this.cameraShakeIntensity * Math.min(1, this.cameraShakeTimer / 1.2);
+      clampedCamX += Math.sin(performance.now() * 0.055) * s;
+      clampedCamY += Math.cos(performance.now() * 0.072) * s;
+    }
 
     if (WORLD_WIDTH > halfViewWorldW * 2) {
       clampedCamX = Math.max(halfViewWorldW, Math.min(WORLD_WIDTH - halfViewWorldW, this.camX));
@@ -6863,8 +7470,9 @@ export class WorldScene {
         }
         if (this.isEstatePanning) {
           const z = Math.max(0.4, this.zoom);
-          this.estateCamX = Math.max(2 * TILE_SIZE, Math.min(32 * TILE_SIZE, this.estatePanStartCamX - dx / z));
-          this.estateCamY = Math.max(1 * TILE_SIZE, Math.min(18 * TILE_SIZE, this.estatePanStartCamY - dy / z));
+          const b = this.getEstateCamBounds();
+          this.estateCamX = Math.max(b.minX, Math.min(b.maxX, this.estatePanStartCamX - dx / z));
+          this.estateCamY = Math.max(b.minY, Math.min(b.maxY, this.estatePanStartCamY - dy / z));
           this.camX = this.estateCamX;
           this.camY = this.estateCamY;
           this.syncCameraTransform();
@@ -6909,7 +7517,7 @@ export class WorldScene {
         const key = makeWorldTileKey(col, row);
         const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
         const remoteOwner = this.getRemoteTileOwnerMap().get(key);
-        if (!isPurchasableEstateTile(col, row)) {
+        if (!isPurchasableEstateTile(col, row, this.activeMapId)) {
           this.estateStatusMsg = "Ô này là đường đi, hồ hoặc công viên — hãy kéo bản đồ và chọn các ô đất trong Khu Biệt Thự!";
           this.estateStatusIsError = true;
         } else if (ownedSet.has(key)) {
@@ -6940,8 +7548,8 @@ export class WorldScene {
       if (this.estateInteractMode === "sell_tiles") {
         const key = makeWorldTileKey(col, row);
         const ownedSet = new Set(this.estate.ownedWorldTiles ?? []);
-        const houseOccupiedSet = getHouseOccupiedWorldTileSet(this.estate);
-        if (!isPurchasableEstateTile(col, row) || !ownedSet.has(key)) {
+        const houseOccupiedSet = getHouseOccupiedWorldTileSet(this.estate, this.activeMapId);
+        if (!isPurchasableEstateTile(col, row, this.activeMapId) || !ownedSet.has(key)) {
           this.estateStatusMsg = "Hãy chạm vào ô đất màu xanh bạn đang sở hữu để chọn bán!";
           this.estateStatusIsError = true;
         } else if (houseOccupiedSet.has(key)) {

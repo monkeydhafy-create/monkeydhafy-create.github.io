@@ -632,10 +632,10 @@ GRANT EXECUTE ON FUNCTION public.claim_auction_proceeds(uuid) TO authenticated;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.auction_listings;
 
 -- ============================================================================
--- 11. Khu Biệt Thự & Dinh Thự Vĩnh Viễn (Hiển thị cả khi chủ nhà offline + chống tranh chấp đất)
+-- 11. Khu Biệt Thự & Dinh Thự Vĩnh Viễn (Tách biệt theo từng map vietnam/japan + chống tranh chấp đất)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.world_estates (
-  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   map_id text NOT NULL DEFAULT 'vietnam',
   owner_name text NOT NULL DEFAULT 'Người Chơi',
   house_id text,
@@ -643,7 +643,8 @@ CREATE TABLE IF NOT EXISTS public.world_estates (
   origin_r integer NOT NULL DEFAULT 13,
   owned_world_tiles jsonb NOT NULL DEFAULT '[]'::jsonb,
   displayed_items jsonb NOT NULL DEFAULT '[]'::jsonb,
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, map_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_world_estates_map
@@ -667,3 +668,87 @@ CREATE POLICY "world_estates_owner_write"
   WITH CHECK (auth.uid() = user_id);
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.world_estates;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- THIÊN TAI TOÀN MAP NHẬT BẢN (Động đất + Tuyết lở đồng bộ Server)
+-- ═════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.world_disasters (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id text NOT NULL DEFAULT 'japan',
+  kind text NOT NULL DEFAULT 'earthquake_avalanche',
+  hp_loss integer NOT NULL CHECK (hp_loss BETWEEN 15 AND 40),
+  stamina_loss integer NOT NULL CHECK (stamina_loss BETWEEN 25 AND 60),
+  triggered_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_world_disasters_map_time
+  ON public.world_disasters (map_id, triggered_at DESC);
+
+ALTER TABLE public.world_disasters ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "world_disasters_read_all" ON public.world_disasters;
+CREATE POLICY "world_disasters_read_all"
+  ON public.world_disasters
+  FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.world_disasters;
+
+CREATE OR REPLACE FUNCTION public.poll_or_trigger_japan_disaster()
+RETURNS TABLE(
+  id uuid,
+  map_id text,
+  kind text,
+  hp_loss integer,
+  stamina_loss integer,
+  triggered_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_recent public.world_disasters%ROWTYPE;
+  v_kind text;
+  v_hp integer;
+  v_stamina integer;
+BEGIN
+  PERFORM pg_advisory_xact_lock(772026);
+
+  SELECT *
+  INTO v_recent
+  FROM public.world_disasters wd
+  WHERE wd.map_id = 'japan'
+    AND wd.triggered_at > (clock_timestamp() - interval '4 minutes')
+  ORDER BY wd.triggered_at DESC
+  LIMIT 1;
+
+  IF FOUND THEN
+    RETURN QUERY
+    SELECT v_recent.id, v_recent.map_id, v_recent.kind, v_recent.hp_loss, v_recent.stamina_loss, v_recent.triggered_at;
+    RETURN;
+  END IF;
+
+  -- Xác suất ngẫu nhiên xảy ra thiên tai Nhật Bản trên server (~18% mỗi nhịp kiểm tra)
+  IF random() < 0.18 THEN
+    IF random() < 0.45 THEN
+      v_kind := 'island_tsunami';
+      v_hp := 20 + floor(random() * 16)::integer;      -- 20..35 máu trên đảo
+      v_stamina := 35 + floor(random() * 21)::integer; -- 35..55 mệt mỏi
+    ELSE
+      v_kind := 'earthquake_avalanche';
+      v_hp := 15 + floor(random() * 16)::integer;      -- 15..30 máu
+      v_stamina := 30 + floor(random() * 21)::integer; -- 30..50 mệt mỏi
+    END IF;
+    INSERT INTO public.world_disasters (map_id, kind, hp_loss, stamina_loss)
+    VALUES ('japan', v_kind, v_hp, v_stamina)
+    RETURNING * INTO v_recent;
+
+    RETURN QUERY
+    SELECT v_recent.id, v_recent.map_id, v_recent.kind, v_recent.hp_loss, v_recent.stamina_loss, v_recent.triggered_at;
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.poll_or_trigger_japan_disaster() TO anon, authenticated;

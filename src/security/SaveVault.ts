@@ -69,6 +69,7 @@ import {
   LEGACY_DEFAULT_LOT_COL,
   LEGACY_DEFAULT_LOT_ROW,
   createDefaultPlayerEstateState,
+  getDefaultEstateLotOrigin,
   isPurchasableEstateTile,
   makeWorldTileKey,
   parseWorldTileKey,
@@ -109,6 +110,7 @@ export interface PlayerGameSaveV3 {
   ownedPetIds?: string[];
   equippedPetId?: string | null;
   estate?: PlayerEstateState;
+  jpEstate?: PlayerEstateState;
 }
 
 export interface SaveLoadResult {
@@ -218,7 +220,8 @@ export function createDefaultGameSave(spawnX: number, spawnY: number): PlayerGam
       globalIgnoreUntil: 0,
       pendingArrestOfficerId: null,
     },
-    estate: createDefaultPlayerEstateState(),
+    estate: createDefaultPlayerEstateState("vietnam"),
+    jpEstate: createDefaultPlayerEstateState("japan"),
   };
 }
 
@@ -855,6 +858,40 @@ export function validateSavePayload(
         ? null
         : { targetHomeId: expectedNextHome!.id, requirements: homeContractRes };
 
+  let jpHomeStorageId = "home_4x4";
+  let jpHomeItems: GridItemInstance[] = [];
+  if (rawInv.jpHomeStorageId !== undefined) {
+    if (typeof rawInv.jpHomeStorageId === "string" && HOME_STORAGE_BY_ID[rawInv.jpHomeStorageId]) {
+      jpHomeStorageId = rawInv.jpHomeStorageId;
+      const jpHmDef = HOME_STORAGE_BY_ID[jpHomeStorageId];
+      jpHomeItems =
+        rawInv.jpHomeItems !== undefined
+          ? validatePlacedItems(rawInv.jpHomeItems, jpHmDef.cols, jpHmDef.rows, strict)
+          : [];
+    } else if (strict) {
+      throw new TamperError("Invalid jpHomeStorageId");
+    }
+  } else if (rawInv.jpHomeItems !== undefined) {
+    jpHomeItems = validatePlacedItems(rawInv.jpHomeItems, 4, 4, strict);
+  }
+
+  const expectedNextJpHome = getNextHomeTier(jpHomeStorageId);
+  const jpHomeContractRes = validateContractRequirements(
+    rawInv.jpHomeContract,
+    expectedNextJpHome ? expectedNextJpHome.id : null,
+    "targetHomeId",
+    strict,
+    "Japan Home storage",
+  );
+  const jpHomeContract: HomeUpgradeContract | null =
+    jpHomeContractRes === "regenerate"
+      ? expectedNextJpHome
+        ? generateHomeContract(expectedNextJpHome.id)
+        : null
+      : jpHomeContractRes === null
+        ? null
+        : { targetHomeId: expectedNextJpHome!.id, requirements: jpHomeContractRes };
+
   const safeboxId =
     rawInv.safeboxId === undefined
       ? "safe_2x2"
@@ -953,52 +990,54 @@ export function validateSavePayload(
     throw new TamperError("nextUid invariant violated");
   }
 
-  const validatedCollectionHall: Record<string, CollectionSlotState> = {};
-  if (rawInv.collectionHall !== undefined) {
-    if (
-      typeof rawInv.collectionHall !== "object" ||
-      rawInv.collectionHall === null ||
-      Array.isArray(rawInv.collectionHall)
-    ) {
+  const validateCollectionRecord = (rawRec: unknown): Record<string, CollectionSlotState> => {
+    const out: Record<string, CollectionSlotState> = {};
+    if (rawRec === undefined) return out;
+    if (typeof rawRec !== "object" || rawRec === null || Array.isArray(rawRec)) {
       throw new TamperError("Collection hall state invariant violated");
     }
-    for (const [itemId, rawSlot] of Object.entries(rawInv.collectionHall)) {
+    for (const [itemId, rawSlot] of Object.entries(rawRec)) {
       if (!COLLECTION_RED_BY_ID[itemId]) {
         throw new TamperError(`Invalid collection item id: ${itemId}`);
       }
       if (typeof rawSlot !== "object" || rawSlot === null || Array.isArray(rawSlot)) {
         throw new TamperError("Collection slot invariant violated");
       }
-      if (typeof rawSlot.displayed !== "boolean") {
+      const typedSlot = rawSlot as Partial<CollectionSlotState>;
+      if (typeof typedSlot.displayed !== "boolean") {
         throw new TamperError("Collection displayed flag invariant violated");
       }
       if (
-        typeof rawSlot.lightLevel !== "number" ||
-        !Number.isInteger(rawSlot.lightLevel) ||
-        rawSlot.lightLevel < 0 ||
-        rawSlot.lightLevel > 2
+        typeof typedSlot.lightLevel !== "number" ||
+        !Number.isInteger(typedSlot.lightLevel) ||
+        typedSlot.lightLevel < 0 ||
+        typedSlot.lightLevel > 2
       ) {
         throw new TamperError("Collection light level invariant violated");
       }
-      const rawProgress = rawSlot.goldLampProgress ?? 0;
+      const rawProgress = typedSlot.goldLampProgress ?? 0;
       if (
         typeof rawProgress !== "number" ||
         !Number.isInteger(rawProgress) ||
         rawProgress < 0 ||
         rawProgress >= GOLD_LAMP_REQUIRED_COUNT ||
-        (rawSlot.lightLevel !== 1 && rawProgress !== 0)
+        (typedSlot.lightLevel !== 1 && rawProgress !== 0)
       ) {
         throw new TamperError("Collection gold lamp progress invariant violated");
       }
-      if (rawSlot.displayed || rawSlot.lightLevel > 0 || rawProgress > 0) {
-        validatedCollectionHall[itemId] = {
-          displayed: rawSlot.displayed,
-          lightLevel: rawSlot.lightLevel as 0 | 1 | 2,
+      if (typedSlot.displayed || typedSlot.lightLevel > 0 || rawProgress > 0) {
+        out[itemId] = {
+          displayed: typedSlot.displayed,
+          lightLevel: typedSlot.lightLevel as 0 | 1 | 2,
           goldLampProgress: rawProgress,
         };
       }
     }
-  }
+    return out;
+  };
+
+  const validatedCollectionHall = validateCollectionRecord(rawInv.collectionHall);
+  const validatedJpCollectionHall = validateCollectionRecord(rawInv.jpCollectionHall);
 
   const validatedContainers: Record<string, ContainerLootState> = {};
   const expiredContainerIds = new Set<string>();
@@ -1548,9 +1587,12 @@ export function validateSavePayload(
     };
   }
 
-  let validatedEstate: PlayerEstateState;
-  if (obj.estate && typeof obj.estate === "object" && !Array.isArray(obj.estate)) {
-    const rawEstate = obj.estate as Partial<PlayerEstateState>;
+  const validateEstateForMap = (rawObj: unknown, mapId: MapId): PlayerEstateState => {
+    const defOrigin = getDefaultEstateLotOrigin(mapId);
+    if (!rawObj || typeof rawObj !== "object" || Array.isArray(rawObj)) {
+      return createDefaultPlayerEstateState(mapId);
+    }
+    const rawEstate = rawObj as Partial<PlayerEstateState>;
     const plotTier =
       typeof rawEstate.plotTier === "number" &&
       Number.isInteger(rawEstate.plotTier) &&
@@ -1559,7 +1601,7 @@ export function validateSavePayload(
         ? rawEstate.plotTier
         : strict
           ? (() => {
-              throw new TamperError("Invalid estate.plotTier");
+              throw new TamperError(`Invalid ${mapId} estate.plotTier`);
             })()
           : 0;
 
@@ -1613,7 +1655,7 @@ export function validateSavePayload(
       for (const item of rawEstate.ownedWorldTiles) {
         if (typeof item === "string") {
           const parsed = parseWorldTileKey(item);
-          if (parsed && isPurchasableEstateTile(parsed.c, parsed.r)) {
+          if (parsed && isPurchasableEstateTile(parsed.c, parsed.r, mapId)) {
             worldTileSet.add(makeWorldTileKey(parsed.c, parsed.r));
           } else if (strict) {
             throw new TamperError("Invalid estate.ownedWorldTiles entry");
@@ -1623,34 +1665,34 @@ export function validateSavePayload(
         }
       }
       ownedWorldTiles = Array.from(worldTileSet).sort();
-    } else if (ownedTileIndices.length > 0) {
+    } else if (ownedTileIndices.length > 0 && mapId === "vietnam") {
       const migrated = new Set<string>();
       for (const idx of ownedTileIndices) {
         const c = LEGACY_DEFAULT_LOT_COL + (idx % 4);
         const r = LEGACY_DEFAULT_LOT_ROW + Math.floor(idx / 4);
-        if (isPurchasableEstateTile(c, r)) {
+        if (isPurchasableEstateTile(c, r, "vietnam")) {
           migrated.add(makeWorldTileKey(c, r));
         }
       }
       ownedWorldTiles = Array.from(migrated).sort();
     }
 
-    let houseOrigin: { c: number; r: number } = { c: LEGACY_DEFAULT_LOT_COL, r: LEGACY_DEFAULT_LOT_ROW };
+    let houseOrigin: { c: number; r: number } = { c: defOrigin.c, r: defOrigin.r };
     if (rawEstate.houseOrigin && typeof rawEstate.houseOrigin === "object") {
       const rawC = (rawEstate.houseOrigin as { c?: unknown; r?: unknown }).c;
       const rawR = (rawEstate.houseOrigin as { c?: unknown; r?: unknown }).r;
       const c =
         typeof rawC === "number" && Number.isInteger(rawC) && rawC >= 0 && rawC <= 35
           ? rawC
-          : LEGACY_DEFAULT_LOT_COL;
+          : defOrigin.c;
       const r =
-        typeof rawR === "number" && Number.isInteger(rawR) && rawR >= 0 && rawR <= 20
+        typeof rawR === "number" && Number.isInteger(rawR) && rawR >= 0 && rawR <= 80
           ? rawR
-          : LEGACY_DEFAULT_LOT_ROW;
+          : defOrigin.r;
       houseOrigin = { c, r };
     }
 
-    validatedEstate = {
+    return {
       plotTier,
       houseId,
       purchasedAt,
@@ -1660,9 +1702,10 @@ export function validateSavePayload(
       ownedWorldTiles,
       houseOrigin,
     };
-  } else {
-    validatedEstate = createDefaultPlayerEstateState();
-  }
+  };
+
+  const validatedEstate = validateEstateForMap(obj.estate, "vietnam");
+  const validatedJpEstate = validateEstateForMap(obj.jpEstate, "japan");
 
   return {
     schemaVersion: 3,
@@ -1676,6 +1719,9 @@ export function validateSavePayload(
       homeStorageId,
       homeItems,
       homeContract,
+      jpHomeStorageId,
+      jpHomeItems,
+      jpHomeContract,
       homeGymId: validatedGym.id,
       homeGymContract: validatedGym.contract,
       homeTreadmillId: validatedTreadmill.id,
@@ -1686,6 +1732,7 @@ export function validateSavePayload(
       safeboxItems,
       safeboxContract,
       collectionHall: validatedCollectionHall,
+      jpCollectionHall: validatedJpCollectionHall,
       containers: validatedContainers,
       containerPuzzles: validatedContainerPuzzles,
       mythicPity,
@@ -1715,6 +1762,7 @@ export function validateSavePayload(
     ownedPetIds: Array.from(ownedPetSet),
     equippedPetId,
     estate: validatedEstate,
+    jpEstate: validatedJpEstate,
   };
 }
 

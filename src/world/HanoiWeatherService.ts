@@ -72,6 +72,8 @@ export const ENVIRONMENT_PRESETS: ReadonlyArray<{ id: EnvironmentPreset; label: 
   { id: "windy", label: "🍃 Gió Lá Bay" },
 ];
 
+export type JapanWeatherRegion = "city" | "plains" | "snow-mountain" | "fishing-island";
+
 /**
  * Fetches live Hanoi weather from Open-Meteo (no API key, CORS enabled)
  * paired with accurate Asia/Ho_Chi_Minh clock & instant preview presets.
@@ -89,14 +91,25 @@ export class HanoiWeatherService {
   private liveRainMm = 0;
   private liveCode = 1;
 
-  // Japan procedural weather state (real clock + randomized atmospheric parameters)
+  // Japan regional + smooth-interpolated procedural weather
+  private jpRegion: JapanWeatherRegion = "city";
   private jpCondition: WeatherCondition = "partly-cloudy";
-  private jpTempOffsetC = 0;
-  private jpHumidity = 64;
-  private jpCloudCover = 28;
-  private jpWindSpeed = 13;
-  private jpWindDeg = 145;
-  private jpRainMm = 0;
+  private jpTargetTempC = 20;
+  private jpTargetHumidity = 60;
+  private jpTargetCloudCover = 28;
+  private jpTargetWindSpeed = 12;
+  private jpTargetWindDeg = 145;
+  private jpTargetRainMm = 0;
+  private jpTargetSnowIntensity = 0;
+
+  private jpCurTempC = 20;
+  private jpCurHumidity = 60;
+  private jpCurCloudCover = 28;
+  private jpCurWindSpeed = 12;
+  private jpCurWindDeg = 145;
+  private jpCurRainMm = 0;
+  private jpCurSnowIntensity = 0;
+  private jpLastSmoothMs = 0;
   private nextJpWeatherShiftAt = 0;
 
   private refreshTimer: number | null = null;
@@ -167,6 +180,12 @@ export class HanoiWeatherService {
     return this.preset;
   }
 
+  public setJapanRegion(region: JapanWeatherRegion): void {
+    if (this.jpRegion === region) return;
+    this.jpRegion = region;
+    this.rollJapanProceduralWeather(Date.now());
+  }
+
   public getEnvironmentState(): EnvironmentState {
     if (this.preset !== "live") {
       return this.buildPresetState(this.preset);
@@ -174,30 +193,46 @@ export class HanoiWeatherService {
 
     if (this.activeMapId === "japan") {
       const nowMs = Date.now();
-      if (nowMs >= this.nextJpWeatherShiftAt) {
+      if (this.nextJpWeatherShiftAt === 0 || nowMs >= this.nextJpWeatherShiftAt) {
         this.rollJapanProceduralWeather(nowMs);
       }
+      // Chuyển đổi thời tiết TỪ TỪ (smooth exponential lerp ~12-16s) thay vì đổi đột ngột 1 phát
+      const dtSec = this.jpLastSmoothMs > 0 ? Math.min(0.5, Math.max(0, (nowMs - this.jpLastSmoothMs) / 1000)) : 0;
+      this.jpLastSmoothMs = nowMs;
+      if (dtSec > 0) {
+        const alpha = 1 - Math.exp(-dtSec / 5.5);
+        this.jpCurTempC += (this.jpTargetTempC - this.jpCurTempC) * alpha;
+        this.jpCurHumidity += (this.jpTargetHumidity - this.jpCurHumidity) * alpha;
+        this.jpCurCloudCover += (this.jpTargetCloudCover - this.jpCurCloudCover) * alpha;
+        this.jpCurWindSpeed += (this.jpTargetWindSpeed - this.jpCurWindSpeed) * alpha;
+        this.jpCurWindDeg += (this.jpTargetWindDeg - this.jpCurWindDeg) * alpha;
+        this.jpCurRainMm += (this.jpTargetRainMm - this.jpCurRainMm) * alpha;
+        this.jpCurSnowIntensity += (this.jpTargetSnowIntensity - this.jpCurSnowIntensity) * alpha;
+      }
+
       const { hour, minute, timeText } = this.getClock(this.tokyoTimeFormatter);
       const fractionalHour = hour + minute / 60;
-      // Japanese highland & winter-shifted temperature curve around real Tokyo clock
       const diurnalCurve = Math.sin(((fractionalHour - 9) / 24) * Math.PI * 2);
-      const temperatureC = Math.round(17 + diurnalCurve * 4 + this.jpTempOffsetC);
+      const temperatureC = Math.round(this.jpCurTempC + diurnalCurve * 2.5);
 
-      return this.computeDerivedState({
-        mapId: "japan",
-        preset: "live",
-        isLive: true,
-        hanoiTimeText: timeText,
-        fractionalHour,
-        temperatureC,
-        humidityPct: this.jpHumidity,
-        cloudCoverPct: this.jpCloudCover,
-        windSpeedKmh: this.jpWindSpeed,
-        windDirectionDeg: this.jpWindDeg,
-        rainMm: this.jpRainMm,
-        condition: this.jpCondition,
-        apiConnected: false,
-      });
+      return this.computeDerivedState(
+        {
+          mapId: "japan",
+          preset: "live",
+          isLive: true,
+          hanoiTimeText: timeText,
+          fractionalHour,
+          temperatureC,
+          humidityPct: Math.round(this.jpCurHumidity),
+          cloudCoverPct: Math.round(this.jpCurCloudCover),
+          windSpeedKmh: Math.round(this.jpCurWindSpeed),
+          windDirectionDeg: Math.round(this.jpCurWindDeg),
+          rainMm: Number(this.jpCurRainMm.toFixed(1)),
+          condition: this.jpCondition,
+          apiConnected: false,
+        },
+        this.jpCurSnowIntensity,
+      );
     }
 
     const { hour, minute, timeText } = this.getClock(this.timeFormatter);
@@ -223,68 +258,61 @@ export class HanoiWeatherService {
 
   public rollJapanProceduralWeather(nowMs = Date.now()): void {
     const r = Math.random();
-    let cond: WeatherCondition = "snow";
-    if (r < 0.14) cond = "clear";
-    else if (r < 0.28) cond = "partly-cloudy";
-    else if (r < 0.36) cond = "cloudy";
-    else if (r < 0.44) cond = "fog";
-    else if (r < 0.5) cond = "drizzle";
-    else if (r < 0.54) cond = "rain";
-    else if (r < 0.82) cond = "snow";
-    else cond = "blizzard";
+    const region = this.jpRegion;
+    let cond: WeatherCondition = "partly-cloudy";
 
-    this.jpCondition = cond;
-    this.jpWindDeg = Math.floor(Math.random() * 360);
-    if (cond === "clear") {
-      this.jpTempOffsetC = Math.round(-4 + Math.random() * 4);
-      this.jpHumidity = Math.round(45 + Math.random() * 18);
-      this.jpCloudCover = Math.round(Math.random() * 16);
-      this.jpWindSpeed = Math.round(8 + Math.random() * 10);
-      this.jpRainMm = 0;
-    } else if (cond === "partly-cloudy") {
-      this.jpTempOffsetC = Math.round(-6 + Math.random() * 4);
-      this.jpHumidity = Math.round(54 + Math.random() * 16);
-      this.jpCloudCover = Math.round(25 + Math.random() * 26);
-      this.jpWindSpeed = Math.round(10 + Math.random() * 12);
-      this.jpRainMm = 0;
-    } else if (cond === "cloudy") {
-      this.jpTempOffsetC = Math.round(-8 + Math.random() * 3);
-      this.jpHumidity = Math.round(66 + Math.random() * 16);
-      this.jpCloudCover = Math.round(66 + Math.random() * 24);
-      this.jpWindSpeed = Math.round(12 + Math.random() * 14);
-      this.jpRainMm = 0;
-    } else if (cond === "fog") {
-      this.jpTempOffsetC = Math.round(-10 + Math.random() * 3);
-      this.jpHumidity = Math.round(86 + Math.random() * 10);
-      this.jpCloudCover = Math.round(60 + Math.random() * 26);
-      this.jpWindSpeed = Math.round(4 + Math.random() * 8);
-      this.jpRainMm = 0;
-    } else if (cond === "drizzle") {
-      this.jpTempOffsetC = Math.round(-10 + Math.random() * 3);
-      this.jpHumidity = Math.round(82 + Math.random() * 12);
-      this.jpCloudCover = Math.round(74 + Math.random() * 18);
-      this.jpWindSpeed = Math.round(14 + Math.random() * 10);
-      this.jpRainMm = Number((0.4 + Math.random() * 0.7).toFixed(1));
-    } else if (cond === "rain") {
-      this.jpTempOffsetC = Math.round(-11 + Math.random() * 3);
-      this.jpHumidity = Math.round(86 + Math.random() * 10);
-      this.jpCloudCover = Math.round(82 + Math.random() * 15);
-      this.jpWindSpeed = Math.round(18 + Math.random() * 12);
-      this.jpRainMm = Number((2.0 + Math.random() * 4.5).toFixed(1));
-    } else if (cond === "snow") {
-      this.jpTempOffsetC = Math.round(-16 + Math.random() * 4);
-      this.jpHumidity = Math.round(76 + Math.random() * 16);
-      this.jpCloudCover = Math.round(70 + Math.random() * 22);
-      this.jpWindSpeed = Math.round(14 + Math.random() * 12);
-      this.jpRainMm = 0;
+    if (region === "fishing-island") {
+      // Đảo Làng Chài: đảo biển ôn hòa, ấm áp, KHÔNG tuyết rơi
+      if (r < 0.36) cond = "clear";
+      else if (r < 0.72) cond = "partly-cloudy";
+      else if (r < 0.88) cond = "cloudy";
+      else cond = "drizzle";
+      this.jpTargetTempC = cond === "clear" ? 24 : cond === "partly-cloudy" ? 22 : cond === "cloudy" ? 20 : 19;
+      this.jpTargetHumidity = cond === "drizzle" ? 82 : 66;
+      this.jpTargetCloudCover = cond === "clear" ? 12 : cond === "partly-cloudy" ? 32 : 70;
+      this.jpTargetWindSpeed = cond === "drizzle" ? 18 : 12;
+      this.jpTargetRainMm = cond === "drizzle" ? 0.8 : 0;
+      this.jpTargetSnowIntensity = 0;
+    } else if (region === "city") {
+      // Thành phố Tokyo: ấm áp ôn đới dễ chịu (17..23°C), không tuyết
+      if (r < 0.34) cond = "clear";
+      else if (r < 0.70) cond = "partly-cloudy";
+      else if (r < 0.88) cond = "cloudy";
+      else cond = "drizzle";
+      this.jpTargetTempC = cond === "clear" ? 22 : cond === "partly-cloudy" ? 20 : cond === "cloudy" ? 18 : 17;
+      this.jpTargetHumidity = cond === "drizzle" ? 80 : 60;
+      this.jpTargetCloudCover = cond === "clear" ? 14 : cond === "partly-cloudy" ? 34 : 72;
+      this.jpTargetWindSpeed = cond === "drizzle" ? 15 : 10;
+      this.jpTargetRainMm = cond === "drizzle" ? 0.6 : 0;
+      this.jpTargetSnowIntensity = 0;
+    } else if (region === "plains") {
+      // Vùng Vàng Kyoto: mát mẻ ôn đới (14..20°C), sương nhẹ hoặc mưa nhẹ, không tuyết
+      if (r < 0.25) cond = "clear";
+      else if (r < 0.56) cond = "partly-cloudy";
+      else if (r < 0.76) cond = "cloudy";
+      else if (r < 0.90) cond = "fog";
+      else cond = "rain";
+      this.jpTargetTempC = cond === "clear" ? 19 : cond === "partly-cloudy" ? 17 : cond === "fog" ? 15 : 14;
+      this.jpTargetHumidity = cond === "fog" || cond === "rain" ? 84 : 65;
+      this.jpTargetCloudCover = cond === "clear" ? 16 : cond === "partly-cloudy" ? 38 : 78;
+      this.jpTargetWindSpeed = cond === "rain" ? 20 : 13;
+      this.jpTargetRainMm = cond === "rain" ? 2.4 : 0;
+      this.jpTargetSnowIntensity = 0;
     } else {
-      this.jpTempOffsetC = Math.round(-22 + Math.random() * 5);
-      this.jpHumidity = Math.round(85 + Math.random() * 12);
-      this.jpCloudCover = 96;
-      this.jpWindSpeed = Math.round(28 + Math.random() * 14);
-      this.jpRainMm = 0;
+      // Vùng Núi Tuyết Bắc: dưới chân núi lạnh vừa vừa (+1..+6°C), lên cao mới rét đậm theo elevation
+      if (r < 0.14) cond = "fog";
+      else if (r < 0.65) cond = "snow";
+      else cond = "blizzard";
+      this.jpTargetTempC = cond === "fog" ? 6 : cond === "snow" ? 3 : -1;
+      this.jpTargetHumidity = 84;
+      this.jpTargetCloudCover = cond === "blizzard" ? 95 : 78;
+      this.jpTargetWindSpeed = cond === "blizzard" ? 34 : 20;
+      this.jpTargetRainMm = 0;
+      this.jpTargetSnowIntensity = cond === "blizzard" ? 1.0 : cond === "snow" ? 0.72 : 0.3;
     }
 
+    this.jpCondition = cond;
+    this.jpTargetWindDeg = Math.floor(Math.random() * 360);
     // Re-roll randomly every 3 to 5 minutes during exploration
     this.nextJpWeatherShiftAt = nowMs + 180_000 + Math.floor(Math.random() * 120_000);
   }
@@ -431,6 +459,7 @@ export class HanoiWeatherService {
       | "leafIntensity"
       | "nightFactor"
     >,
+    overrideSnowIntensity?: number,
   ): EnvironmentState {
     const h = base.fractionalHour;
 
@@ -449,9 +478,11 @@ export class HanoiWeatherService {
     else if (base.condition === "rain") rainIntensity = Math.max(0.68, Math.min(0.95, 0.55 + base.rainMm * 0.08));
     else if (base.condition === "storm") rainIntensity = 1.0;
 
-    let snowIntensity = 0;
-    if (base.condition === "snow") snowIntensity = 0.65;
-    else if (base.condition === "blizzard") snowIntensity = 1.0;
+    let snowIntensity = overrideSnowIntensity !== undefined ? overrideSnowIntensity : 0;
+    if (overrideSnowIntensity === undefined) {
+      if (base.condition === "snow") snowIntensity = 0.78;
+      else if (base.condition === "blizzard") snowIntensity = 1.0;
+    }
 
     const sunIntensity =
       Math.max(0, 1 - nightFactor) *

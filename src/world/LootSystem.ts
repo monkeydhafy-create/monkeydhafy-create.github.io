@@ -949,6 +949,503 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
     description: "Vòng chắn kiếm Samurai rèn từ sắt cổ khảm vàng thời Edo.",
     iconSrc: "assets/world/items/a_jp_katana_tsuba.png",
   },
+  // === +16 NEW JAPANESE LOOT ITEMS (C, B, A, S) ===
+  {
+    id: "c_jp_chopsticks_case",
+    name: "Hộp Đũa Gỗ Sơn Mài",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.25,
+    valueGold: 19,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Bộ đũa gỗ sơn mài đen viền đỏ thường thấy tại các quán ăn Tokyo.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='24' width='44' height='16' rx='4' fill='%231e1b4b' stroke='%23f59e0b' stroke-width='2'/%3E%3Cpath d='M14 20L52 12M14 25L52 17' stroke='%23dc2626' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23fbbf24'/%3E%3C/svg%3E",
+  },
+  {
+    id: "c_jp_ramen_bowl",
+    name: "Tô Mì Ramen Sứ Cổ",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.7,
+    valueGold: 25,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Tô sứ vẽ sóng biển xanh trắng nặng tay từ tiệm mì cổ.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 26h44c0 16-9 26-22 26S10 42 10 26z' fill='%23f8fafc' stroke='%231d4ed8' stroke-width='2.5'/%3E%3Cellipse cx='32' cy='26' rx='22' ry='6' fill='%23fde68a' stroke='%231d4ed8' stroke-width='2'/%3E%3Cpath d='M20 14l14 10M28 11l12 12' stroke='%2392400e' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E",
+  },
+  {
+    id: "c_jp_teru_doll",
+    name: "Búp Bê Cầu Nắng Teru Teru",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.12,
+    valueGold: 21,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Búp bê vải trắng treo hiên nhà cầu trời tạnh ráo trước bão tuyết.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 24L18 52h28z' fill='%23f1f5f9' stroke='%2364748b' stroke-width='2'/%3E%3Ccircle cx='32' cy='20' r='10' fill='%23ffffff' stroke='%2364748b' stroke-width='2'/%3E%3Cpath d='M26 29h12' stroke='%23ef4444' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='29' cy='19' r='1.5' fill='%230f172a'/%3E%3Ccircle cx='35' cy='19' r='1.5' fill='%230f172a'/%3E%3C/svg%3E",
+  },
+  {
+    id: "c_jp_bamboo_flute",
+    name: "Sáo Trúc Shakuhachi",
+    rarity: "C",
+    w: 1,
+    h: 2,
+    weightKg: 0.4,
+    valueGold: 28,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Ống sáo trúc 5 lỗ cổ truyền của các tăng lữ du hành Kyoto.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='26' y='6' width='12' height='52' rx='4' fill='%23d97706' stroke='%2378350f' stroke-width='2'/%3E%3Ccircle cx='32' cy='22' r='2.3' fill='%23451a03'/%3E%3Ccircle cx='32' cy='31' r='2.3' fill='%23451a03'/%3E%3Ccircle cx='32' cy='40' r='2.3' fill='%23451a03'/%3E%3Ccircle cx='32' cy='49' r='2.3' fill='%23451a03'/%3E%3C/svg%3E",
+  },
+  {
+    id: "b_jp_shuriken_set",
+    name: "Bộ Phi Tiêu Shuriken Bạc",
+    rarity: "B",
+    w: 1,
+    h: 1,
+    weightKg: 0.45,
+    valueGold: 92,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Phi tiêu 4 cánh rèn từ thép lạnh dùng trong võ đường Iga.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 6l6 20 20 6-20 6-6 20-6-20-20-6 20-6z' fill='%23cbd5e1' stroke='%23334155' stroke-width='2.5'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%230f172a' stroke='%2394a3b8' stroke-width='2'/%3E%3C/svg%3E",
+  },
+  {
+    id: "b_jp_matcha_whisk",
+    name: "Bộ Trà Đạo Matcha Kyoto",
+    rarity: "B",
+    w: 2,
+    h: 1,
+    weightKg: 0.85,
+    valueGold: 118,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Chén trà gốm Raku kèm chổi đánh trà tre Chasen tinh xảo.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 30h26c0 12-5 19-13 19s-13-7-13-19z' fill='%231e293b' stroke='%23eab308' stroke-width='2'/%3E%3Cellipse cx='23' cy='30' rx='13' ry='4' fill='%234ade80'/%3E%3Cpath d='M44 18h10l3 24H41z' fill='%23f59e0b' stroke='%2378350f' stroke-width='2'/%3E%3C/svg%3E",
+  },
+  {
+    id: "b_jp_koinobori_flag",
+    name: "Cờ Cá Chép Koinobori Lụa",
+    rarity: "B",
+    w: 1,
+    h: 2,
+    weightKg: 0.35,
+    valueGold: 108,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Cờ cá chép lụa rực rỡ treo cao biểu trưng cho sức mạnh vượt vũ môn.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cline x1='14' y1='8' x2='14' y2='58' stroke='%2378350f' stroke-width='3'/%3E%3Cpath d='M16 14c16-4 28 2 38-2l-6 10 6 10c-10-4-22 2-38-2z' fill='%23ef4444' stroke='%23fef08a' stroke-width='2'/%3E%3Ccircle cx='24' cy='21' r='2.5' fill='%23ffffff'/%3E%3C/svg%3E",
+  },
+  {
+    id: "b_jp_snow_lantern_mini",
+    name: "Đèn Đá Tuyết Yukimi Cổ",
+    rarity: "B",
+    w: 2,
+    h: 2,
+    weightKg: 2.2,
+    valueGold: 142,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Đèn đá 3 chân chạm khắc rêu phong thường đặt bên hồ tuyết Onsen.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M14 26l18-12 18 12z' fill='%2394a3b8' stroke='%23334155' stroke-width='2'/%3E%3Crect x='22' y='26' width='20' height='16' fill='%23475569' stroke='%23334155' stroke-width='2'/%3E%3Crect x='27' y='30' width='10' height='8' fill='%23fde047'/%3E%3Cpath d='M20 42l-4 14M44 42l4 14M32 42v14' stroke='%2364748b' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_kitsune_mask",
+    name: "Mặt Nạ Hồ Ly Kitsune Vàng",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 0.8,
+    valueGold: 275,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Mặt nạ cáo chín đuôi sơn trắng viền son đỏ thếp vàng của đền Inari.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M16 10l10 12h12l10-12 2 22-18 22-18-22z' fill='%23f8fafc' stroke='%23dc2626' stroke-width='2.5'/%3E%3Cpath d='M20 28l8 4-6 3zM44 28l-8 4 6 3z' fill='%23dc2626'/%3E%3Ccircle cx='32' cy='23' r='3' fill='%23f59e0b'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_kunai_scroll",
+    name: "Bộ Kunai & Cuộn Ấn Ninja",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 1.3,
+    valueGold: 315,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Dao găm Kunai thép đen đi kèm cuộn mật thuật của làng Iga.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='16' width='28' height='36' rx='4' fill='%23fef3c7' stroke='%23b45309' stroke-width='2.5'/%3E%3Cpath d='M48 10l6 20-6 12-6-12z' fill='%23334155' stroke='%23cbd5e1' stroke-width='2'/%3E%3Ccircle cx='48' cy='50' r='5' fill='none' stroke='%2394a3b8' stroke-width='2.5'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_sakura_tea_caddy",
+    name: "Hộp Trà Natsume Khảm Xà Cừ",
+    rarity: "A",
+    w: 1,
+    h: 2,
+    weightKg: 0.65,
+    valueGold: 290,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Hộp đựng bột trà sơn mài đen khảm hoa anh đào xà cừ lấp lánh.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='16' y='14' width='32' height='38' rx='10' fill='%230f172a' stroke='%23f472b6' stroke-width='2.5'/%3E%3Cline x1='16' y1='25' x2='48' y2='25' stroke='%23fbbf24' stroke-width='2.5'/%3E%3Ccircle cx='32' cy='38' r='6' fill='%23f9a8d4'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_tessen_fan",
+    name: "Quạt Sắt Chiến Tessen Vàng",
+    rarity: "A",
+    w: 2,
+    h: 1,
+    weightKg: 1.1,
+    valueGold: 345,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Vũ khí chỉ huy bằng thép rèn của các võ tướng Samurai trên chiến trường.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 50L10 22a30 30 0 0 1 44 0z' fill='%23dc2626' stroke='%23fbbf24' stroke-width='3'/%3E%3Ccircle cx='32' cy='28' r='7' fill='%23fef08a'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_magatama_crown",
+    name: "Chuỗi Ngọc Yasakani Magatama",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 1.2,
+    valueGold: 2150,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Chuỗi ngọc câu tam bảo hoàng gia tỏa ánh lục bảo.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23fbbf24' stroke-width='3'/%3E%3Ccircle cx='32' cy='10' r='6' fill='%2310b981' stroke='%23fef08a' stroke-width='2'/%3E%3Ccircle cx='14' cy='42' r='6' fill='%2310b981' stroke='%23fef08a' stroke-width='2'/%3E%3Ccircle cx='50' cy='42' r='6' fill='%2310b981' stroke='%23fef08a' stroke-width='2'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_kusanagi_blade",
+    name: "Thần Kiếm Thảo Thế Kusanagi",
+    rarity: "S",
+    w: 2,
+    h: 3,
+    weightKg: 3.4,
+    valueGold: 2650,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Thần kiếm huyền thoại chém gió rẽ mây nơi đỉnh tuyết.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M48 8L20 44l6 4L52 12z' fill='%23e0f2fe' stroke='%2338bdf8' stroke-width='2.5'/%3E%3Cpath d='M16 40l12 10M18 46l-8 10' stroke='%23fbbf24' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_shogun_yoroi",
+    name: "Chiến Giáp Đỏ O-Yoroi Shogun",
+    rarity: "S",
+    w: 3,
+    h: 3,
+    weightKg: 5.2,
+    valueGold: 2950,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Bộ đại giáp sơn son thếp vàng của Mạc phủ Tướng quân.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M16 14h32l6 16-6 24H16l-6-24z' fill='%23991b1b' stroke='%23fbbf24' stroke-width='2.5'/%3E%3Cpath d='M20 26h24M20 36h24M20 46h24' stroke='%23fde047' stroke-width='2.5'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_phoenix_inro",
+    name: "Ấn Triện Phượng Hoàng Vàng",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 0.9,
+    valueGold: 1850,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Hộp ấn triện Inro chạm nổi phượng hoàng dát vàng ròng.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='18' y='14' width='28' height='36' rx='6' fill='%237c2d12' stroke='%23fbbf24' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='9' fill='%23f59e0b' stroke='%23fef08a' stroke-width='2'/%3E%3Cpath d='M32 8v6M32 50v6' stroke='%23ef4444' stroke-width='3'/%3E%3C/svg%3E",
+  },
+  // === +12 MORE DIVERSE JAPANESE ISLAND & SNOW LOOT ITEMS ===
+  {
+    id: "c_jp_sea_shell_charm",
+    name: "Chuông Gió Vỏ Sò Biển Đông",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.18,
+    valueGold: 23,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Chuông gió thủy tinh treo vỏ sò nhặt ở bến cảng Nhật Bản.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='24' r='13' fill='%23bae6fd' stroke='%230284c7' stroke-width='2.5'/%3E%3Cpath d='M32 37v15' stroke='%23ef4444' stroke-width='2.5'/%3E%3Crect x='27' y='44' width='10' height='14' fill='%23fef3c7' stroke='%23d97706' stroke-width='1.5'/%3E%3C/svg%3E",
+  },
+  {
+    id: "c_jp_gacha_capsule",
+    name: "Viên Nang Gacha Akihabara",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.15,
+    valueGold: 27,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Bóng nhựa đồ chơi sưu tầm từ khu phố điện tử Akihabara.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='18' fill='%23f43f5e' stroke='%231e293b' stroke-width='2.5'/%3E%3Cpath d='M14 32a18 18 0 0 0 36 0z' fill='%23f8fafc'/%3E%3Cline x1='14' y1='32' x2='50' y2='32' stroke='%231e293b' stroke-width='3'/%3E%3C/svg%3E",
+  },
+  {
+    id: "c_jp_onigiri_box",
+    name: "Hộp Cơm Nắm Onigiri Gốm",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.5,
+    valueGold: 24,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Hộp Bento sơn mài đựng cơm nắm rong biển truyền thống.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon points='32,12 12,48 52,48' fill='%23f8fafc' stroke='%23334155' stroke-width='2.5' stroke-linejoin='round'/%3E%3Crect x='23' y='34' width='18' height='14' fill='%230f172a'/%3E%3C/svg%3E",
+  },
+  {
+    id: "b_jp_ukiyoe_print",
+    name: "Tranh Khắc Gỗ Sóng Lớn Ukiyo-e",
+    rarity: "B",
+    w: 2,
+    h: 1,
+    weightKg: 0.6,
+    valueGold: 128,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Bản in gỗ cổ mô tả con sóng dữ ngoài khơi biển Nhật Bản.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='8' y='14' width='48' height='36' rx='3' fill='%23fef3c7' stroke='%2378350f' stroke-width='2.5'/%3E%3Cpath d='M12 40c8-14 20-16 28-6 4 5 10 4 12 0v12H12z' fill='%231d4ed8'/%3E%3Ccircle cx='44' cy='24' r='5' fill='%23ef4444'/%3E%3C/svg%3E",
+  },
+  {
+    id: "b_jp_black_pearl",
+    name: "Ngọc Trai Đen Biển Đảo Shogun",
+    rarity: "B",
+    w: 1,
+    h: 1,
+    weightKg: 0.2,
+    valueGold: 148,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Viên ngọc trai đen lấp lánh khai thác ở vùng biển sâu ngoài đảo.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='16' fill='%231e1b4b' stroke='%2394a3b8' stroke-width='2.5'/%3E%3Ccircle cx='26' cy='26' r='5' fill='%23e0f2fe' opacity='0.8'/%3E%3C/svg%3E",
+  },
+  {
+    id: "b_jp_snow_compass",
+    name: "La Bàn Hàng Hải Thủy Thủ Edo",
+    rarity: "B",
+    w: 1,
+    h: 1,
+    weightKg: 0.45,
+    valueGold: 132,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "La bàn đồng cổ dùng định hướng vượt biển ra đảo biệt lập.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='20' fill='%23fef3c7' stroke='%23b45309' stroke-width='4'/%3E%3Cpolygon points='32,16 37,32 32,48 27,32' fill='%23dc2626'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_coral_statue",
+    name: "Tượng Rồng San Hô Đỏ Hải Đảo",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 1.9,
+    valueGold: 335,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Tượng rồng biển tạc từ san hô đỏ quý hiếm tại đảo biệt lập.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 52h24l-4-14c6-6 8-16 0-24-6-4-14-2-16 6l6 4c-6 4-8 10-4 16z' fill='%23ef4444' stroke='%23fef08a' stroke-width='2'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_ice_crystal_fan",
+    name: "Quạt Pha Lê Tuyết Sơn Hokkaido",
+    rarity: "A",
+    w: 2,
+    h: 1,
+    weightKg: 0.8,
+    valueGold: 310,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Quạt ngọc băng kết tinh từ đỉnh núi tuyết quanh năm giá rét.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 50L10 22a30 30 0 0 1 44 0z' fill='%237dd3fc' stroke='%23e0f2fe' stroke-width='3'/%3E%3Ccircle cx='32' cy='28' r='6' fill='%23ffffff'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_shamisen_lute",
+    name: "Đàn Đáy Shamisen Khảm Vàng",
+    rarity: "A",
+    w: 1,
+    h: 3,
+    weightKg: 1.5,
+    valueGold: 365,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Nhạc cụ truyền thống ba dây quý giá của các trà quán Kyoto.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='29' y='8' width='6' height='30' fill='%2378350f' stroke='%23fbbf24' stroke-width='1.5'/%3E%3Crect x='18' y='34' width='28' height='22' rx='4' fill='%23fef3c7' stroke='%2392400e' stroke-width='2.5'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_ryugu_pearl",
+    name: "Long Châu Thủy Cung Ryugu",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 1.4,
+    valueGold: 2450,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Hải Đảo — Viên ngọc rồng phát quang từ thủy cung ngoài khơi.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='20' fill='%230284c7' stroke='%23fde047' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='11' fill='%2338bdf8'/%3E%3Ccircle cx='27' cy='26' r='4' fill='%23ffffff'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_yuki_onna_crown",
+    name: "Vương Miện Băng Hồn Yuki-Onna",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 1.1,
+    valueGold: 2300,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Núi Tuyết — Vương miện băng tinh khiết không bao giờ tan chảy.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon points='12,48 16,20 26,32 32,12 38,32 48,20 52,48' fill='%23bae6fd' stroke='%23e0f2fe' stroke-width='2.5'/%3E%3Ccircle cx='32' cy='36' r='5' fill='%2338bdf8'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_shogun_golden_bell",
+    name: "Đại Hồng Chung Vàng Mạc Phủ",
+    rarity: "S",
+    w: 3,
+    h: 3,
+    weightKg: 6.0,
+    valueGold: 3200,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Chuông đồng dát vàng ròng trấn giữ đảo thành Shogun.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 18h24l6 32H14z' fill='%23d97706' stroke='%23fef08a' stroke-width='3'/%3E%3Crect x='26' y='10' width='12' height='8' fill='%23fbbf24'/%3E%3Ccircle cx='32' cy='35' r='6' fill='%23991b1b' stroke='%23fde047' stroke-width='2'/%3E%3C/svg%3E",
+  },
+  // === +10 MORE HIGH-VALUE GOLD (A) & RED (S) JAPAN LOOT ITEMS ===
+  {
+    id: "a_jp_gold_maneki_cat",
+    name: "Mèo Thần Tài Vàng Ròng Ginza",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 1.8,
+    valueGold: 390,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Tượng mèo Maneki-Neko đúc vàng nguyên khối từ sàn đấu giá Ginza.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='36' r='16' fill='%23fbbf24' stroke='%2392400e' stroke-width='2.5'/%3E%3Cpolygon points='20,24 22,12 30,22' fill='%23fbbf24' stroke='%2392400e' stroke-width='2'/%3E%3Cpolygon points='44,24 42,12 34,22' fill='%23fbbf24' stroke='%2392400e' stroke-width='2'/%3E%3Crect x='24' y='38' width='16' height='10' rx='2' fill='%23dc2626'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_lacquer_tea_set",
+    name: "Bộ Ấm Trà Hoàng Gia Sơn Mài",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 1.4,
+    valueGold: 375,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Ấm trà gốm cổ khảm vàng dùng trong lễ trà đạo của quý tộc Kyoto.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='36' r='15' fill='%231e1b4b' stroke='%23fbbf24' stroke-width='2.5'/%3E%3Cpath d='M12 32l8 4M47 30c6 0 8 8 0 10' fill='none' stroke='%23fbbf24' stroke-width='3'/%3E%3Crect x='26' y='18' width='12' height='5' rx='2' fill='%23fbbf24'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_ninja_smoke_orb",
+    name: "Ngọc Khói Bí Truyền Làng Iga",
+    rarity: "A",
+    w: 1,
+    h: 2,
+    weightKg: 0.7,
+    valueGold: 350,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Cầu ngọc chứa tinh chất ẩn thân của thượng nhẫn Iga trên đỉnh tuyết.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='18' fill='%234c1d95' stroke='%23c4b5fd' stroke-width='2.5'/%3E%3Ccircle cx='27' cy='26' r='5' fill='%23ede9fe' opacity='0.75'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_samurai_banner",
+    name: "Cờ Hiệu Gia Huy Sashimono",
+    rarity: "A",
+    w: 1,
+    h: 3,
+    weightKg: 1.9,
+    valueGold: 410,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Lá cờ trận thêu chỉ vàng biểu trưng cho gia tộc Samurai hùng mạnh.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cline x1='18' y1='8' x2='18' y2='58' stroke='%2378350f' stroke-width='3.5'/%3E%3Crect x='20' y='12' width='26' height='34' fill='%23b91c1c' stroke='%23fbbf24' stroke-width='2.5'/%3E%3Ccircle cx='33' cy='29' r='7' fill='%23fde047'/%3E%3C/svg%3E",
+  },
+  {
+    id: "a_jp_pearl_abalone_box",
+    name: "Hộp Châu Báu Khảm Trai Biển",
+    rarity: "A",
+    w: 2,
+    h: 1,
+    weightKg: 1.1,
+    valueGold: 380,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Hộp gỗ quý khảm xà cừ chứa nhiều ngọc trai từ đảo làng chài.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='20' width='44' height='28' rx='4' fill='%230f766e' stroke='%23fef08a' stroke-width='2.5'/%3E%3Ccircle cx='32' cy='34' r='6' fill='%23e0f2fe'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_amaterasu_sun_disc",
+    name: "Nhật Luân Thần Đạo Amaterasu",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 2.1,
+    valueGold: 3100,
+    homeBiome: "plains",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Đĩa vàng mặt trời tỏa hào quang bất diệt của thần đạo.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='16' fill='%23f59e0b' stroke='%23fef08a' stroke-width='3'/%3E%3Cpath d='M32 6v8M32 50v8M6 32h8M50 32h8M14 14l6 6M44 44l6 6M50 14l-6 6M14 50l6-6' stroke='%23fde047' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_masamune_nodachi",
+    name: "Thái Đao Hoàng Kim Masamune",
+    rarity: "S",
+    w: 2,
+    h: 3,
+    weightKg: 3.9,
+    valueGold: 3450,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Bảo đao tối thượng của danh sư rèn kiếm Masamune.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M50 8L18 46l5 4L54 12z' fill='%23fef08a' stroke='%23f59e0b' stroke-width='2'/%3E%3Cpath d='M14 42l12 10M16 48l-8 10' stroke='%23dc2626' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_ryujin_coral_crown",
+    name: "Vương Miện Hải Vương Ryujin",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 1.7,
+    valueGold: 2750,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Đảo Làng Chài — Vương miện rồng biển khảm hồng ngọc & ngọc trai.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon points='10,48 16,18 26,32 32,12 38,32 48,18 54,48' fill='%230284c7' stroke='%23fde047' stroke-width='2.5'/%3E%3Ccircle cx='32' cy='38' r='5' fill='%23f43f5e'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_imperial_koto",
+    name: "Cổ Cầm Hoàng Gia Koto Dát Vàng",
+    rarity: "S",
+    w: 3,
+    h: 2,
+    weightKg: 4.1,
+    valueGold: 2900,
+    homeBiome: "city",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Nhật Bản — Đàn tranh 13 dây chạm khắc phượng hoàng cung đình.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='8' y='22' width='48' height='20' rx='4' fill='%2378350f' stroke='%23fbbf24' stroke-width='2.5'/%3E%3Cpath d='M12 28h40M12 32h40M12 36h40' stroke='%23fef08a' stroke-width='1.5'/%3E%3C/svg%3E",
+  },
+  {
+    id: "s_jp_frost_fox_seal",
+    name: "Thần Ấn Cửu Vĩ Hồ Tuyết Sơn",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 1.5,
+    valueGold: 3300,
+    homeBiome: "countryside",
+    mapOrigin: "japan",
+    description: "Siêu phẩm Đỉnh Tuyết — Ngọc ấn cửu vĩ hồ trấn giữ đỉnh núi tuyết vĩnh cửu.",
+    iconSrc: "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='16' y='16' width='32' height='32' rx='6' fill='%23be123c' stroke='%23fde047' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='9' fill='%23fef08a'/%3E%3C/svg%3E",
+  },
   // === REPUTATION-EXCLUSIVE S-TIER RED ITEMS ===
   {
     id: "rep_gym_license",
@@ -1448,6 +1945,9 @@ export interface PersistedInventoryState {
   homeStorageId?: string;
   homeItems: GridItemInstance[];
   homeContract?: HomeUpgradeContract | null;
+  jpHomeStorageId?: string;
+  jpHomeItems?: GridItemInstance[];
+  jpHomeContract?: HomeUpgradeContract | null;
   homeGymId?: string;
   homeGymContract?: FacilityUpgradeContract | null;
   homeTreadmillId?: string;
@@ -1458,6 +1958,7 @@ export interface PersistedInventoryState {
   safeboxItems: GridItemInstance[];
   safeboxContract: SafeboxUpgradeContract | null;
   collectionHall?: Record<string, CollectionSlotState>;
+  jpCollectionHall?: Record<string, CollectionSlotState>;
   containers: Record<string, ContainerLootState>;
   containerPuzzles?: Record<string, ContainerPuzzleLockState>;
   mythicPity: number;
@@ -1508,6 +2009,9 @@ export function createDefaultInventoryState(): PersistedInventoryState {
     homeStorageId: "home_4x4",
     homeItems: [],
     homeContract: generateHomeContract("home_7x7"),
+    jpHomeStorageId: "home_4x4",
+    jpHomeItems: [],
+    jpHomeContract: generateHomeContract("home_7x7"),
     homeGymId: "gym_0",
     homeGymContract: generateGymContract("gym_5"),
     homeTreadmillId: "treadmill_0",
@@ -1518,6 +2022,7 @@ export function createDefaultInventoryState(): PersistedInventoryState {
     safeboxItems: [],
     safeboxContract: generateSafeboxContract("safe_3x3"),
     collectionHall: {},
+    jpCollectionHall: {},
     containers: {},
     containerPuzzles: {},
     mythicPity: 0,
@@ -1620,6 +2125,23 @@ function cloneInventoryState(state: PersistedInventoryState): PersistedInventory
     generateAuctionContract,
   );
 
+  const jpHomeStorageId =
+    state.jpHomeStorageId && HOME_STORAGE_BY_ID[state.jpHomeStorageId]
+      ? state.jpHomeStorageId
+      : "home_4x4";
+  const nextJpHome = getNextHomeTier(jpHomeStorageId);
+  const jpHomeContract =
+    state.jpHomeContract !== undefined
+      ? state.jpHomeContract
+        ? {
+            targetHomeId: state.jpHomeContract.targetHomeId,
+            requirements: state.jpHomeContract.requirements.map((r) => ({ ...r })),
+          }
+        : null
+      : nextJpHome
+        ? generateHomeContract(nextJpHome.id)
+        : null;
+
   return {
     gold: state.gold,
     backpackId: state.backpackId !== undefined ? state.backpackId : "starter_4x4",
@@ -1627,9 +2149,12 @@ function cloneInventoryState(state: PersistedInventoryState): PersistedInventory
     backpackItems: state.backpackItems.map((it) => ({ ...it })),
     homeStorageId,
     homeItems: (state.homeItems ?? []).map((it) => ({ ...it })),
+    jpHomeStorageId,
+    jpHomeItems: (state.jpHomeItems ?? []).map((it) => ({ ...it })),
     torsoItems: (state.torsoItems ?? []).map((it) => ({ ...it })),
     legsItems: (state.legsItems ?? []).map((it) => ({ ...it })),
     homeContract,
+    jpHomeContract,
     homeGymId,
     homeGymContract,
     homeTreadmillId,
@@ -1640,6 +2165,7 @@ function cloneInventoryState(state: PersistedInventoryState): PersistedInventory
     safeboxItems: (state.safeboxItems ?? []).map((it) => ({ ...it })),
     safeboxContract: contract,
     collectionHall: cloneCollectionHall(state.collectionHall),
+    jpCollectionHall: cloneCollectionHall(state.jpCollectionHall),
     containers: Object.fromEntries(
       Object.entries(state.containers).map(([k, c]) => [
         k,
@@ -1771,8 +2297,33 @@ export class InventoryManager {
   }
 
   private equippedGear: EquippedGear | null = null;
+  private activeMapId: MapId = "vietnam";
   private estateStorageCols = 0;
   private estateStorageRows = 0;
+
+  public setActiveMapId(mapId: MapId): void {
+    this.activeMapId = mapId;
+  }
+
+  public getActiveMapId(): MapId {
+    return this.activeMapId;
+  }
+
+  private getMutableHomeItems(): GridItemInstance[] {
+    if (this.activeMapId === "japan") {
+      if (!this.state.jpHomeItems) this.state.jpHomeItems = [];
+      return this.state.jpHomeItems;
+    }
+    return this.state.homeItems;
+  }
+
+  private setMutableHomeItems(items: GridItemInstance[]): void {
+    if (this.activeMapId === "japan") {
+      this.state.jpHomeItems = items;
+    } else {
+      this.state.homeItems = items;
+    }
+  }
 
   public setEstateStorageBonus(cols: number, rows: number): void {
     this.estateStorageCols = Math.max(0, cols);
@@ -1815,7 +2366,10 @@ export class InventoryManager {
   }
 
   public getHomeTier(): SafeboxTierDef {
-    const id = this.state.homeStorageId ?? "home_4x4";
+    const id =
+      this.activeMapId === "japan"
+        ? (this.state.jpHomeStorageId ?? "home_4x4")
+        : (this.state.homeStorageId ?? "home_4x4");
     const base = HOME_STORAGE_BY_ID[id] ?? HOME_STORAGE_CATALOG[0];
     if (this.estateStorageCols > 0 || this.estateStorageRows > 0) {
       return {
@@ -1828,6 +2382,13 @@ export class InventoryManager {
   }
 
   public getHomeContract(): HomeUpgradeContract | null {
+    if (this.activeMapId === "japan") {
+      if (this.state.jpHomeContract === undefined) {
+        const nextTier = getNextHomeTier(this.state.jpHomeStorageId ?? "home_4x4");
+        this.state.jpHomeContract = nextTier ? generateHomeContract(nextTier.id) : null;
+      }
+      return this.state.jpHomeContract ?? null;
+    }
     return this.state.homeContract ?? null;
   }
 
@@ -1912,7 +2473,7 @@ export class InventoryManager {
   }
 
   public getHomeItems(): readonly GridItemInstance[] {
-    return this.state.homeItems;
+    return this.getMutableHomeItems();
   }
 
   private getContainerExpiresAt(container: ContainerLootState): number {
@@ -2165,7 +2726,7 @@ export class InventoryManager {
     }
     if (zone === "home") {
       const ht = this.getHomeTier();
-      return { cols: ht.cols, rows: ht.rows, items: this.state.homeItems };
+      return { cols: ht.cols, rows: ht.rows, items: this.getMutableHomeItems() };
     }
     if (zone === "torso") {
       const pocket = this.getPocketSize("torso");
@@ -2577,7 +3138,7 @@ export class InventoryManager {
       };
     }
 
-    if (sourceZone === "home") this.state.homeItems = clonedSrcItems;
+    if (sourceZone === "home") this.setMutableHomeItems(clonedSrcItems);
     else if (sourceZone === "safebox") this.state.safeboxItems = clonedSrcItems;
     else if (containerId && this.state.containers[containerId]) {
       this.state.containers[containerId].items = clonedSrcItems;
@@ -2824,7 +3385,7 @@ export class InventoryManager {
     const backpack = countIn(this.state.backpackItems);
     const pockets = countIn(this.state.torsoItems ?? []) + countIn(this.state.legsItems ?? []);
     const safebox = countIn(this.state.safeboxItems);
-    const home = countIn(this.state.homeItems);
+    const home = countIn(this.getMutableHomeItems());
     return { total: backpack + pockets + safebox + home, backpack, pockets, safebox, home };
   }
 
@@ -2854,7 +3415,7 @@ export class InventoryManager {
       ["torso", this.state.torsoItems],
       ["legs", this.state.legsItems],
       ["safebox", this.state.safeboxItems],
-      ["home", this.state.homeItems],
+      ["home", this.getMutableHomeItems()],
     ] as const) {
       const idx = list.findIndex((it) => it.itemId === itemId);
       if (idx !== -1) {
@@ -2875,15 +3436,22 @@ export class InventoryManager {
     formatTierSummary: (tier: SafeboxTierDef) => string;
   } {
     if (kind === "home") {
+      const activeContract = this.getHomeContract();
       return {
-        label: "Kho Nhà",
+        label: this.activeMapId === "japan" ? "Kho Nhà Nhật Bản" : "Kho Nhà Việt Nam",
         maxLabel: "9×16",
-        targetId: this.state.homeContract?.targetHomeId ?? null,
-        requirements: this.state.homeContract?.requirements ?? null,
+        targetId: activeContract?.targetHomeId ?? null,
+        requirements: activeContract?.requirements ?? null,
         applyUpgrade: (id) => {
-          this.state.homeStorageId = id;
           const nextTier = getNextHomeTier(id);
-          this.state.homeContract = nextTier ? generateHomeContract(nextTier.id) : null;
+          const nextContract = nextTier ? generateHomeContract(nextTier.id) : null;
+          if (this.activeMapId === "japan") {
+            this.state.jpHomeStorageId = id;
+            this.state.jpHomeContract = nextContract;
+          } else {
+            this.state.homeStorageId = id;
+            this.state.homeContract = nextContract;
+          }
           return this.getHomeTier();
         },
         formatTierSummary: (t) => `${t.name} (${t.cols}×${t.rows})`,
@@ -3101,8 +3669,12 @@ export class InventoryManager {
     return this.deliverUpgradeItem("treadmill", itemId, atHome);
   }
 
-  public getCollectionSlot(itemId: string): CollectionSlotState {
-    const raw = this.state.collectionHall?.[itemId];
+  private getCollectionMap(mapId: MapId = this.activeMapId): Record<string, CollectionSlotState> | undefined {
+    return mapId === "japan" ? this.state.jpCollectionHall : this.state.collectionHall;
+  }
+
+  public getCollectionSlot(itemId: string, mapId: MapId = this.activeMapId): CollectionSlotState {
+    const raw = this.getCollectionMap(mapId)?.[itemId];
     if (!raw) {
       return { displayed: false, lightLevel: 0, goldLampProgress: 0 };
     }
@@ -3113,15 +3685,25 @@ export class InventoryManager {
     };
   }
 
-  public getCollectionHallStates(): Record<string, CollectionSlotState> {
+  public getCollectionHallStates(mapId: MapId = this.activeMapId): Record<string, CollectionSlotState> {
     const out: Record<string, CollectionSlotState> = {};
     for (const def of COLLECTION_RED_ITEMS) {
-      out[def.id] = this.getCollectionSlot(def.id);
+      out[def.id] = this.getCollectionSlot(def.id, mapId);
     }
     return out;
   }
 
   private writeCollectionSlot(itemId: string, slot: CollectionSlotState): void {
+    const isJp = this.activeMapId === "japan";
+    if (isJp) {
+      if (!this.state.jpCollectionHall) this.state.jpCollectionHall = {};
+      if (!slot.displayed && slot.lightLevel === 0 && slot.goldLampProgress === 0) {
+        delete this.state.jpCollectionHall[itemId];
+      } else {
+        this.state.jpCollectionHall[itemId] = { ...slot };
+      }
+      return;
+    }
     if (!this.state.collectionHall) {
       this.state.collectionHall = {};
     }

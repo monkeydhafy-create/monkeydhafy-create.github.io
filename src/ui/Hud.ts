@@ -3323,14 +3323,16 @@ export class Hud {
     this.renderWardrobeModal();
   }
 
-  public showFaintedHospitalScreen(reason: string, feeGold: number): void {
+  public showFaintedHospitalScreen(reason: string, feeGold: number, confiscatedCount = 0): void {
     this.closeAllModals();
     const hospName = this.scene.getActiveMapId() === "japan" ? "Bệnh Viện Tokyo" : "Bệnh Viện Thành Phố";
     this.hospitalTitleEl.textContent = `🚑 Ngất xỉu do ${reason}!`;
     const feeMsg =
-      feeGold > 0
-        ? `Chi phí cấp cứu ${feeGold} Vàng. Đang phục hồi sức khỏe tại ${hospName}...`
-        : `Đã được đưa về cấp cứu miễn phí tại ${hospName}...`;
+      confiscatedCount > 0
+        ? `Không đủ 2.000🪙 viện phí! Bệnh viện đã tịch thu toàn bộ hành trang (${confiscatedCount} món & đồ mặc). Đang cấp cứu tại ${hospName}...`
+        : feeGold > 0
+          ? `Chi phí cấp cứu ${feeGold.toLocaleString("vi-VN")} Vàng. Đang phục hồi sức khỏe tại ${hospName}...`
+          : `Không đủ 2.000🪙 viện phí! Đã tịch thu toàn bộ hành trang & trang bị. Đang cấp cứu tại ${hospName}...`;
     this.hospitalSubEl.textContent = feeMsg;
     this.hospitalOverlayEl.classList.add("is-open");
     this.updateSurvivalHud();
@@ -3517,6 +3519,12 @@ export class Hud {
     } else if (target.type === "airport") {
       nextClass = "btn-interact is-building";
       nextText = `✈️ Check-in ${target.name} [E]`;
+    } else if (target.type === "ferry") {
+      nextClass = "btn-interact is-building";
+      nextText = `${target.route.label} (${target.route.costGold.toLocaleString("vi-VN")}🪙) [E]`;
+    } else if (target.type === "shinkansen") {
+      nextClass = "btn-interact is-building";
+      nextText = `${target.route.label} (${target.route.costGold.toLocaleString("vi-VN")}🪙) [E]`;
     } else if (target.type === "quest") {
       nextClass = "btn-interact is-shop";
       nextText = `📜 Vào ${target.name} [E]`;
@@ -3583,6 +3591,7 @@ export class Hud {
         if (
           isJapan &&
           c >= JAPAN_SNOW_START_COL &&
+          r <= 29 &&
           tile !== "water" &&
           tile !== "shallow" &&
           tile !== "road" &&
@@ -4333,15 +4342,26 @@ export class Hud {
           this.closeAllModals();
           window.requestAnimationFrame(() => {
             setLoadingProgress(0.75, `Đang hạ cánh xuống ${destLabel}...`);
-            const res = this.scene.flyToMap(targetMap);
-            setLoadingProgress(1, res.ok ? "Đã hạ cánh an toàn!" : res.message);
-            window.setTimeout(() => {
-              hideMapTransitionOverlay();
-              this.showDiscoveryToast(
-                res.ok ? `✈️ Đã hạ cánh tại ${MAP_LABELS[res.activeMapId]}!` : "Không thể xuất cảnh",
-                res.message,
-              );
-            }, 320);
+            let res: { ok: boolean; activeMapId: MapId; message: string } = {
+              ok: false,
+              activeMapId: currentMap,
+              message: "Không thể chuyển bản đồ lúc này.",
+            };
+            try {
+              res = this.scene.flyToMap(targetMap);
+              setLoadingProgress(1, res.ok ? "Đã hạ cánh an toàn!" : res.message);
+            } catch (err) {
+              console.error("[Airport] flyToMap error:", err);
+              setLoadingProgress(1, "Đã xảy ra sự cố khi chuyển vùng.");
+            } finally {
+              window.setTimeout(() => {
+                hideMapTransitionOverlay();
+                this.showDiscoveryToast(
+                  res.ok ? `✈️ Đã hạ cánh tại ${MAP_LABELS[res.activeMapId]}!` : "Không thể xuất cảnh",
+                  res.message,
+                );
+              }, 260);
+            }
           });
         },
       });

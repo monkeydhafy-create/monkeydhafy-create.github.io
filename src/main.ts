@@ -127,6 +127,9 @@ async function bootstrap(): Promise<void> {
     onRemotePoliceChase: (officerId, x, y, untilMs) => {
       worldScene?.applyRemotePoliceChase(officerId, x, y, untilMs);
     },
+    onJapanDisasterReceived: (event) => {
+      worldScene?.applyServerJapanDisaster(event);
+    },
     onSharedContainerUpdated: (mapId, containerId, items, version, openedAt, refreshAt, meta) => {
       hud?.handleSharedContainerUpdated(mapId, containerId, items, version, openedAt, refreshAt, meta);
     },
@@ -184,8 +187,9 @@ async function bootstrap(): Promise<void> {
       onOpenRealEstate: (initialTab) => {
         hud?.openRealEstateModal(initialTab);
       },
-      onMapChanged: () => {
+      onMapChanged: (nextMapId) => {
         hud?.handleMapChanged();
+        void cloudSync.syncPersistentWorldEstates(nextMapId);
       },
       onConsumeCompleted: (title, message) => {
         hud?.handleConsumeCompleted(title, message);
@@ -208,8 +212,8 @@ async function bootstrap(): Promise<void> {
       onContainersRefreshed: (containerIds) => {
         hud?.handleContainersRefreshed(containerIds);
       },
-      onFaintedToHospital: (reason, feeGold) => {
-        hud?.showFaintedHospitalScreen(reason, feeGold);
+      onFaintedToHospital: (reason, feeGold, confiscatedCount) => {
+        hud?.showFaintedHospitalScreen(reason, feeGold, confiscatedCount);
       },
       onRequestSave: (immediate) => {
         if (!worldScene) return;
@@ -258,7 +262,7 @@ async function bootstrap(): Promise<void> {
     );
   }
 
-  void cloudSync.syncPersistentWorldEstates("vietnam");
+  void cloudSync.syncPersistentWorldEstates(savedMapId);
 
   void cloudSync.restoreSession().then((res) => {
     if (!res.authenticated || !worldScene) return;

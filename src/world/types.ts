@@ -1,13 +1,13 @@
 // Exact 3x integer scale of 16x16 pixel art tiles -> zero blur on Retina & mobile
 export const PIXEL_SCALE = 3;
 // High-detail pixel-buildings (110..170px native) render at clean 2x integer scale (~220..340px)
-export const BUILDING_PIXEL_SCALE = 2;
+export const BUILDING_PIXEL_SCALE = 1.48;
 export const TILE_SIZE = 16 * PIXEL_SCALE; // 48px
 export const MAP_COLS = 204;
 export const MAP_ROWS = 84;
 export const GREEN_END_COL = 31;
 export const YELLOW_END_COL = 141;
-export const JAPAN_SNOW_START_COL = YELLOW_END_COL - 6;
+export const JAPAN_SNOW_START_COL = 88;
 export const WORLD_WIDTH = MAP_COLS * TILE_SIZE;
 export const WORLD_HEIGHT = MAP_ROWS * TILE_SIZE;
 export const CHUNK_TILES = 21;
@@ -115,6 +115,20 @@ export const BUILDING_KEYS = [
   "jp_samurai_manor",
   "jp_village_machiya",
   "jp_snow_onsen_temple",
+  "jp_izakaya_tavern",
+  "jp_geisha_okiya",
+  "jp_sushi_market",
+  "jp_zen_temple",
+  "jp_lighthouse",
+  "jp_ramen_shop",
+  "jp_fisherman_hut",
+  "jp_boat_workshop",
+  "jp_fish_warehouse",
+  "jp_seaside_shrine",
+  "jp_auction_hall",
+  "jp_airport_terminal",
+  "jp_koban_police",
+  "jp_treasure_vault",
   "plains_tea_house",
   "plains_garden_inn",
   "plains_riverside_tavern",
@@ -159,6 +173,10 @@ export type PropKind =
   | "jp_vending_machine"
   | "jp_snow_pine"
   | "jp_snowman_jizo"
+  | "jp_island_palm"
+  | "jp_island_boat"
+  | "jp_island_fish_rack"
+  | "jp_island_campfire"
   | "park_lantern"
   | "street_lamp"
   | "traffic_light"
@@ -250,6 +268,20 @@ export const BUILDING_META: Record<
   jp_samurai_manor: { name: "Dinh Thự Võ Sĩ Samurai", tier: "landmark", isVault: true },
   jp_village_machiya: { name: "Làng Cổ Thợ Rèn Samurai", tier: "standard" },
   jp_snow_onsen_temple: { name: "Đền Tuyết Sơn Onsen", tier: "landmark", isVault: true },
+  jp_izakaya_tavern: { name: "Quán Rượu Đèn Lồng Izakaya", tier: "standard" },
+  jp_geisha_okiya: { name: "Trà Quán Geisha Kyoto", tier: "landmark", isVault: true },
+  jp_sushi_market: { name: "Chợ Hải Sản Tsukiji", tier: "standard" },
+  jp_zen_temple: { name: "Thiền Viện Vườn Đá Zen", tier: "landmark", isVault: true },
+  jp_lighthouse: { name: "Hải Đăng Cổ Ngoài Đảo", tier: "landmark", isVault: true },
+  jp_ramen_shop: { name: "Quán Mì Ramen Đêm Tokyo", tier: "standard" },
+  jp_fisherman_hut: { name: "Nhà Chài Lưới Ven Biển", tier: "standard" },
+  jp_boat_workshop: { name: "Xưởng Đóng Thuyền Làng Chài", tier: "standard" },
+  jp_fish_warehouse: { name: "Kho Cá & Giàn Phơi Làng Chài", tier: "standard" },
+  jp_seaside_shrine: { name: "Miếu Thờ Thần Biển Làng Chài", tier: "landmark", isVault: true },
+  jp_auction_hall: { name: "Sàn Đấu Giá Ginza Tokyo", tier: "auction" },
+  jp_airport_terminal: { name: "Nhà Ga Sân Bay Quốc Tế Narita", tier: "airport" },
+  jp_koban_police: { name: "Đồn Cảnh Sát Koban Tokyo", tier: "landmark" },
+  jp_treasure_vault: { name: "Bảo Tàng Kho Báu Hoàng Gia", tier: "landmark", isVault: true },
   plains_tea_house: { name: "Quán Trà Ven Hồ", tier: "standard" },
   plains_garden_inn: { name: "Nhà Hàng Sân Vườn", tier: "shop", shopKind: "food" },
   plains_riverside_tavern: { name: "Quán Thủy Tạ Ven Sông", tier: "standard" },
@@ -270,6 +302,29 @@ export interface RoadNetworkMeta {
   verticalRoads: Array<{ col: number; startRow: number; endRow: number }>;
 }
 
+export interface FerryRouteMeta {
+  id: string;
+  label: string;
+  destLabel: string;
+  costGold: number;
+  dockCol: number;
+  dockRow: number;
+  toCol: number;
+  toRow: number;
+  direction: "to-island" | "to-mainland";
+}
+
+export interface ShinkansenRouteMeta {
+  id: string;
+  label: string;
+  destLabel: string;
+  costGold: number;
+  stationCol: number;
+  stationRow: number;
+  toCol: number;
+  toRow: number;
+}
+
 export interface WorldData {
   mapId: MapId;
   cols: number;
@@ -285,6 +340,9 @@ export interface WorldData {
   landmarks: WorldLandmark[];
   lilypads: Point[];
   roadNetwork: RoadNetworkMeta;
+  ferryRoutes?: FerryRouteMeta[];
+  shinkansenRoutes?: ShinkansenRouteMeta[];
+  elevation?: Float32Array;
   spawn: Point;
   hospitalRespawn: Point;
   policeDetainRespawn: Point;

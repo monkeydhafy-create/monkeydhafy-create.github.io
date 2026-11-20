@@ -211,6 +211,10 @@ export function createWorldAtlas(): WorldAtlas {
     jp_vending_machine: Assets.get<Texture>("prop-jp_vending_machine"),
     jp_snow_pine: Assets.get<Texture>("prop-jp_snow_pine"),
     jp_snowman_jizo: Assets.get<Texture>("prop-jp_snowman_jizo"),
+    jp_island_palm: Assets.get<Texture>("prop-jp_island_palm"),
+    jp_island_boat: Assets.get<Texture>("prop-jp_island_boat"),
+    jp_island_fish_rack: Assets.get<Texture>("prop-jp_island_fish_rack"),
+    jp_island_campfire: Assets.get<Texture>("prop-jp_island_campfire"),
     park_lantern: sliceCell(urbanTex, 7, 6, 1, 2),
     street_lamp: sliceCell(urbanTex, 3, 6, 1, 2),
     traffic_light: sliceCell(urbanTex, 3, 15, 1, 1),
@@ -230,6 +234,10 @@ export function createWorldAtlas(): WorldAtlas {
   baseProps.jp_vending_machine.source.scaleMode = "nearest";
   baseProps.jp_snow_pine.source.scaleMode = "nearest";
   baseProps.jp_snowman_jizo.source.scaleMode = "nearest";
+  baseProps.jp_island_palm.source.scaleMode = "nearest";
+  baseProps.jp_island_boat.source.scaleMode = "nearest";
+  baseProps.jp_island_fish_rack.source.scaleMode = "nearest";
+  baseProps.jp_island_campfire.source.scaleMode = "nearest";
 
   const lpcLayers: Record<string, CharacterFrames> = {};
   for (const key of LPC_WALK_KEYS) {

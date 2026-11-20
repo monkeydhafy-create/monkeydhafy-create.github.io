@@ -83,6 +83,15 @@ export interface AuctionListingRow {
   sold_at: string | null;
 }
 
+export interface JapanDisasterEvent {
+  id: string;
+  mapId: MapId;
+  kind: string;
+  hpLoss: number;
+  staminaLoss: number;
+  triggeredAtMs: number;
+}
+
 export interface SupabaseSyncCallbacks {
   onStatusChanged?: (status: CloudSyncStatus) => void;
   onRemoteSaveReceived?: (save: PlayerGameSaveV3, seq: number) => void;
@@ -92,6 +101,7 @@ export interface SupabaseSyncCallbacks {
     moves: Map<string, RemotePlayerMovePacket>,
   ) => void;
   onRemotePoliceChase?: (officerId: string, x: number, y: number, untilMs: number) => void;
+  onJapanDisasterReceived?: (event: JapanDisasterEvent) => void;
   onSharedContainerUpdated?: (
     mapId: MapId,
     containerId: string,
@@ -168,6 +178,7 @@ export class SupabaseSync {
   private auctionChannel: RealtimeChannel | null = null;
   private estatesChannel: RealtimeChannel | null = null;
   private activeSectorKey: string | null = null;
+  private activeEstatesMapId: MapId = "vietnam";
   private readonly persistentWorldEstates = new Map<string, RemotePlayerEstateSummary>();
 
   private saveTimerId: number | null = null;
@@ -257,11 +268,69 @@ export class SupabaseSync {
       const initX = this.latestLocalLive?.x ?? 936;
       const initY = this.latestLocalLive?.y ?? 2136;
       this.subscribeWorldSector(computeWorldSectorKey(initMap, initX, initY));
+      this.subscribeJapanDisasters();
       this.emitStatus();
       return { authenticated: false, remoteSave: null, remoteSeq: 0, remoteLive: null };
     }
 
     return await this.activateUserSession(data.session);
+  }
+
+  private disasterChannel: ReturnType<SupabaseClient["channel"]> | null = null;
+  private disasterPollTimer: number | null = null;
+  private readonly seenDisasterIds = new Set<string>();
+
+  private subscribeJapanDisasters(): void {
+    if (this.disasterChannel) return;
+    const emitRow = (row: Record<string, unknown> | null | undefined): void => {
+      if (!row || typeof row.id !== "string") return;
+      if (this.seenDisasterIds.has(row.id)) return;
+      const triggeredAtMs = typeof row.triggered_at === "string" ? Date.parse(row.triggered_at) : Date.now();
+      // Chỉ áp dụng thiên tai mới xảy ra trong vòng 90 giây gần nhất (tránh trừ máu khi mới đăng nhập từ event cũ)
+      if (!Number.isFinite(triggeredAtMs) || Date.now() - triggeredAtMs > 90_000) {
+        this.seenDisasterIds.add(row.id);
+        return;
+      }
+      this.seenDisasterIds.add(row.id);
+      this.callbacks.onJapanDisasterReceived?.({
+        id: row.id,
+        mapId: row.map_id === "japan" ? "japan" : "vietnam",
+        kind: typeof row.kind === "string" ? row.kind : "earthquake_avalanche",
+        hpLoss: Math.max(15, Math.min(40, Number(row.hp_loss ?? 20))),
+        staminaLoss: Math.max(25, Math.min(60, Number(row.stamina_loss ?? 35))),
+        triggeredAtMs,
+      });
+    };
+
+    this.disasterChannel = this.client
+      .channel("jp_world_disasters")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "world_disasters", filter: "map_id=eq.japan" },
+        (payload) => {
+          emitRow(payload.new as Record<string, unknown>);
+        },
+      )
+      .subscribe();
+
+    const pollServer = async (): Promise<void> => {
+      if (this.latestLocalLive?.map_id !== "japan") return;
+      try {
+        const { data, error } = await this.client.rpc("poll_or_trigger_japan_disaster");
+        if (!error && Array.isArray(data) && data.length > 0) {
+          emitRow(data[0] as Record<string, unknown>);
+        }
+      } catch {
+        // Bỏ qua nếu RPC chưa được migrate trên Supabase
+      }
+    };
+
+    if (this.disasterPollTimer !== null) {
+      window.clearInterval(this.disasterPollTimer);
+    }
+    this.disasterPollTimer = window.setInterval(() => {
+      void pollServer();
+    }, 25_000);
   }
 
   public async syncServerClock(): Promise<void> {
@@ -406,7 +475,7 @@ export class SupabaseSync {
     this.emitStatus();
     // Re-emit persistent world estates với localUserId = null để người chơi sau khi logout vẫn thấy nhà của tài khoản đã offline
     this.callbacks.onPersistentWorldEstatesChanged?.(this.persistentWorldEstates, null);
-    void this.syncPersistentWorldEstates("vietnam");
+    void this.syncPersistentWorldEstates(this.activeEstatesMapId);
   }
 
   private async activateUserSession(session: Session): Promise<{
@@ -465,7 +534,8 @@ export class SupabaseSync {
     if (remoteSave) {
       void this.upsertWorldEstateFromSave(remoteSave);
     }
-    void this.syncPersistentWorldEstates("vietnam");
+    void this.syncPersistentWorldEstates(initMap);
+    this.subscribeJapanDisasters();
     this.lastSyncAt = Date.now();
     this.emitStatus();
 
@@ -552,58 +622,69 @@ export class SupabaseSync {
 
   private async upsertWorldEstateFromSave(save: PlayerGameSaveV3): Promise<void> {
     if (!this.user) return;
-    try {
-      const est = save.estate;
-      const ownedWorldTiles = Array.isArray(est?.ownedWorldTiles) ? est.ownedWorldTiles : [];
-      const houseId = est?.houseId ?? null;
-      if (!houseId && ownedWorldTiles.length === 0) {
-        await this.client.from("world_estates").delete().eq("user_id", this.user.id);
-        this.persistentWorldEstates.delete(this.user.id);
-        return;
-      }
-      const ownerName = (est?.ownerName || formatAccountDisplayName(this.user) || "Người Chơi").trim();
-      const originC = est?.houseOrigin?.c ?? 13;
-      const originR = est?.houseOrigin?.r ?? 13;
-      const displayedItems: Array<{ itemId: string; lightLevel: 0 | 1 | 2 }> = [];
-      if (houseId && save.inventory?.collectionHall) {
-        for (const [itemId, slot] of Object.entries(save.inventory.collectionHall)) {
-          if (slot?.displayed) {
-            const lvl = slot.lightLevel === 2 ? 2 : slot.lightLevel === 1 ? 1 : 0;
-            displayedItems.push({ itemId, lightLevel: lvl });
+    const syncOneMap = async (mapId: MapId): Promise<void> => {
+      try {
+        const est = mapId === "japan" ? save.jpEstate : save.estate;
+        const coll = mapId === "japan" ? save.inventory?.jpCollectionHall : save.inventory?.collectionHall;
+        const ownedWorldTiles = Array.isArray(est?.ownedWorldTiles) ? est.ownedWorldTiles : [];
+        const houseId = est?.houseId ?? null;
+        if (!houseId && ownedWorldTiles.length === 0) {
+          await this.client
+            .from("world_estates")
+            .delete()
+            .eq("user_id", this.user!.id)
+            .eq("map_id", mapId);
+          if (this.activeEstatesMapId === mapId) {
+            this.persistentWorldEstates.delete(this.user!.id);
+          }
+          return;
+        }
+        const ownerName = (est?.ownerName || formatAccountDisplayName(this.user) || "Người Chơi").trim();
+        const originC = est?.houseOrigin?.c ?? 13;
+        const originR = est?.houseOrigin?.r ?? (mapId === "japan" ? 53 : 13);
+        const displayedItems: Array<{ itemId: string; lightLevel: 0 | 1 | 2 }> = [];
+        if (houseId && coll) {
+          for (const [itemId, slot] of Object.entries(coll)) {
+            if (slot?.displayed) {
+              const lvl = slot.lightLevel === 2 ? 2 : slot.lightLevel === 1 ? 1 : 0;
+              displayedItems.push({ itemId, lightLevel: lvl });
+            }
           }
         }
+        const summary: RemotePlayerEstateSummary = {
+          houseId,
+          originC,
+          originR,
+          ownerName,
+          ownedWorldTiles,
+          displayedItems,
+        };
+        const { error } = await this.client.from("world_estates").upsert(
+          {
+            user_id: this.user!.id,
+            map_id: mapId,
+            owner_name: ownerName,
+            house_id: houseId,
+            origin_c: originC,
+            origin_r: originR,
+            owned_world_tiles: ownedWorldTiles,
+            displayed_items: displayedItems,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,map_id" },
+        );
+        if (!error && this.activeEstatesMapId === mapId) {
+          this.persistentWorldEstates.set(this.user!.id, summary);
+        }
+      } catch {
+        // Ignore if world_estates table has not been migrated yet
       }
-      const summary: RemotePlayerEstateSummary = {
-        houseId,
-        originC,
-        originR,
-        ownerName,
-        ownedWorldTiles,
-        displayedItems,
-      };
-      const { error } = await this.client.from("world_estates").upsert(
-        {
-          user_id: this.user.id,
-          map_id: "vietnam",
-          owner_name: ownerName,
-          house_id: houseId,
-          origin_c: originC,
-          origin_r: originR,
-          owned_world_tiles: ownedWorldTiles,
-          displayed_items: displayedItems,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      );
-      if (!error) {
-        this.persistentWorldEstates.set(this.user.id, summary);
-      }
-    } catch {
-      // Ignore if world_estates table has not been migrated yet
-    }
+    };
+    await Promise.all([syncOneMap("vietnam"), syncOneMap("japan")]);
   }
 
   public async syncPersistentWorldEstates(mapId: MapId = "vietnam"): Promise<void> {
+    this.activeEstatesMapId = mapId;
     try {
       const { data, error } = await this.client
         .from("world_estates")
@@ -634,7 +715,7 @@ export class SupabaseSync {
           this.persistentWorldEstates.set(row.user_id, {
             houseId: row.house_id ?? null,
             originC: Number.isFinite(row.origin_c) ? Number(row.origin_c) : 13,
-            originR: Number.isFinite(row.origin_r) ? Number(row.origin_r) : 13,
+            originR: Number.isFinite(row.origin_r) ? Number(row.origin_r) : mapId === "japan" ? 53 : 13,
             ownerName: row.owner_name || "Người Chơi",
             ownedWorldTiles,
             displayedItems,
@@ -658,7 +739,8 @@ export class SupabaseSync {
           { event: "*", schema: "public", table: "world_estates" },
           (payload) => {
             if (payload.eventType === "DELETE") {
-              const oldRow = payload.old as { user_id?: string } | null;
+              const oldRow = payload.old as { user_id?: string; map_id?: string } | null;
+              if (oldRow?.map_id && oldRow.map_id !== this.activeEstatesMapId) return;
               if (oldRow?.user_id) {
                 this.persistentWorldEstates.delete(oldRow.user_id);
                 this.callbacks.onPersistentWorldEstatesChanged?.(
@@ -670,6 +752,7 @@ export class SupabaseSync {
             }
             const nextRow = payload.new as {
               user_id?: string;
+              map_id?: string;
               owner_name?: string;
               house_id?: string | null;
               origin_c?: number;
@@ -678,6 +761,7 @@ export class SupabaseSync {
               displayed_items?: unknown;
             } | null;
             if (!nextRow?.user_id) return;
+            if (nextRow.map_id && nextRow.map_id !== this.activeEstatesMapId) return;
             const ownedWorldTiles = Array.isArray(nextRow.owned_world_tiles)
               ? nextRow.owned_world_tiles.filter((x): x is string => typeof x === "string")
               : [];
@@ -690,7 +774,11 @@ export class SupabaseSync {
               this.persistentWorldEstates.set(nextRow.user_id, {
                 houseId: nextRow.house_id ?? null,
                 originC: Number.isFinite(nextRow.origin_c) ? Number(nextRow.origin_c) : 13,
-                originR: Number.isFinite(nextRow.origin_r) ? Number(nextRow.origin_r) : 13,
+                originR: Number.isFinite(nextRow.origin_r)
+                  ? Number(nextRow.origin_r)
+                  : this.activeEstatesMapId === "japan"
+                    ? 53
+                    : 13,
                 ownerName: nextRow.owner_name || "Người Chơi",
                 ownedWorldTiles,
                 displayedItems,

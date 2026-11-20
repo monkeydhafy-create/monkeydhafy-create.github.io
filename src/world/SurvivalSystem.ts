@@ -103,6 +103,7 @@ export function evaluateThermalState(
   currentBodyTempC: number,
   options?: {
     inSnowZone?: boolean;
+    elevation?: number;
     securityZone?: SecurityZone;
     mapId?: MapId;
     biome?: BiomeId;
@@ -111,11 +112,13 @@ export function evaluateThermalState(
   const windShield = clamp(equip.windRainResist, 0, 0.92);
   const heatShield = clamp(equip.heatResist, 0, 1.0);
   const inSnowZone = Boolean(options?.inSnowZone);
+  const elevation = clamp(options?.elevation ?? 0, 0, 1);
   const adverseFactor = getZoneAdverseFactor(options?.securityZone);
   const mapId: MapId = options?.mapId ?? env.mapId ?? "vietnam";
   const snowIntensity = clamp(env.snowIntensity ?? 0, 0, 1);
-  const effectiveSnow = inSnowZone ? Math.max(snowIntensity, 0.7) : snowIntensity;
-  const altitudeDropC = inSnowZone ? 9.0 : 0;
+  const effectiveSnow = inSnowZone ? Math.max(snowIntensity, 0.35 + elevation * 0.65) : snowIntensity;
+  // Phân bổ lạnh dần theo độ cao: chân núi (elev=0) chỉ lạnh vừa, lên đỉnh cao (elev=1) mới tụt thêm -15°C
+  const altitudeDropC = inSnowZone ? elevation * 15.0 : elevation * 5.0;
 
   const airTempC = env.temperatureC - altitudeDropC;
 
@@ -141,13 +144,13 @@ export function evaluateThermalState(
   const snowChillC = effectiveSnow * 8.5 * (1 - windShield * 0.86);
   const waterChillC = surface === "swim" ? 4.4 : surface === "wade" ? 1.8 : 0;
 
-  // Heavy winter coats insulate strongly in cold/snowy climates without overheating in freezing air
+  // Heavy winter coats + high wind-resistance insulate strongly against cold & alpine wind
   const outfitThermalOffset =
     airTempC >= 27 && equip.warmth > 2
       ? equip.warmth * 1.15
-      : airTempC < 14 && equip.warmth > 0
-        ? equip.warmth * (effectiveSnow > 0 ? 2.9 : 2.1)
-        : equip.warmth * 1.1;
+      : airTempC < 18 && equip.warmth > 0
+        ? equip.warmth * (effectiveSnow > 0 ? 4.4 : 3.5) + windShield * 7.5
+        : equip.warmth * 1.2;
 
   const feelsLikeC = Number(
     (
@@ -322,6 +325,8 @@ export function stepSurvivalState(
     env: EnvironmentState;
     equip: EquipmentStats;
     inSnowZone?: boolean;
+    elevation?: number;
+    elevationDelta?: number;
     securityZone?: SecurityZone;
     mapId?: MapId;
     biome?: BiomeId;
@@ -334,6 +339,8 @@ export function stepSurvivalState(
   const dt = Math.min(Math.max(dtSeconds, 0), 0.25);
   const { isMoving, surface, env, equip } = options;
   const inSnowZone = Boolean(options.inSnowZone);
+  const elevation = clamp(options.elevation ?? 0, 0, 1);
+  const elevationDelta = options.elevationDelta ?? 0;
   const adverseFactor = getZoneAdverseFactor(options.securityZone);
   const mapId: MapId = options.mapId ?? env.mapId ?? "vietnam";
   const effSnow = inSnowZone ? Math.max(env.snowIntensity ?? 0, 0.7) : clamp(env.snowIntensity ?? 0, 0, 1);
@@ -358,6 +365,7 @@ export function stepSurvivalState(
 
   const thermal = evaluateThermalState(env, surface, equip, state.bodyTempC, {
     inSnowZone,
+    elevation,
     securityZone: options.securityZone,
     mapId,
     biome: options.biome,
@@ -416,6 +424,20 @@ export function stepSurvivalState(
   const gearReliefMul = 1 - clamp(equip.staminaSave, 0, 0.45);
   const buffDrainRelief = 1 / buffMultiplier;
 
+  // Tính độ dốc leo núi / xuống núi & tiêu hao thể lực ở độ cao cao trong thời tiết lạnh
+  const slopeRate = dt > 0.001 ? elevationDelta / dt : 0;
+  const slopeDrainMul =
+    slopeRate > 0.002
+      ? 1 + Math.min(2.1, slopeRate * 14.0) // Lên dốc: tốn thể lực mạnh hơn (lên tới 3.1x)
+      : slopeRate < -0.002
+        ? Math.max(0.62, 1 + slopeRate * 6.0) // Xuống dốc: đỡ tốn thể lực hơn (0.62x..0.95x)
+        : 1.0;
+  const coldAirIntensity = clamp((12 - thermal.ambientTempC) / 22, 0, 1);
+  const highAltitudeColdMul =
+    elevation > 0.15
+      ? 1 + elevation * (0.45 + coldAirIntensity * 0.65) * (1 - snowShield * 0.45)
+      : 1.0;
+
   if (isMoving) {
     const moveDrain = surface === "swim" ? 2.949 : surface === "wade" ? 1.995 : 1.474;
     state.stamina = clamp(
@@ -424,6 +446,8 @@ export function stepSurvivalState(
           hungerPenaltyMul *
           weightDrainMul *
           weatherFatigueMul *
+          slopeDrainMul *
+          highAltitudeColdMul *
           gearReliefMul *
           buffDrainRelief *
           dt,
@@ -525,7 +549,14 @@ export function stepSurvivalState(
       : 0;
   const weatherSpeedMul = clamp(1 - (snowSlowPenalty + hanoiFx.speedPenalty) * weatherAdverseFactor, 0.58, 1.0);
 
-  const speedMultiplier = Math.max(0.18, staminaSpeedMul * overloadSpeedMul * weatherSpeedMul);
+  const slopeSpeedMul =
+    slopeRate > 0.002
+      ? Math.max(0.66, 1 - Math.min(0.34, slopeRate * 2.2)) // Lên dốc chậm hơn
+      : slopeRate < -0.002
+        ? Math.min(1.12, 1 + Math.min(0.12, -slopeRate * 0.8)) // Xuống dốc nhanh hơn nhẹ
+        : 1.0;
+
+  const speedMultiplier = Math.max(0.18, staminaSpeedMul * overloadSpeedMul * weatherSpeedMul * slopeSpeedMul);
   // Only faint when HP reaches 0. Avoid instant-faint when player still has high HP (e.g. 60-70 HP) and drains stamina.
   const fainted = state.hp <= 0;
 

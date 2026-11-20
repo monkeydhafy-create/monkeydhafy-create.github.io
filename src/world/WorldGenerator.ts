@@ -7,11 +7,13 @@ import {
   YELLOW_END_COL,
   type BiomeId,
   type ChestKind,
+  type FerryRouteMeta,
   type MapId,
   type Point,
   type PropKind,
   type RoadNetworkMeta,
   type SecurityZone,
+  type ShinkansenRouteMeta,
   type TileType,
   type WorldChest,
   type WorldData,
@@ -329,7 +331,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     horizontalRoads: isJapan
       ? [
           { row: 18, startCol: 4, endCol: 65 },
-          { row: 39, startCol: 4, endCol: 139 }, // Grand Avenue connecting Tokyo -> Samurai Plains East
+          { row: 39, startCol: 4, endCol: 112 }, // Grand Avenue connecting Tokyo -> Samurai Coast (before Wide Sea)
           { row: 62, startCol: 4, endCol: 54 },
         ]
       : [
@@ -447,160 +449,247 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
 
   // 2. Mạng lưới đường đi dạo vỉa hè kết nối thoáng đãng (Passable 100%)
   // Đường viền Bắc (North Border Walkway - row 1)
-  for (let c = 2; c <= 31; c++) {
-    const idx = 1 * cols + c;
-    tiles[idx] = "sidewalk";
-    collision[idx] = 0;
-    reserved[idx] = 1;
-  }
-  // Đường đi dạo Bắc hồ (North Lake Promenade - row 6)
-  for (let c = 2; c <= 31; c++) {
-    const idx = 6 * cols + c;
-    tiles[idx] = "sidewalk";
-    collision[idx] = 0;
-    reserved[idx] = 1;
-  }
-  // Đường đi dạo Nam hồ (South Lake Promenade - row 12)
-  for (let c = 2; c <= 31; c++) {
-    const idx = 12 * cols + c;
-    tiles[idx] = "sidewalk";
-    collision[idx] = 0;
-    reserved[idx] = 1;
-  }
-  // Đường dạo Nam giáp Đại lộ thành phố (South Avenue Promenade - row 17)
-  for (let c = 2; c <= 31; c++) {
-    const idx = 17 * cols + c;
-    tiles[idx] = "sidewalk";
-    collision[idx] = 0;
-    reserved[idx] = 1;
-  }
-  // Đại lộ phía Tây (West Avenue - col 2)
-  for (let r = 1; r <= 17; r++) {
-    const idx = r * cols + 2;
-    tiles[idx] = "sidewalk";
-    collision[idx] = 0;
-    reserved[idx] = 1;
-  }
-  // Đại lộ phía Đông (East Avenue - col 31, dọc ranh giới Vùng Xanh)
-  for (let r = 1; r <= 17; r++) {
-    const idx = r * cols + 31;
-    tiles[idx] = "sidewalk";
-    collision[idx] = 0;
-    reserved[idx] = 1;
-  }
-  // Các lối dạo bộ Bắc - Nam chia lô biệt thự (cols 7, 12, 21, 26)
-  for (const c of [7, 12, 21, 26]) {
+  if (!isJapan) {
+    for (let c = 2; c <= 31; c++) {
+      const idx = 1 * cols + c;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    // Đường đi dạo Bắc hồ (North Lake Promenade - row 6)
+    for (let c = 2; c <= 31; c++) {
+      const idx = 6 * cols + c;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    // Đường đi dạo Nam hồ (South Lake Promenade - row 12)
+    for (let c = 2; c <= 31; c++) {
+      const idx = 12 * cols + c;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    // Đường dạo Nam giáp Đại lộ thành phố (South Avenue Promenade - row 17)
+    for (let c = 2; c <= 31; c++) {
+      const idx = 17 * cols + c;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    // Đại lộ phía Tây (West Avenue - col 2)
     for (let r = 1; r <= 17; r++) {
-      const idx = r * cols + c;
-      if (tiles[idx] !== "water" && tiles[idx] !== "bridge") {
+      const idx = r * cols + 2;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    // Đại lộ phía Đông (East Avenue - col 31, dọc ranh giới Vùng Xanh)
+    for (let r = 1; r <= 17; r++) {
+      const idx = r * cols + 31;
+      tiles[idx] = "sidewalk";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    // Các lối dạo bộ Bắc - Nam chia lô biệt thự (cols 7, 12, 21, 26)
+    for (const c of [7, 12, 21, 26]) {
+      for (let r = 1; r <= 17; r++) {
+        const idx = r * cols + c;
+        if (tiles[idx] !== "water" && tiles[idx] !== "bridge") {
+          tiles[idx] = "sidewalk";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        }
+      }
+    }
+
+    // 3. Hồ Nước Cảnh Quan & Đảo Vọng Cảnh Trung Tâm (Scenic Lake & Central Island)
+    const lakeCx = 16.5;
+    const lakeCy = 9.0;
+    // Mặt nước hồ cảnh quan uốn lượn tự nhiên giữa col 13..20, row 7..11
+    for (let r = 7; r <= 11; r++) {
+      for (let c = 13; c <= 20; c++) {
+        const norm = Math.hypot((c - lakeCx) / 3.9, (r - lakeCy) / 2.2);
+        const idx = r * cols + c;
+        if (norm <= 0.85) {
+          tiles[idx] = "water";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        } else if (norm <= 1.05) {
+          tiles[idx] = "sand";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        }
+      }
+    }
+
+    // Đảo Vọng Cảnh Trung Tâm (Central Pavilion Island c = 16..17, r = 9)
+    for (let r = 8; r <= 10; r++) {
+      for (let c = 16; c <= 17; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+
+    // Cầu Gỗ Chữ Thập (Grand Cross Boardwalk Bridges)
+    for (let r = 6; r <= 12; r++) {
+      const idx = r * cols + 16;
+      if (r !== 9) {
+        tiles[idx] = "bridge";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (let c = 13; c <= 20; c++) {
+      const idx = 9 * cols + c;
+      if (c !== 16 && c !== 17) {
+        tiles[idx] = "bridge";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+
+    // Quảng trường Đá Hoa Cương Sàn Bất Động Sản (Real Estate Grand Plaza at col 3..6, row 8..10)
+    for (let r = 8; r <= 10; r++) {
+      for (let c = 3; c <= 6; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+
+    // 4. Vẽ 12 Lô Đất Biệt Thự 4×4 Nghệ Thuật (Artisan Courtyards, Passable 100%)
+    const LOT_COLS = [3, 8, 13, 17, 22, 27];
+    for (const c0 of LOT_COLS) {
+      for (let r = 2; r <= 5; r++) {
+        for (let c = c0; c <= c0 + 3; c++) {
+          if (c <= 1 || r <= 1 || c >= cols - 2 || r >= rows - 2) continue;
+          const idx = r * cols + c;
+          tiles[idx] = (r === 2 || r === 5 || c === c0 || c === c0 + 3) ? "stone" : "meadow";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        }
+      }
+      for (let r = 13; r <= 16; r++) {
+        for (let c = c0; c <= c0 + 3; c++) {
+          if (c <= 1 || r <= 1 || c >= cols - 2 || r >= rows - 2) continue;
+          const idx = r * cols + c;
+          tiles[idx] = (r === 16 || r === 13 || c === c0 || c === c0 + 3) ? "stone" : "meadow";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        }
+      }
+    }
+  } else {
+    // NHẬT BẢN: Bắc Vùng Xanh (row 1..17, col 2..31) -> Quảng trường Trung tâm Tokyo & Sân bay Haneda
+    for (let r = 1; r <= 17; r++) {
+      for (let c = 2; c <= 31; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = (r === 1 || r === 17 || c === 2 || c === 31 || r === 10) ? "sidewalk" : "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (let r = 9; r <= 14; r++) {
+      for (let c = 14; c <= 22; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+
+    // NHẬT BẢN: Khu Biệt Thự Sakura & Hồ Koi (row 41..57, col 2..31)
+    for (let r = 41; r <= 57; r++) {
+      for (let c = 2; c <= 31; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "grass";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (const r of [41, 46, 51, 52, 57]) {
+      for (let c = 2; c <= 31; c++) {
+        const idx = r * cols + c;
         tiles[idx] = "sidewalk";
         collision[idx] = 0;
         reserved[idx] = 1;
       }
     }
-  }
-
-  // 3. Hồ Nước Cảnh Quan & Đảo Vọng Cảnh Trung Tâm (Scenic Lake & Central Island)
-  const lakeCx = 16.5;
-  const lakeCy = 9.0;
-  // Mặt nước hồ cảnh quan uốn lượn tự nhiên giữa col 13..20, row 7..11
-  for (let r = 7; r <= 11; r++) {
+    for (const c of [2, 7, 12, 21, 26, 31]) {
+      for (let r = 41; r <= 57; r++) {
+        const idx = r * cols + c;
+        tiles[idx] = "sidewalk";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    // Hồ Koi Trung Tâm (col 13..20, row 47..51)
+    const jpLakeCx = 16.5;
+    const jpLakeCy = 49.0;
+    for (let r = 47; r <= 51; r++) {
+      for (let c = 13; c <= 20; c++) {
+        const norm = Math.hypot((c - jpLakeCx) / 3.9, (r - jpLakeCy) / 2.2);
+        const idx = r * cols + c;
+        if (norm <= 0.85) {
+          tiles[idx] = "water";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        } else if (norm <= 1.05) {
+          tiles[idx] = "sand";
+          collision[idx] = 0;
+          reserved[idx] = 1;
+        }
+      }
+    }
+    for (let r = 48; r <= 50; r++) {
+      for (let c = 16; c <= 17; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (let r = 46; r <= 52; r++) {
+      if (r === 49) continue;
+      const idx = r * cols + 16;
+      tiles[idx] = "bridge";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
     for (let c = 13; c <= 20; c++) {
-      const norm = Math.hypot((c - lakeCx) / 3.9, (r - lakeCy) / 2.2);
-      const idx = r * cols + c;
-      if (norm <= 0.85) {
-        tiles[idx] = "water";
-        collision[idx] = 0;
-        reserved[idx] = 1;
-      } else if (norm <= 1.05) {
-        tiles[idx] = "sand";
-        collision[idx] = 0;
-        reserved[idx] = 1;
-      }
-    }
-  }
-
-  // Đảo Vọng Cảnh Trung Tâm (Central Pavilion Island c = 16..17, r = 9)
-  for (let r = 8; r <= 10; r++) {
-    for (let c = 16; c <= 17; c++) {
-      const idx = r * cols + c;
-      tiles[idx] = "stone";
-      collision[idx] = 0;
-      reserved[idx] = 1;
-    }
-  }
-
-  // Cầu Gỗ Chữ Thập (Grand Cross Boardwalk Bridges)
-  // Cầu Bắc - Nam: col 16 từ row 6 đến row 12
-  for (let r = 6; r <= 12; r++) {
-    const idx = r * cols + 16;
-    if (r !== 9) {
+      if (c === 16 || c === 17) continue;
+      const idx = 49 * cols + c;
       tiles[idx] = "bridge";
       collision[idx] = 0;
       reserved[idx] = 1;
     }
-  }
-  // Cầu Đông - Tây: row 9 từ col 13 đến col 20
-  for (let c = 13; c <= 20; c++) {
-    const idx = 9 * cols + c;
-    if (c !== 16 && c !== 17) {
-      tiles[idx] = "bridge";
-      collision[idx] = 0;
-      reserved[idx] = 1;
-    }
-  }
-
-  // Quảng trường Đá Hoa Cương Sàn Bất Động Sản (Real Estate Grand Plaza at col 3..6, row 8..10)
-  for (let r = 8; r <= 10; r++) {
-    for (let c = 3; c <= 6; c++) {
-      const idx = r * cols + c;
-      tiles[idx] = "stone";
-      collision[idx] = 0;
-      reserved[idx] = 1;
-    }
-  }
-
-  // 4. Vẽ 12 Lô Đất Biệt Thự 4×4 Nghệ Thuật (Artisan Courtyards, Passable 100%)
-  const LOT_COLS = [3, 8, 13, 17, 22, 27];
-  for (const c0 of LOT_COLS) {
-    // 6 Lô Hàng Bắc (rows 2..5) — Mặt tiền mở ra Nam đón gió hồ (row 5)
-    for (let r = 2; r <= 5; r++) {
-      for (let c = c0; c <= c0 + 3; c++) {
-        if (c <= 1 || r <= 1 || c >= cols - 2 || r >= rows - 2) continue;
+    // Quảng trường Bất Động Sản Nhật Bản (col 3..6, row 47..50)
+    for (let r = 47; r <= 50; r++) {
+      for (let c = 3; c <= 6; c++) {
         const idx = r * cols + c;
-        const isEntranceGate = (r === 5 && (c === c0 + 1 || c === c0 + 2));
-        const isCenterPath = (r === 4 && (c === c0 + 1 || c === c0 + 2));
-        const isEdge = (r === 2 || c === c0 || c === c0 + 3 || r === 5);
-
-        if (isEntranceGate || isCenterPath) {
-          tiles[idx] = "stone";
-        } else if (isEdge) {
-          tiles[idx] = "stone";
-        } else {
-          tiles[idx] = "meadow";
-        }
+        tiles[idx] = "stone";
         collision[idx] = 0;
         reserved[idx] = 1;
       }
     }
-    // 6 Lô Hàng Nam (rows 13..16) — Mặt tiền mở ra Bắc đón gió hồ (row 13)
-    for (let r = 13; r <= 16; r++) {
-      for (let c = c0; c <= c0 + 3; c++) {
-        if (c <= 1 || r <= 1 || c >= cols - 2 || r >= rows - 2) continue;
-        const idx = r * cols + c;
-        const isEntranceGate = (r === 13 && (c === c0 + 1 || c === c0 + 2));
-        const isCenterPath = (r === 14 && (c === c0 + 1 || c === c0 + 2));
-        const isEdge = (r === 16 || c === c0 || c === c0 + 3 || r === 13);
-
-        if (isEntranceGate || isCenterPath) {
-          tiles[idx] = "stone";
-        } else if (isEdge) {
-          tiles[idx] = "stone";
-        } else {
-          tiles[idx] = "meadow";
+    // 15 Lô Đất Biệt Thự 4×4 Nhật Bản (khớp JAPAN_ESTATE_DISTRICT_LOTS)
+    const JP_LOT_RECTS: Array<[number, number]> = [
+      [3, 42], [8, 42], [13, 42], [18, 42], [23, 42], [27, 42],
+      [8, 47], [22, 47], [27, 47],
+      [3, 53], [8, 53], [13, 53], [18, 53], [23, 53], [27, 53],
+    ];
+    for (const [c0, r0] of JP_LOT_RECTS) {
+      for (let r = r0; r <= r0 + 3; r++) {
+        for (let c = c0; c <= c0 + 3; c++) {
+          const idx = r * cols + c;
+          tiles[idx] = (r === r0 || r === r0 + 3 || c === c0 || c === c0 + 3) ? "stone" : "meadow";
+          collision[idx] = 0;
+          reserved[idx] = 1;
         }
-        collision[idx] = 0;
-        reserved[idx] = 1;
       }
     }
   }
@@ -808,6 +897,239 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   carveVerticalDirtTrail(170, 13, 75);         // Central Red N-S Trail (clear of all 4 Red Zone lakes)
   carveVerticalDirtTrail(198, 13, 75);         // Deep East Red N-S Trail
 
+  const ferryRoutes: FerryRouteMeta[] = [];
+  const shinkansenRoutes: ShinkansenRouteMeta[] = [];
+  if (isJapan) {
+    // Sân bay Haneda-Ngoại Ô ở rìa Nam xa trung tâm (col 14..24, row 73..77)
+    for (let r = 73; r <= 77; r++) {
+      for (let c = 14; c <= 24; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = r === 76 ? "road" : "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+
+    // Tuyến đường sắt Tàu Cao Tốc Shinkansen (row 16, col 30..140) nối Trung tâm Tokyo -> Vùng Tuyết mép Khu Đỏ
+    for (let c = 30; c <= 140; c++) {
+      const idx = 16 * cols + c;
+      tiles[idx] = "stone";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    shinkansenRoutes.push(
+      {
+        id: "jp_shinkansen_to_snow",
+        label: "🚄 Tàu Cao Tốc Shinkansen → Mép Khu Đỏ (Tuyết)",
+        destLabel: "Ga Shinkansen Mép Khu Đỏ (Vùng Tuyết)",
+        costGold: 150,
+        stationCol: 30,
+        stationRow: 16,
+        toCol: 139,
+        toRow: 16,
+      },
+      {
+        id: "jp_shinkansen_to_tokyo",
+        label: "🚄 Tàu Cao Tốc Shinkansen → Trung Tâm Tokyo",
+        destLabel: "Ga Trung Tâm Tokyo",
+        costGold: 150,
+        stationCol: 139,
+        stationRow: 16,
+        toCol: 30,
+        toRow: 16,
+      },
+    );
+
+    // 1. Núi Tuyết Bắc (col 88..201, row 2..29) kéo dài từ nửa Vùng Vàng sang Vùng Đỏ
+    // 2. Biển Rộng Lớn ngăn cách Núi Tuyết với Đảo (row 30..45, col 114..203) & Đất Liền với Đảo (col 114..134, row 46..83)
+    for (let r = 30; r <= 45; r++) {
+      for (let c = 114; c < cols; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "water";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (let r = 46; r < rows; r++) {
+      for (let c = 114; c <= 134; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "water";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (let r = 46; r < rows; r++) {
+      for (let c = 202; c < cols; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "water";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (let r = 82; r < rows; r++) {
+      for (let c = 135; c <= 201; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "water";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+
+    // Đảo Biệt Lập Ngoài Biển TO HƠN GẤP ĐÔI (col 135..201, row 46..81 = 67×36 ô)
+    for (let r = 46; r <= 81; r++) {
+      for (let c = 135; c <= 201; c++) {
+        const idx = r * cols + c;
+        if (tiles[idx] === "water" || tiles[idx] === "shallow") {
+          tiles[idx] = "grass";
+        }
+        collision[idx] = 0;
+      }
+    }
+
+    // Tuyến Thuyền 1: Đất Liền Vùng Vàng (col 113, row 62) <-> Đảo Ngoài Biển (col 135, row 62)
+    for (let c = 110; c <= 112; c++) {
+      for (let r = 61; r <= 63; r++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (const c of [113, 114, 134, 135]) {
+      const idx = 62 * cols + c;
+      tiles[idx] = "bridge";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    for (let c = 136; c <= 138; c++) {
+      for (let r = 61; r <= 63; r++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+
+    // Tuyến Thuyền 2: Núi Tuyết Bắc (col 168, row 29) <-> Đảo Ngoài Biển (col 168, row 46)
+    for (let c = 167; c <= 169; c++) {
+      for (let r = 26; r <= 28; r++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+      for (let r = 47; r <= 49; r++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (const r of [29, 30, 45, 46]) {
+      const idx = r * cols + 168;
+      tiles[idx] = "bridge";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+
+    // Tuyến Thuyền 3 (ngay dưới Ga Cao Tốc col 139): Bến Dưới Cao Tốc (139, 29) <-> Bờ Bắc Đảo (139, 46)
+    for (let r = 17; r <= 28; r++) {
+      const idx = r * cols + 139;
+      tiles[idx] = "stone";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+    for (let c = 138; c <= 140; c++) {
+      for (let r = 27; r <= 28; r++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+      for (let r = 47; r <= 49; r++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (const r of [29, 30, 45, 46]) {
+      const idx = r * cols + 139;
+      tiles[idx] = "bridge";
+      collision[idx] = 0;
+      reserved[idx] = 1;
+    }
+
+    ferryRoutes.push(
+      {
+        id: "jp_ferry_island_go",
+        label: "⛵ Đi Thuyền → Đảo Làng Chài",
+        destLabel: "Đảo Làng Chài Ngoài Biển",
+        costGold: 600,
+        dockCol: 113,
+        dockRow: 62,
+        toCol: 135,
+        toRow: 62,
+        direction: "to-island",
+      },
+      {
+        id: "jp_ferry_island_back",
+        label: "⛵ Về Đất Liền (Vùng Vàng)",
+        destLabel: "Bờ Biển Kyoto (Vùng Vàng)",
+        costGold: 400,
+        dockCol: 135,
+        dockRow: 62,
+        toCol: 113,
+        toRow: 62,
+        direction: "to-mainland",
+      },
+      {
+        id: "jp_ferry_snow_to_island",
+        label: "⛵ Đi Thuyền Núi Tuyết → Đảo",
+        destLabel: "Bờ Bắc Đảo Làng Chài",
+        costGold: 650,
+        dockCol: 168,
+        dockRow: 29,
+        toCol: 168,
+        toRow: 46,
+        direction: "to-island",
+      },
+      {
+        id: "jp_ferry_island_to_snow",
+        label: "⛵ Đi Thuyền Đảo → Núi Tuyết",
+        destLabel: "Bến Nam Núi Tuyết",
+        costGold: 450,
+        dockCol: 168,
+        dockRow: 46,
+        toCol: 168,
+        toRow: 29,
+        direction: "to-mainland",
+      },
+      {
+        id: "jp_ferry_shinkansen_to_island",
+        label: "⛵ Đi Thuyền Dưới Cao Tốc → Đảo",
+        destLabel: "Bờ Bắc Đảo Làng Chài",
+        costGold: 550,
+        dockCol: 139,
+        dockRow: 29,
+        toCol: 139,
+        toRow: 46,
+        direction: "to-island",
+      },
+      {
+        id: "jp_ferry_island_to_shinkansen",
+        label: "⛵ Về Bến Dưới Ga Cao Tốc",
+        destLabel: "Bến Dưới Ga Cao Tốc",
+        costGold: 350,
+        dockCol: 139,
+        dockRow: 46,
+        toCol: 139,
+        toRow: 29,
+        direction: "to-mainland",
+      },
+    );
+  }
+
   // Convert inner shoreline edges of all water bodies into walkable "shallow" wade rim!
   const waterSnapshot = tiles.slice();
   for (let row = 2; row < rows - 2; row++) {
@@ -841,20 +1163,20 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
         },
         {
           id: "jp-tokyo-plaza",
-          name: "Đại Đô Thị Tokyo (Vùng Xanh)",
-          subtitle: "Khu An Toàn Shibuya – Akihabara với Tháp Tokyo, Ga Shinkansen & Tiệm Kimono",
+          name: "Quảng Trường Trung Tâm Tokyo (Vùng Xanh)",
+          subtitle: "Khu An Toàn Tokyo với Tháp Tokyo, Dinh Thự, Sàn Đấu Giá & Bảo Tàng Trưng Bày",
           x: 19 * TILE_SIZE,
-          y: 44 * TILE_SIZE,
+          y: 12 * TILE_SIZE,
           radius: 260,
           accentColor: 0x10b981,
           discovered: true,
         },
         {
           id: "jp-narita-airport",
-          name: "Sân Bay Narita & Ga Shinkansen",
+          name: "Sân Bay Ngoại Ô Haneda – Narita",
           subtitle: "Cửa ngõ bay về Việt Nam (5.000 Vàng) hoặc bay Thái Lan đổi giới tính",
           x: 19 * TILE_SIZE,
-          y: 51 * TILE_SIZE,
+          y: 75 * TILE_SIZE,
           radius: 240,
           accentColor: 0x38bdf8,
           discovered: false,
@@ -1005,38 +1327,55 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
 
   // === ZONE 1: GREEN SAFE ZONE (col 2..31) — Home, ALL Shops, Airport, Hospital, Police (NO loot houses/chests, Trash Bins only!) ===
   const buildLakesideVillaEstateProps = (): void => {
-    // Sàn Giao Dịch Bất Động Sản đặt tại quảng trường phía Tây Vùng Xanh (col 4, row 9)
-    placeProp("city_real_estate_center", 4, 9, 3, 2);
-    // Tượng Cóc Vàng chiêu tài phong thủy trước sảnh BĐS (col 6, row 10)
-    placeProp("frog_statue", 6, 10, 1, 1, 0.5, 0.92, false);
+    if (isJapan) {
+      // Khu Biệt Thự Sakura & Hồ Koi (col 2..31, row 41..57)
+      placeProp("city_real_estate_center", 4, 49, 3, 2);
+      placeProp("frog_statue", 6, 50, 1, 1, 0.5, 0.92, false);
+      placeProp("city_player_estate", 14, 55, 4, 3, 0.5, 0.92, false);
+      placeProp("plains_tea_house", 16, 49, 3, 2, 0.5, 0.92, false);
+      placeProp("sakura_small", 15, 48, 1, 1, 0.5, 0.92, false);
+      placeProp("momiji_small", 18, 48, 1, 1, 0.5, 0.92, false);
+      placeProp("jp_stone_lantern", 15, 50, 1, 1, 0.5, 0.92, false);
+      placeProp("jp_stone_lantern", 18, 50, 1, 1, 0.5, 0.92, false);
+      placeProp("jp_torii_gate", 16, 46, 2, 2, 0.5, 0.92, false);
+      placeProp("bench", 14, 46, 1, 1, 0.5, 0.92, false);
+      placeProp("bench", 19, 46, 1, 1, 0.5, 0.92, false);
+      placeProp("bench", 14, 52, 1, 1, 0.5, 0.92, false);
+      placeProp("bench", 19, 52, 1, 1, 0.5, 0.92, false);
+      placeProp("park_lantern", 12, 49, 1, 1, 0.5, 0.92, false);
+      placeProp("park_lantern", 21, 49, 1, 1, 0.5, 0.92, false);
+      placeProp("street_lamp", 2, 46, 1, 2, 0.5, 0.92, false);
+      placeProp("street_lamp", 2, 52, 1, 2, 0.5, 0.92, false);
+      placeProp("street_lamp", 31, 46, 1, 2, 0.5, 0.92, false);
+      placeProp("street_lamp", 31, 52, 1, 2, 0.5, 0.92, false);
+    } else {
+      // Sàn Giao Dịch Bất Động Sản đặt tại quảng trường phía Tây Vùng Xanh (col 4, row 9)
+      placeProp("city_real_estate_center", 4, 9, 3, 2);
+      // Tượng Cóc Vàng chiêu tài phong thủy trước sảnh BĐS (col 6, row 10)
+      placeProp("frog_statue", 6, 10, 1, 1, 0.5, 0.92, false);
 
-    // Lô Đất Biệt Thự của Người Chơi (Lô 9 mặt tiền hồ tại col 14, row 15)
-    // Đặt blocking = false để khi chưa xây nhà, người chơi đi lại hoàn toàn tự do trên mặt đất!
-    placeProp("city_player_estate", 14, 15, 4, 3, 0.5, 0.92, false);
+      // Lô Đất Biệt Thự của Người Chơi (Lô 9 mặt tiền hồ tại col 14, row 15)
+      placeProp("city_player_estate", 14, 15, 4, 3, 0.5, 0.92, false);
 
-    // Đảo Vọng Cảnh Trung Tâm Vùng Xanh (Central Pavilion Island tại col 16..17, row 9)
-    // Quán Trà / Đình Trà cổ kính tọa lạc giữa lòng hồ nước sinh thái
-    placeProp("plains_tea_house", 16, 9, 3, 2, 0.5, 0.92, false);
-    // Cây hoa anh đào & phong đỏ nhỏ trang trí trên Đảo
-    placeProp("sakura_small", 15, 8, 1, 1, 0.5, 0.92, false);
-    placeProp("momiji_small", 18, 8, 1, 1, 0.5, 0.92, false);
-    // Đèn lồng đá Nhật Bản thắp sáng lối cầu dẫn vào Đảo Vọng Cảnh
-    placeProp("jp_stone_lantern", 15, 10, 1, 1, 0.5, 0.92, false);
-    placeProp("jp_stone_lantern", 18, 10, 1, 1, 0.5, 0.92, false);
+      // Đảo Vọng Cảnh Trung Tâm Vùng Xanh (Central Pavilion Island tại col 16..17, row 9)
+      placeProp("plains_tea_house", 16, 9, 3, 2, 0.5, 0.92, false);
+      placeProp("sakura_small", 15, 8, 1, 1, 0.5, 0.92, false);
+      placeProp("momiji_small", 18, 8, 1, 1, 0.5, 0.92, false);
+      placeProp("jp_stone_lantern", 15, 10, 1, 1, 0.5, 0.92, false);
+      placeProp("jp_stone_lantern", 18, 10, 1, 1, 0.5, 0.92, false);
 
-    // Ghế đá nghỉ dưỡng ven hồ (hàng 6 và hàng 12)
-    placeProp("bench", 14, 6, 1, 1, 0.5, 0.92, false);
-    placeProp("bench", 19, 6, 1, 1, 0.5, 0.92, false);
-    placeProp("bench", 14, 12, 1, 1, 0.5, 0.92, false);
-    placeProp("bench", 19, 12, 1, 1, 0.5, 0.92, false);
+      placeProp("bench", 14, 6, 1, 1, 0.5, 0.92, false);
+      placeProp("bench", 19, 6, 1, 1, 0.5, 0.92, false);
+      placeProp("bench", 14, 12, 1, 1, 0.5, 0.92, false);
+      placeProp("bench", 19, 12, 1, 1, 0.5, 0.92, false);
 
-    // Đèn công viên ven cầu và đèn đường đại lộ Vùng Xanh
-    placeProp("park_lantern", 12, 9, 1, 1, 0.5, 0.92, false);
-    placeProp("park_lantern", 21, 9, 1, 1, 0.5, 0.92, false);
-    placeProp("street_lamp", 2, 6, 1, 2, 0.5, 0.92, false);
-    placeProp("street_lamp", 2, 12, 1, 2, 0.5, 0.92, false);
-    placeProp("street_lamp", 31, 6, 1, 2, 0.5, 0.92, false);
-    placeProp("street_lamp", 31, 12, 1, 2, 0.5, 0.92, false);
+      placeProp("park_lantern", 12, 9, 1, 1, 0.5, 0.92, false);
+      placeProp("park_lantern", 21, 9, 1, 1, 0.5, 0.92, false);
+      placeProp("street_lamp", 2, 6, 1, 2, 0.5, 0.92, false);
+      placeProp("street_lamp", 2, 12, 1, 2, 0.5, 0.92, false);
+      placeProp("street_lamp", 31, 6, 1, 2, 0.5, 0.92, false);
+      placeProp("street_lamp", 31, 12, 1, 2, 0.5, 0.92, false);
+    }
 
     // ── Công Viên Sinh Thái & Kho Báu Đông Hồ (col 32..55, row 1..17) ──
     // 5 Model nhà công viên phù hợp (tất cả đều có thể tương tác LOOT vật phẩm!)
@@ -1100,28 +1439,42 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   };
 
   if (isJapan) {
-    // Tokyo Shibuya / Harajuku / Ginza Japanese Safe Zone Layout
-    // West Block (col 5..10)
+    // NHẬT BẢN: Quy hoạch lại Toàn Diện Vùng An Toàn Tokyo (col 2..31)
+    // Bắc (row 1..17): Quảng trường Trung tâm Tokyo
+    placeProp("city_home_house", 8, 8, 3, 2);
+    placeProp("jp_tokyo_tower", 16, 8, 4, 2);
+    placeProp("city_auction_house", 24, 8, 4, 2);
+    placeProp("city_reputation_hall", 8, 15, 4, 2);
+    placeProp("city_collection_hall", 24, 15, 4, 2);
+    placeProp("jp_torii_gate", 16, 15, 2, 2, 0.5, 0.92, false);
+    placeProp("jp_vending_machine", 12, 11, 1, 1, 0.5, 0.92, false);
+    placeProp("jp_vending_machine", 21, 11, 1, 1, 0.5, 0.92, false);
+
+    // Trung tâm Thương mại Shibuya / Harajuku (row 19..40)
     placeProp("city_hospital", 7, 23, 5, 3);
     placeProp("city_backpack_shop", 7, 36, 4, 2);
+    placeProp("city_clothing_shop", 19, 24, 4, 2);
+    placeProp("city_hair_salon", 19, 36, 4, 2);
+    placeProp("city_pharmacy", 29, 22, 4, 2);
+    placeProp("city_butcher_shop", 29, 36, 4, 2);
+
+    // Khu Biệt Thự Sakura & Hồ Koi (row 41..57, col 2..31)
+    buildLakesideVillaEstateProps();
+
+    // Nam Tokyo & Sân Bay Ngoại Ô Haneda (row 58..78 — cách xa trung tâm)
     placeProp("city_pet_gacha", 7, 60, 4, 2);
     placeProp("city_police_station", 7, 72, 4, 2);
-
-    // Center Block (col 15..23) — Master Lakeside Villa District (20 Lots) + Ryokan Home, Auction House
-    buildLakesideVillaEstateProps();
-    placeProp("city_home_house", 16, 22, 3, 2);
-    placeProp("city_auction_house", 21, 22, 4, 2);
-    placeProp("city_clothing_shop", 19, 36, 4, 2);
-    placeProp("city_airport", 19, 52, 5, 3);
-    placeProp("city_hair_salon", 19, 60, 4, 2);
-
-    // East Safe Block (col 28..31) — Kanpo Apothecary, Collection Hall moved up near Home, Tokyo Ramen, Reputation Hall, Ginza Omakase & Quest Guild
-    placeProp("city_pharmacy", 29, 22, 4, 2);
-    placeProp("city_collection_hall", 29, 27, 4, 2);
-    placeProp("city_butcher_shop", 29, 36, 4, 2);
-    placeProp("city_reputation_hall", 29, 48, 4, 2);
-    placeProp("plains_garden_inn", 29, 60, 5, 2);
+    placeProp("plains_garden_inn", 19, 64, 5, 2);
+    placeProp("city_airport", 19, 75, 5, 3);
     placeProp("city_quest_guild", 29, 72, 4, 2);
+
+    // Mở rộng Khu Công Viên Ueno & Võ Đường Đông Bắc (col 32..76, row 1..17) thêm 6 nhà loot Nhật Bản
+    placeProp("jp_shinto_shrine", 36, 10, 4, 2);
+    placeProp("jp_ninja_dojo", 52, 10, 4, 2);
+    placeProp("jp_ryokan_inn", 59, 6, 4, 2);
+    placeProp("jp_village_machiya", 66, 6, 4, 2);
+    placeProp("jp_akihabara_arcade", 59, 15, 4, 2);
+    placeProp("jp_samurai_manor", 66, 15, 5, 2);
   } else {
     // West Block (col 5..10)
     placeProp("city_hospital", 7, 23, 5, 3);
@@ -1146,9 +1499,9 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("city_reputation_hall", 29, 60, 4, 2);
   }
 
-  // === ZONE 2: YELLOW ZONE (col 32..141, +50.7% larger — 21 loot buildings = +40%) ===
+  // === ZONE 2: YELLOW ZONE (col 32..141 — Japan +100% loot buildings: 42 vs Vietnam 21) ===
   if (isJapan) {
-    // Region 1 East: Grand Tokyo Metropolis (col 32..55)
+    // Region 1 East: Grand Tokyo Metropolis (col 32..55) — 14 buildings
     placeProp("jp_ryokan_inn", 35, 22, 4, 2);
     placeProp("jp_shinto_shrine", 45, 22, 4, 2);
     placeProp("jp_tokyo_tower", 45, 31, 5, 3);
@@ -1156,21 +1509,44 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("jp_shinkansen_station", 45, 52, 5, 3);
     placeProp("jp_ryokan_inn", 34, 60, 4, 2);
     placeProp("jp_akihabara_arcade", 45, 72, 4, 2);
-    // Region 2: Expanded Feudal Samurai Countryside & Estates (col 56..141)
+    placeProp("jp_village_machiya", 35, 29, 4, 2);
+    placeProp("jp_ninja_dojo", 52, 24, 4, 2);
+    placeProp("jp_village_machiya", 35, 44, 4, 2);
+    placeProp("jp_shinto_shrine", 52, 44, 4, 2);
+    placeProp("jp_samurai_manor", 45, 62, 5, 2);
+    placeProp("jp_akihabara_arcade", 35, 72, 4, 2);
+    placeProp("jp_village_machiya", 52, 72, 4, 2);
+    // Region 2: Expanded Feudal Samurai Countryside & Kyoto Estates (col 56..141) — 28 buildings
     placeProp("jp_samurai_manor", 62, 22, 5, 3);
     placeProp("jp_village_machiya", 61, 35, 4, 2);
     placeProp("jp_village_machiya", 62, 54, 4, 2);
     placeProp("jp_ryokan_inn", 63, 75, 4, 2);
-    placeProp("jp_shinto_shrine", 83, 14, 5, 3);
-    placeProp("jp_samurai_manor", 84, 35, 5, 3);
-    placeProp("jp_village_machiya", 84, 56, 4, 2);
+    placeProp("jp_ninja_dojo", 72, 24, 4, 2);
+    placeProp("jp_zen_temple", 72, 44, 4, 2);
+    placeProp("jp_samurai_manor", 72, 64, 5, 2);
+    // 2 Ga Tàu Cao Tốc Shinkansen: Trung tâm Tokyo (30, 15) & Vùng Tuyết Mép Khu Đỏ (139, 15)
+    placeProp("jp_shinkansen_station", 30, 15, 5, 3);
+    placeProp("jp_shinkansen_station", 139, 15, 5, 3);
+    placeProp("jp_sushi_market", 110, 58, 4, 2);
+    placeProp("jp_geisha_okiya", 84, 35, 4, 2);
+    placeProp("jp_izakaya_tavern", 84, 56, 4, 2);
+    placeProp("jp_ryokan_inn", 84, 74, 4, 2);
+    placeProp("jp_ninja_dojo", 94, 24, 4, 2);
+    placeProp("jp_ramen_shop", 94, 46, 4, 2);
+    placeProp("jp_akihabara_arcade", 94, 66, 4, 2);
     placeProp("jp_shinto_shrine", 106, 13, 5, 3);
     placeProp("jp_samurai_manor", 104, 35, 5, 3);
-    placeProp("jp_village_machiya", 104, 75, 4, 2);
+    placeProp("jp_geisha_okiya", 104, 54, 4, 2);
+    placeProp("jp_izakaya_tavern", 104, 75, 4, 2);
+    placeProp("jp_ninja_dojo", 114, 22, 4, 2);
     placeProp("plains_pagoda", 124, 13, 5, 3);
-    placeProp("jp_ninja_dojo", 123, 36, 4, 2);
-    placeProp("jp_ryokan_inn", 122, 52, 4, 2);
-    placeProp("jp_ninja_dojo", 131, 75, 4, 2);
+    placeProp("jp_shinto_shrine", 134, 22, 4, 2);
+    placeProp("jp_zen_temple", 84, 13, 4, 2);
+    placeProp("jp_village_machiya", 108, 46, 4, 2);
+    placeProp("jp_ramen_shop", 108, 68, 4, 2);
+    placeProp("jp_ryokan_inn", 96, 13, 4, 2);
+    placeProp("jp_samurai_manor", 124, 25, 5, 2);
+    placeProp("jp_izakaya_tavern", 72, 34, 4, 2);
   } else {
     // Urban East Streets (col 32..55)
     placeProp("city_fire_station", 35, 22, 4, 2);
@@ -1341,28 +1717,59 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     }
   }
 
-  // === ZONE 3: RED DANGER ZONE (col 142..201, +51.2% larger — 16 loot buildings = +45.5%) ===
+  // === ZONE 3: RED DANGER ZONE (Japan: Vùng Tuyết Bắc nối liền đất liền + Đảo Biệt Lập Ngoài Biển) ===
   if (isJapan) {
-    // Band 1: West Snowy Iga Foothills (col 143..150)
-    placeProp("jp_ninja_dojo", 146, 15, 4, 2);
-    placeProp("jp_samurai_manor", 146, 35, 5, 3);
-    placeProp("jp_snow_onsen_temple", 146, 52, 5, 3);
-    placeProp("jp_village_machiya", 146, 77, 4, 2);
-    // Band 2: Mid-West Alpine Shogun Valley (col 156..168)
-    placeProp("jp_shogun_castle", 163, 15, 5, 3);
-    placeProp("plains_pagoda", 164, 35, 5, 3);
-    placeProp("jp_ninja_dojo", 164, 49, 4, 2);
-    placeProp("jp_snow_onsen_temple", 163, 77, 5, 3);
-    // Band 3: Mid-East Frozen Temple Ridge (col 172..185)
-    placeProp("jp_shinto_shrine", 178, 15, 4, 2);
-    placeProp("jp_samurai_manor", 178, 35, 5, 3);
-    placeProp("jp_snow_onsen_temple", 178, 52, 5, 3);
-    placeProp("jp_ninja_dojo", 178, 77, 4, 2);
-    // Band 4: Deep East Shogun Summit Fortress (col 190..200)
-    placeProp("jp_shinto_shrine", 194, 15, 4, 2);
-    placeProp("jp_samurai_manor", 194, 34, 5, 3);
-    placeProp("jp_shogun_castle", 194, 55, 5, 3);
-    placeProp("jp_shogun_castle", 194, 77, 5, 3);
+    // Vùng Tuyết Đỏ Bắc (col 144..198, row 9..27) — nằm phía Bắc biển rộng row 30..45
+    placeProp("jp_ninja_dojo", 146, 14, 4, 2);
+    placeProp("jp_snow_onsen_temple", 152, 23, 5, 3);
+    placeProp("jp_samurai_manor", 145, 25, 5, 3);
+    placeProp("jp_zen_temple", 154, 11, 4, 2);
+    placeProp("jp_shogun_castle", 163, 14, 5, 3);
+    placeProp("jp_ryokan_inn", 164, 24, 4, 2);
+    placeProp("plains_pagoda", 171, 13, 5, 3);
+    placeProp("jp_village_machiya", 174, 23, 4, 2);
+    placeProp("jp_shinto_shrine", 180, 13, 4, 2);
+    placeProp("jp_ninja_dojo", 182, 24, 4, 2);
+    placeProp("jp_snow_onsen_temple", 189, 14, 5, 3);
+    placeProp("jp_shogun_castle", 195, 23, 5, 3);
+    placeProp("jp_shinto_shrine", 196, 12, 4, 2);
+
+    // Đảo Làng Chài Lớn Ngoài Biển (col 135..201, row 46..81 — to hơn gấp đôi!)
+    placeProp("jp_lighthouse", 137, 56, 3, 2);
+    placeProp("jp_sushi_market", 140, 68, 4, 2);
+    placeProp("jp_fisherman_hut", 148, 52, 4, 2);
+    placeProp("jp_boat_workshop", 152, 69, 4, 2);
+    placeProp("jp_seaside_shrine", 166, 52, 4, 2);
+    placeProp("jp_fish_warehouse", 165, 72, 4, 2);
+    placeProp("jp_izakaya_tavern", 180, 56, 4, 2);
+    placeProp("jp_ryokan_inn", 184, 72, 4, 2);
+    placeProp("jp_fisherman_hut", 194, 54, 4, 2);
+    placeProp("jp_boat_workshop", 194, 70, 4, 2);
+
+    // Đạo cụ phong cách Đảo Làng Chài (Thuyền chài, Giàn phơi cá, Lửa trại bãi biển, Cây dừa biển)
+    placeProp("jp_island_boat", 138, 61, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_boat", 138, 74, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_boat", 164, 49, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_boat", 172, 49, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_boat", 197, 65, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_fish_rack", 144, 69, 2, 1);
+    placeProp("jp_island_fish_rack", 152, 53, 2, 1);
+    placeProp("jp_island_fish_rack", 156, 70, 2, 1);
+    placeProp("jp_island_fish_rack", 169, 73, 2, 1);
+    placeProp("jp_island_fish_rack", 190, 71, 2, 1);
+    placeProp("jp_island_campfire", 143, 62, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_campfire", 160, 62, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_campfire", 176, 65, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_campfire", 191, 63, 2, 1, 0.5, 0.9, false);
+    placeProp("jp_island_palm", 139, 50, 2, 1);
+    placeProp("jp_island_palm", 145, 77, 2, 1);
+    placeProp("jp_island_palm", 158, 50, 2, 1);
+    placeProp("jp_island_palm", 176, 51, 2, 1);
+    placeProp("jp_island_palm", 188, 50, 2, 1);
+    placeProp("jp_island_palm", 197, 51, 2, 1);
+    placeProp("jp_island_palm", 197, 77, 2, 1);
+    placeProp("jp_stone_lantern", 164, 53, 1, 1, 0.5, 0.92, false);
+    placeProp("jp_stone_lantern", 168, 53, 1, 1, 0.5, 0.92, false);
   } else {
     // Band 1: West Red Gate (col 143..150)
     placeProp("city_twin_towers", 146, 15, 5, 3);
@@ -1386,9 +1793,9 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("city_mansion_block", 194, 77, 5, 3);
   }
 
-  // 7. Spawn Position: Safe Green Central Plaza right beside Shops, Home & Airport (col 19, row 44)
+  // 7. Spawn Position: Vietnam at Central Plaza (19, 44); Japan at North Tokyo Plaza beside Airport (19, 12)
   const spawnCol = 19;
-  const spawnRow = 44;
+  const spawnRow = isJapan ? 12 : 44;
   collision[spawnRow * cols + spawnCol] = 0;
 
   // 8. Puddles across all 3 zones
@@ -1447,36 +1854,35 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           { id: "jp_chest-yellow-6", name: "Rương Bến Thuyền Kyoto Nam", kind: "wooden", col: 82, row: 72 },
           { id: "jp_chest-yellow-7", name: "Rương Vườn Thiền Trung Tâm", kind: "wooden", col: 98, row: 28 },
           { id: "jp_chest-yellow-8", name: "Rương Cổng Phủ Samurai Đông", kind: "wooden", col: 112, row: 54 },
-          { id: "jp_chest-yellow-9", name: "Rương Hồ Anh Đào Đông", kind: "wooden", col: 129, row: 44 },
-          { id: "jp_chest-yellow-10", name: "Rương Võ Đường Ngoại Ô", kind: "wooden", col: 138, row: 64 },
+          { id: "jp_chest-yellow-9", name: "Rương Bến Cảng Đông", kind: "wooden", col: 109, row: 52 },
+          { id: "jp_chest-yellow-10", name: "Rương Chợ Hải Sản Cảng", kind: "wooden", col: 110, row: 65 },
           { id: "jp_chest-yellow-royal-1", name: "Rương Hoàng Kim Đền Inari", kind: "royal", col: 88, row: 14 },
           { id: "jp_chest-yellow-royal-2", name: "Rương Mật Mã Phố Chợ Kyoto", kind: "royal", col: 50, row: 35 },
           { id: "jp_chest-yellow-royal-3", name: "Rương Hoàng Kim Chùa Cổ Đông", kind: "royal", col: 128, row: 14 },
           { id: "jp_trash-plains-road", name: "Thùng Rác Đại Lộ Kyoto", kind: "trash", col: 74, row: 38 },
           { id: "jp_trash-plains-mid", name: "Thùng Rác Ngã Ba Samurai", kind: "trash", col: 100, row: 64 },
-          { id: "jp_trash-plains-east", name: "Thùng Rác Cổng Đông Kyoto", kind: "trash", col: 133, row: 38 },
+          { id: "jp_trash-plains-east", name: "Thùng Rác Chân Núi Tuyết", kind: "trash", col: 108, row: 28 },
 
-          // Red Zone Iga & Osaka Castle (Expanded +51%, 14 High-Value Spots = +40%)
-          { id: "jp_chest-red-w1", name: "Rương Ám Khí Ninja Iga", kind: "wooden", col: 144, row: 23 },
-          { id: "jp_chest-red-w2", name: "Rương Cổng Đền Thần Bí", kind: "wooden", col: 149, row: 44 },
-          { id: "jp_chest-red-w3", name: "Rương Hồ Lá Phong Tây", kind: "wooden", col: 158, row: 52 },
-          { id: "jp_chest-red-w4", name: "Rương Đèo Tuyết Trung Tâm", kind: "wooden", col: 171, row: 26 },
-          { id: "jp_chest-red-w5", name: "Rương Rừng Trúc Mạc Phủ", kind: "wooden", col: 174, row: 64 },
+          // Red Zone: Núi Tuyết Bắc + Đảo Làng Chài Lớn
+          { id: "jp_chest-red-w1", name: "Rương Ám Khí Ninja Iga", kind: "wooden", col: 149, row: 23 },
+          { id: "jp_chest-red-w2", name: "Rương Đền Tuyết Phủ Tây", kind: "wooden", col: 150, row: 14 },
+          { id: "jp_chest-red-w3", name: "Rương Hải Đảo Tây", kind: "wooden", col: 142, row: 54 },
+          { id: "jp_chest-red-w4", name: "Rương Đèo Tuyết Trung Tâm", kind: "wooden", col: 171, row: 25 },
+          { id: "jp_chest-red-w5", name: "Rương Rừng Trúc Đảo Ngoài", kind: "wooden", col: 174, row: 64 },
           { id: "jp_chest-red-w6", name: "Rương Đền Tuyết Phương Đông", kind: "wooden", col: 190, row: 24 },
-          { id: "jp_chest-red-w7", name: "Rương Chân Thành Osaka Nam", kind: "wooden", col: 197, row: 64 },
+          { id: "jp_chest-red-w7", name: "Rương Chân Thành Đảo Nam", kind: "wooden", col: 197, row: 64 },
           { id: "jp_chest-red-royal-1", name: "Rương Hoàng Kim Thành Shogun", kind: "royal", col: 167, row: 15 },
-          { id: "jp_chest-red-royal-2", name: "Rương Báu Vật Suối Khoáng", kind: "royal", col: 174, row: 44 },
-          { id: "jp_chest-red-royal-3", name: "Rương Cổ Vật Rừng Phong", kind: "royal", col: 155, row: 76 },
+          { id: "jp_chest-red-royal-2", name: "Rương Báu Vật Suối Khoáng", kind: "royal", col: 174, row: 52 },
+          { id: "jp_chest-red-royal-3", name: "Rương Cổ Vật Rừng Dừa Đảo", kind: "royal", col: 155, row: 76 },
           { id: "jp_chest-red-royal-4", name: "Rương Báu Vật Đền Băng", kind: "royal", col: 184, row: 15 },
-          { id: "jp_chest-red-royal-5", name: "Rương Hoàng Gia Thành Đông", kind: "royal", col: 191, row: 44 },
+          { id: "jp_chest-red-royal-5", name: "Rương Hoàng Gia Thành Đông", kind: "royal", col: 191, row: 52 },
           { id: "jp_chest-red-royal-6", name: "Rương Quốc Bảo Mạc Phủ", kind: "royal", col: 197, row: 76 },
-          // Red Zone Mid-Lake Island Treasures (5 chests across 4 alpine lakes)
           { id: "jp_chest-red-lake-1", name: "Rương Báu Hồ Băng Iga", kind: "royal", col: 158, row: 25 },
-          { id: "jp_chest-red-lake-2", name: "Rương Cổ Vật Hồ Tuyết Nam", kind: "wooden", col: 158, row: 60 },
-          { id: "jp_chest-red-lake-3", name: "Rương Hoàng Kim Hồ Shogun", kind: "royal", col: 184, row: 25 },
-          { id: "jp_chest-red-lake-4", name: "Rương Quốc Bảo Đảo Băng Sâu", kind: "royal", col: 184, row: 61 },
-          { id: "jp_chest-red-lake-5", name: "Rương Trôi Dạt Đảo Băng", kind: "wooden", col: 186, row: 61 },
-          { id: "jp_trash-rural-trail", name: "Thùng Rác Cổng Làng Ninja", kind: "trash", col: 143, row: 41 },
+          { id: "jp_chest-red-lake-2", name: "Rương Cổ Vật Hồ Đảo Ngoài", kind: "wooden", col: 148, row: 62 },
+          { id: "jp_chest-red-lake-3", name: "Rương Hoàng Kim Hồ Tuyết", kind: "royal", col: 184, row: 25 },
+          { id: "jp_chest-red-lake-4", name: "Rương Quốc Bảo Đảo Ngoài Sâu", kind: "royal", col: 184, row: 61 },
+          { id: "jp_chest-red-lake-5", name: "Rương Trôi Dạt Đảo Biệt Lập", kind: "wooden", col: 186, row: 61 },
+          { id: "jp_trash-rural-trail", name: "Thùng Rác Hải Đăng Đảo Ngoài", kind: "trash", col: 139, row: 64 },
         ]
       : [
           // Green Safe Zone: ONLY Trash Bins (scarce C/B items, zero chests!)
@@ -1546,6 +1952,52 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     { id: `${parkPrefix}stadium-trash-gate`, name: "Thùng Rác Cổng Khán Đài", kind: "trash", col: 56, row: 11 },
   );
 
+  if (isJapan) {
+    // Mở rộng +100% số lượng Rương Loot cho Nhật Bản (NE Ueno, Vùng Vàng Kyoto, Vùng Đỏ Hokkaido)
+    chestSpots.push(
+      { id: "jp-ueno-1", name: "Rương Thần Miếu Ueno", kind: "royal", col: 36, row: 12 },
+      { id: "jp-ueno-2", name: "Rương Võ Đường Ninja", kind: "wooden", col: 52, row: 12 },
+      { id: "jp-ueno-3", name: "Rương Lữ Quán Đông Bắc", kind: "wooden", col: 60, row: 8 },
+      { id: "jp-ueno-4", name: "Rương Phủ Võ Sĩ Đông Bắc", kind: "royal", col: 67, row: 16 },
+      // Vùng Vàng Nhật Bản (+16 rương)
+      { id: "jp-y-extra-1", name: "Rương Hẻm Akihabara Bắc", kind: "wooden", col: 37, row: 30 },
+      { id: "jp-y-extra-2", name: "Rương Đền Thần Shibuya", kind: "royal", col: 52, row: 26 },
+      { id: "jp-y-extra-3", name: "Rương Phố Cổ Machiya Nam", kind: "wooden", col: 37, row: 46 },
+      { id: "jp-y-extra-4", name: "Rương Miếu Thờ Đông Nam", kind: "wooden", col: 52, row: 46 },
+      { id: "jp-y-extra-5", name: "Rương Trang Viên Samurai", kind: "royal", col: 47, row: 63 },
+      { id: "jp-y-extra-6", name: "Rương Cổng Võ Đường Tây", kind: "wooden", col: 72, row: 26 },
+      { id: "jp-y-extra-7", name: "Rương Hồ Sen Kyoto Tây", kind: "royal", col: 72, row: 46 },
+      { id: "jp-y-extra-8", name: "Rương Thái Ấp Samurai Nam", kind: "wooden", col: 72, row: 66 },
+      { id: "jp-y-extra-9", name: "Rương Lữ Quán Nam Sông", kind: "wooden", col: 84, row: 76 },
+      { id: "jp-y-extra-10", name: "Rương Võ Đường Đỏ", kind: "wooden", col: 94, row: 26 },
+      { id: "jp-y-extra-11", name: "Rương Phố Đêm Machiya", kind: "wooden", col: 94, row: 48 },
+      { id: "jp-y-extra-12", name: "Rương Điện Game Cổ", kind: "royal", col: 94, row: 68 },
+      { id: "jp-y-extra-13", name: "Rương Lữ Quán Giữa Rừng", kind: "wooden", col: 104, row: 56 },
+      { id: "jp-y-extra-14", name: "Rương Miếu Cổ Đông Sông", kind: "royal", col: 109, row: 42 },
+      { id: "jp-y-extra-15", name: "Rương Thái Ấp Đồi Thông", kind: "wooden", col: 108, row: 72 },
+      { id: "jp-y-extra-16", name: "Rương Chốt Biên Giới Tuyết", kind: "royal", col: 134, row: 25 },
+      // Vùng Đỏ Bắc (Tuyết) & Đảo Làng Chài Lớn (+18 rương)
+      { id: "jp-r-extra-1", name: "Rương Tuyết Sơn Tây", kind: "wooden", col: 152, row: 26 },
+      { id: "jp-r-extra-2", name: "Rương Chợ Cá Đảo Ngoài", kind: "royal", col: 143, row: 70 },
+      { id: "jp-r-extra-3", name: "Rương Lữ Quán Tuyết Phủ", kind: "wooden", col: 154, row: 16 },
+      { id: "jp-r-extra-4", name: "Rương Trại Ninja Bắc", kind: "royal", col: 154, row: 12 },
+      { id: "jp-r-extra-5", name: "Rương Lữ Quán Thung Lũng", kind: "wooden", col: 164, row: 26 },
+      { id: "jp-r-extra-6", name: "Rương Xưởng Thuyền Đảo", kind: "royal", col: 156, row: 66 },
+      { id: "jp-r-extra-7", name: "Rương Phố Tuyết Machiya", kind: "wooden", col: 171, row: 24 },
+      { id: "jp-r-extra-8", name: "Rương Miếu Biển Đảo Ngoài", kind: "royal", col: 168, row: 58 },
+      { id: "jp-r-extra-9", name: "Rương Võ Đường Băng Sơn", kind: "wooden", col: 178, row: 27 },
+      { id: "jp-r-extra-10", name: "Rương Lữ Quán Đảo Nam", kind: "wooden", col: 179, row: 67 },
+      { id: "jp-r-extra-11", name: "Rương Cổng Thành Đỏ", kind: "royal", col: 186, row: 24 },
+      { id: "jp-r-extra-12", name: "Rương Bến Bắc Đảo Ngoài", kind: "royal", col: 176, row: 55 },
+      { id: "jp-r-extra-13", name: "Rương Phố Cổ Đỉnh Đông", kind: "wooden", col: 186, row: 72 },
+      { id: "jp-r-extra-14", name: "Rương Mật Thất Ninja Đông", kind: "royal", col: 194, row: 26 },
+      { id: "jp-r-extra-15", name: "Rương Làng Chài Đông Đảo", kind: "royal", col: 194, row: 54 },
+      { id: "jp-r-extra-16", name: "Rương Kho Báu Lữ Quán", kind: "wooden", col: 194, row: 68 },
+      { id: "jp-r-extra-17", name: "Rương Hoàng Kim Đỉnh Tuyết", kind: "royal", col: 199, row: 38 },
+      { id: "jp-r-extra-18", name: "Rương Tuyệt Mật Shogun", kind: "royal", col: 199, row: 62 },
+    );
+  }
+
   // Reserve chest coordinates before procedural flora so trees/rocks never cover chests
   for (const spot of chestSpots) {
     const idx = spot.row * cols + spot.col;
@@ -1581,16 +2033,33 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
       const r = rng();
 
       if (zone === "countryside") {
-        // Countryside: on Japan map, alpine snowy mountain forests (Yuki-Matsu, Snow Jizo & crimson Momiji)
-        const bigTreeKind = isJapan ? (rng() < 0.25 ? "momiji_tree" : "jp_snow_pine") : "oak_moss";
-        const smallTreeKind = isJapan ? "jp_snow_pine" : "tree_small_moss";
-        const warmBigKind = isJapan ? (rng() < 0.35 ? "momiji_tree" : "jp_snow_pine") : "oak_warm";
-        const warmSmallKind = isJapan ? "momiji_small" : "tree_small_warm";
+        const isFishingIsland = isJapan && row >= 46 && col >= 135;
+        // Đảo Biệt Lập (row >= 46) là ĐẢO THƯỜNG ôn đới, KHÔNG có thông tuyết/người tuyết — ưu tiên dừa biển & cây xanh
+        const bigTreeKind = isJapan
+          ? isFishingIsland
+            ? (rng() < 0.55 ? "jp_island_palm" : rng() < 0.78 ? "sakura_tree" : "oak_warm")
+            : (rng() < 0.25 ? "momiji_tree" : "jp_snow_pine")
+          : "oak_moss";
+        const smallTreeKind = isJapan
+          ? isFishingIsland
+            ? (rng() < 0.45 ? "jp_island_palm" : rng() < 0.75 ? "jp_bamboo_cluster" : "tree_small_warm")
+            : "jp_snow_pine"
+          : "tree_small_moss";
+        const warmBigKind = isJapan
+          ? isFishingIsland
+            ? (rng() < 0.6 ? "jp_island_palm" : "oak_warm")
+            : (rng() < 0.35 ? "momiji_tree" : "jp_snow_pine")
+          : "oak_warm";
+        const warmSmallKind = isJapan
+          ? isFishingIsland
+            ? (rng() < 0.35 ? "jp_island_palm" : rng() < 0.65 ? "sakura_small" : "tree_small_warm")
+            : "momiji_small"
+          : "tree_small_warm";
         if (tile === "forest") {
           if (r < 0.072 && canFitMultiTile(cols, rows, collision, reserved, tiles, col, row, 3, 2)) {
             placeProp(bigTreeKind, col, row, 3, 1, 0.5, 0.92);
           } else if (r < 0.175) {
-            placeProp(isJapan && rng() < 0.2 ? "jp_snowman_jizo" : smallTreeKind, col, row, 1, 1, 0.5, 0.92);
+            placeProp(isJapan && !isFishingIsland && rng() < 0.2 ? "jp_snowman_jizo" : smallTreeKind, col, row, 1, 1, 0.5, 0.92);
           } else if (r < 0.215) {
             placeProp(rng() < 0.55 ? "boulder" : "stump", col, row, 1, 1, 0.5, 0.92);
           } else if (r < 0.285) {
@@ -1606,7 +2075,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           if (r < 0.042 && canFitMultiTile(cols, rows, collision, reserved, tiles, col, row, 3, 2)) {
             placeProp(warmBigKind, col, row, 3, 1, 0.5, 0.92);
           } else if (r < 0.105) {
-            placeProp(isJapan && rng() < 0.3 ? "jp_snowman_jizo" : warmSmallKind, col, row, 1, 1, 0.5, 0.92);
+            placeProp(isJapan && !isFishingIsland && rng() < 0.3 ? "jp_snowman_jizo" : warmSmallKind, col, row, 1, 1, 0.5, 0.92);
           } else if (r < 0.135) {
             placeProp(rng() < 0.5 ? "stone_small" : "stump", col, row, 1, 1, 0.5, 0.88);
           } else if (r < 0.195) {
@@ -1673,6 +2142,21 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
   const policeRespawnRow = 73;
   collision[policeRespawnRow * cols + policeRespawnCol] = 0;
 
+  // Compute elevation map (0..1) for Japan North Snow Mountain (col >= 88, row <= 29 — từ 1 nửa Vùng Vàng)
+  const elevation = isJapan ? new Float32Array(cols * rows) : undefined;
+  if (elevation) {
+    for (let r = 0; r <= 29; r++) {
+      for (let c = 88; c < cols; c++) {
+        const baseSlope = Math.min(1, (c - 88) / 88);
+        const peakWest = Math.exp(-((c - 122) ** 2 / 220 + (r - 15) ** 2 / 85)) * 0.45;
+        const peakMid = Math.exp(-((c - 160) ** 2 / 240 + (r - 15) ** 2 / 90)) * 0.55;
+        const peakEast = Math.exp(-((c - 188) ** 2 / 220 + (r - 18) ** 2 / 90)) * 0.65;
+        const ridge = Math.max(0, Math.min(1, baseSlope * 0.48 + peakWest + peakMid + peakEast));
+        elevation[r * cols + c] = Number(ridge.toFixed(3));
+      }
+    }
+  }
+
   return {
     mapId,
     cols,
@@ -1688,6 +2172,9 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     landmarks,
     lilypads,
     roadNetwork,
+    ferryRoutes: isJapan ? ferryRoutes : undefined,
+    shinkansenRoutes: isJapan ? shinkansenRoutes : undefined,
+    elevation,
     spawn: {
       x: (spawnCol + 0.5) * TILE_SIZE,
       y: (spawnRow + 0.5) * TILE_SIZE,

@@ -280,7 +280,7 @@ export class Player extends Container {
     }
 
     const surfaceMultiplier =
-      this.surfaceState === "swim" ? 0.68 : this.surfaceState === "wade" ? 0.86 : 1.0;
+      this.surfaceState === "swim" ? 0.38 : this.surfaceState === "wade" ? 0.86 : 1.0;
     const activeSpeed = this.baseSpeed * surfaceMultiplier * this.fatigueSpeedMul;
 
     let movedX = 0;
