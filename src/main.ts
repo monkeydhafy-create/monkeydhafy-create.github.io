@@ -160,6 +160,21 @@ async function bootstrap(): Promise<void> {
       onOpenJailMinigame: (station) => {
         hud?.openJailMinigameModal(station);
       },
+      onOpenDungeonLobby: () => {
+        hud?.openDungeonLobbyModal();
+      },
+      onOpenDungeonMinigame: (target) => {
+        hud?.openDungeonMinigameModal(target);
+      },
+      onDungeonStateChanged: (info) => {
+        hud?.handleDungeonStateChanged(info);
+      },
+      onConfirmDungeonRetreat: (info) => {
+        hud?.openDungeonRetreatConfirmModal(info);
+      },
+      onDungeonScareTriggered: (info) => {
+        hud?.showDungeonScareOverlay(info);
+      },
       onOpenShop: (shopKind) => {
         hud?.openShopModal(shopKind);
       },
@@ -212,8 +227,8 @@ async function bootstrap(): Promise<void> {
       onContainersRefreshed: (containerIds) => {
         hud?.handleContainersRefreshed(containerIds);
       },
-      onFaintedToHospital: (reason, feeGold, confiscatedCount) => {
-        hud?.showFaintedHospitalScreen(reason, feeGold, confiscatedCount);
+      onFaintedToHospital: (reason, feeGold, confiscatedCount, fromDungeon) => {
+        hud?.showFaintedHospitalScreen(reason, feeGold, confiscatedCount, fromDungeon);
       },
       onRequestSave: (immediate) => {
         if (!worldScene) return;

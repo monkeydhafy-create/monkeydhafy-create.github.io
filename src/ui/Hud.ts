@@ -110,6 +110,8 @@ import {
   type ArcadeDifficulty,
   type ArcadeMinigameKind,
 } from "./ArcadeMinigames.ts";
+import type { DungeonMinigameKind, DungeonScareKind } from "../world/dungeon/DungeonTypes.ts";
+import { DungeonMinigameModal } from "./DungeonMinigames.ts";
 import { PuzzleMinigameModal } from "./PuzzleMinigameModal.ts";
 
 const GUIDE_SLIDES: ReadonlyArray<{
@@ -564,6 +566,30 @@ export class Hud {
   private readonly purchaseConfirmBtn: HTMLButtonElement;
   private purchaseAction: { onConfirm: () => void; onAlt?: () => void } | null = null;
 
+  private readonly appRootEl: HTMLElement;
+  private readonly dungeonHudBarEl: HTMLElement;
+  private readonly dungeonHudTitleEl: HTMLElement;
+  private readonly dungeonHudSubEl: HTMLElement;
+  private readonly dungeonLobbyModalEl: HTMLElement;
+  private readonly dungeonLobbyStatsEl: HTMLElement;
+  private readonly dungeonLobbyStatusEl: HTMLElement;
+  private readonly dungeonLobbyCloseBtn: HTMLButtonElement;
+  private readonly dungeonBuyTicketBtn: HTMLButtonElement;
+  private readonly dungeonEnterBtn: HTMLButtonElement;
+  private readonly dungeonBypassBtn: HTMLButtonElement;
+  private isDungeonLobbyOpen = false;
+  private readonly dungeonMinigameModal: DungeonMinigameModal;
+  private readonly dungeonScareOverlayEl: HTMLElement;
+  private readonly dungeonScareIcoEl: HTMLElement;
+  private readonly dungeonScareTitleEl: HTMLElement;
+  private readonly dungeonScareSubEl: HTMLElement;
+  private dungeonScareTimer: number | null = null;
+  private readonly dungeonRetreatModalEl: HTMLElement;
+  private readonly dungeonRetreatWarnEl: HTMLElement;
+  private readonly dungeonRetreatStayBtn: HTMLButtonElement;
+  private readonly dungeonRetreatConfirmBtn: HTMLButtonElement;
+  private isDungeonRetreatOpen = false;
+
   private isBagOpen = false;
   private isHomeStorageOpen = false;
   private homeModalTab: "storage" | "display" = "storage";
@@ -940,6 +966,27 @@ export class Hud {
     this.purchaseAltBtn = document.getElementById("btn-pc-alt") as HTMLButtonElement;
     this.purchaseConfirmBtn = document.getElementById("btn-pc-confirm") as HTMLButtonElement;
 
+    this.appRootEl = document.getElementById("app")!;
+    this.dungeonHudBarEl = document.getElementById("dungeon-hud-bar")!;
+    this.dungeonHudTitleEl = document.getElementById("dungeon-hud-title")!;
+    this.dungeonHudSubEl = document.getElementById("dungeon-hud-sub")!;
+    this.dungeonLobbyModalEl = document.getElementById("dungeon-lobby-modal")!;
+    this.dungeonLobbyStatsEl = document.getElementById("dungeon-lobby-stats")!;
+    this.dungeonLobbyStatusEl = document.getElementById("dungeon-lobby-status")!;
+    this.dungeonLobbyCloseBtn = document.getElementById("btn-dungeon-lobby-close") as HTMLButtonElement;
+    this.dungeonBuyTicketBtn = document.getElementById("btn-dungeon-buy-ticket") as HTMLButtonElement;
+    this.dungeonEnterBtn = document.getElementById("btn-dungeon-enter") as HTMLButtonElement;
+    this.dungeonBypassBtn = document.getElementById("btn-dungeon-bypass") as HTMLButtonElement;
+    this.dungeonMinigameModal = new DungeonMinigameModal(() => this.scene.isSoundEnabled());
+    this.dungeonScareOverlayEl = document.getElementById("dungeon-scare-overlay")!;
+    this.dungeonScareIcoEl = document.getElementById("dungeon-scare-ico")!;
+    this.dungeonScareTitleEl = document.getElementById("dungeon-scare-title")!;
+    this.dungeonScareSubEl = document.getElementById("dungeon-scare-sub")!;
+    this.dungeonRetreatModalEl = document.getElementById("dungeon-retreat-modal")!;
+    this.dungeonRetreatWarnEl = document.getElementById("dungeon-retreat-warn")!;
+    this.dungeonRetreatStayBtn = document.getElementById("btn-dungeon-retreat-stay") as HTMLButtonElement;
+    this.dungeonRetreatConfirmBtn = document.getElementById("btn-dungeon-retreat-confirm") as HTMLButtonElement;
+
     this.minimapCanvas.width = this.scene.data.cols;
     this.minimapCanvas.height = this.scene.data.rows;
     this.fullmapCanvas.width = this.scene.data.cols * 5;
@@ -988,7 +1035,10 @@ export class Hud {
       | "pet"
       | "guide"
       | "account"
-      | "estate",
+      | "estate"
+      | "dungeonlobby"
+      | "dungeonmini"
+      | "dungeonretreat",
   ): void {
     if (except !== "bag" && this.isBagOpen) {
       this.setBagOpen(false);
@@ -1067,6 +1117,18 @@ export class Hud {
       this.vaultPuzzle.close();
       this.scene.cancelVaultPuzzle();
       this.scene.cancelJailMinigame();
+    }
+    if (except !== "dungeonlobby" && this.isDungeonLobbyOpen) {
+      this.isDungeonLobbyOpen = false;
+      this.dungeonLobbyModalEl.classList.remove("is-open");
+    }
+    if (except !== "dungeonmini" && this.dungeonMinigameModal.isOpen() && !this.dungeonMinigameModal.isLockedIn()) {
+      this.dungeonMinigameModal.close();
+      this.scene.cancelDungeonMinigame();
+    }
+    if (except !== "dungeonretreat" && this.isDungeonRetreatOpen) {
+      this.isDungeonRetreatOpen = false;
+      this.dungeonRetreatModalEl.classList.remove("is-open");
     }
     this.closePurchaseConfirm();
   }
@@ -1214,6 +1276,145 @@ export class Hud {
     );
   }
 
+  public openDungeonLobbyModal(): void {
+    this.closeAllModals("dungeonlobby");
+    this.isDungeonLobbyOpen = true;
+    this.renderDungeonLobbyModal();
+    this.dungeonLobbyModalEl.classList.add("is-open");
+  }
+
+  private renderDungeonLobbyModal(): void {
+    const st = this.scene.getDungeonStatus();
+    this.dungeonLobbyStatsEl.replaceChildren();
+
+    const pTickets = document.createElement("span");
+    pTickets.className = "bag-stat-pill";
+    pTickets.textContent = `🎟️ Vé Địa Đạo: ${st.ticketCount}`;
+
+    const pRuns = document.createElement("span");
+    pRuns.className = "bag-stat-pill";
+    pRuns.textContent = `🕳️ Lượt vào: ${st.runsEntered}`;
+
+    const pClears = document.createElement("span");
+    pClears.className = "bag-stat-pill";
+    pClears.textContent = `🏆 Đã khám phá: ${st.totalClears}`;
+
+    this.dungeonLobbyStatsEl.append(pTickets, pRuns, pClears);
+    this.dungeonBuyTicketBtn.textContent = `🎟️ Mua Vé Vào Cửa (${st.ticketPriceGold.toLocaleString("vi-VN")}🪙)`;
+
+    if (st.cooldownRemainingMs > 0) {
+      const totalSec = Math.ceil(st.cooldownRemainingMs / 1000);
+      const mm = String(Math.floor(totalSec / 60)).padStart(2, "0");
+      const ss = String(totalSec % 60).padStart(2, "0");
+      this.dungeonLobbyStatusEl.classList.add("is-cooldown");
+      this.dungeonLobbyStatusEl.textContent =
+        st.ticketCount < 1
+          ? `⏳ Địa đạo đang phục hồi (${mm}:${ss}) • Cần thêm 1 🎟️ Vé để mở hầm sớm!`
+          : `⏳ Địa đạo đang phục hồi — mở lại sau ${mm}:${ss} (hoặc dùng 1 Vé + 1.000🪙 mở sớm)`;
+      this.dungeonEnterBtn.disabled = true;
+      this.dungeonBypassBtn.style.display = "";
+      this.dungeonBypassBtn.disabled = st.ticketCount < 1;
+    } else if (st.ticketCount < 1) {
+      this.dungeonLobbyStatusEl.classList.add("is-cooldown");
+      this.dungeonLobbyStatusEl.textContent = `🎟️ Cần 1 Vé Tham Quan Địa Đạo (${st.ticketPriceGold.toLocaleString("vi-VN")}🪙) để bước qua cổng Đoan Môn.`;
+      this.dungeonEnterBtn.disabled = true;
+      this.dungeonBypassBtn.style.display = "none";
+    } else {
+      this.dungeonLobbyStatusEl.classList.remove("is-cooldown");
+      this.dungeonLobbyStatusEl.textContent = `🟢 Đã có ${st.ticketCount} 🎟️ Vé — Sẵn sàng bước xuống Địa Đạo!`;
+      this.dungeonEnterBtn.disabled = false;
+      this.dungeonBypassBtn.style.display = "none";
+    }
+  }
+
+  public openDungeonMinigameModal(target: {
+    kind: DungeonMinigameKind;
+    stationId: string;
+    title: string;
+  }): void {
+    this.closeAllModals("dungeonmini");
+    this.dungeonMinigameModal.open(target.kind, {
+      onWin: (_kind, summary, rewardChests) => {
+        const res = this.scene.resolveDungeonMinigame(true, 0, rewardChests);
+        this.showDiscoveryToast("🎉 Chiến thắng thử thách!", res.bonusMessage ?? summary);
+        this.updateInteractPrompt();
+      },
+      onLose: (_kind, reason, hpDamage) => {
+        const res = this.scene.resolveDungeonMinigame(false, hpDamage);
+        if (!res.fainted) {
+          this.showDiscoveryToast("💥 Thất bại!", reason);
+        }
+        this.updateInteractPrompt();
+      },
+      onCancel: () => {
+        this.scene.cancelDungeonMinigame();
+      },
+    });
+  }
+
+  public handleDungeonStateChanged(info: {
+    inDungeon: boolean;
+    isMaze: boolean;
+    roomTitle: string;
+    roomSubtitle: string;
+    chestsOpened: number;
+    roomChestsRemaining: number;
+    roomChestsTotal: number;
+  }): void {
+    this.dungeonHudBarEl.classList.toggle("is-visible", info.inDungeon);
+    this.minimapBtn.style.display = info.inDungeon ? "none" : "";
+    if (info.inDungeon) {
+      const chestLabel =
+        info.roomChestsTotal > 0
+          ? `🧰 ${info.roomChestsRemaining}/${info.roomChestsTotal} rương`
+          : `🧰 Đã mở ${info.chestsOpened}`;
+      this.dungeonHudTitleEl.textContent = `${info.roomTitle} • ${chestLabel}`;
+      this.dungeonHudSubEl.textContent = "";
+      this.dungeonHudSubEl.style.display = "none";
+      if (this.isFullmapOpen) {
+        this.setFullmapOpen(false);
+      }
+    }
+    this.updateInteractPrompt();
+  }
+
+  public openDungeonRetreatConfirmModal(info: { currentHp: number; costHp: number }): void {
+    this.closeAllModals("dungeonretreat");
+    this.isDungeonRetreatOpen = true;
+    const afterHp = info.currentHp - info.costHp;
+    this.dungeonRetreatWarnEl.textContent =
+      afterHp <= 0
+        ? `☠️ CẢNH BÁO TỬ VONG: Bạn chỉ còn ${info.currentHp} HP! Phá phong ấn (-${info.costHp} HP) sẽ ngất xỉu và MẤT TOÀN BỘ hành trang mang theo!`
+        : `🩸 Máu hiện tại: ${info.currentHp} HP → Sau khi phá phong ấn: ${Math.max(1, afterHp)} HP.`;
+    this.dungeonRetreatModalEl.classList.add("is-open");
+  }
+
+  public showDungeonScareOverlay(info: {
+    name: string;
+    kind: DungeonScareKind;
+    damageHp: number;
+    died: boolean;
+  }): void {
+    this.dungeonMinigameModal.playMazeJumpscareSfx();
+    this.dungeonScareIcoEl.textContent =
+      info.kind === "shadow_ghost" ? "👻" : info.kind === "ancient_centipede" ? "🦂" : "👹";
+    this.dungeonScareTitleEl.textContent = `${info.name} HÙ BẠN!`;
+    this.dungeonScareSubEl.textContent = info.died
+      ? `-${info.damageHp} HP • Gục ngã ngay tại chỗ!`
+      : `-${info.damageHp} HP • Sinh vật đã tan biến vào bóng tối!`;
+    this.dungeonScareOverlayEl.classList.remove("is-open");
+    void this.dungeonScareOverlayEl.offsetWidth;
+    this.dungeonScareOverlayEl.classList.add("is-open");
+    if (this.dungeonScareTimer !== null) {
+      window.clearTimeout(this.dungeonScareTimer);
+    }
+    this.dungeonScareTimer = window.setTimeout(() => {
+      this.dungeonScareOverlayEl.classList.remove("is-open");
+      this.dungeonScareTimer = null;
+    }, 850);
+    this.updateSurvivalHud();
+  }
+
   public openLootModal(container: ContainerLootState): void {
     this.closeAllModals("bag");
     this.isHomeStorageOpen = false;
@@ -1223,7 +1424,8 @@ export class Hud {
     this.bagModalEl.classList.add("is-open");
     const openSeq = ++this.containerOpenSeq;
 
-    if (this.cloudSync) {
+    const isDungeonContainer = container.containerId.startsWith("dungeon_");
+    if (this.cloudSync && !isDungeonContainer) {
       this.resetContainerScan();
       this.containerSyncPending = true;
       this.renderLootAndBagModal();
@@ -3324,19 +3526,33 @@ export class Hud {
     this.renderWardrobeModal();
   }
 
-  public showFaintedHospitalScreen(reason: string, feeGold: number, confiscatedCount = 0): void {
+  public showFaintedHospitalScreen(
+    reason: string,
+    feeGold: number,
+    confiscatedCount = 0,
+    fromDungeon = false,
+  ): void {
     this.closeAllModals();
     const hospName = this.scene.getActiveMapId() === "japan" ? "Bệnh Viện Tokyo" : "Bệnh Viện Thành Phố";
-    this.hospitalTitleEl.textContent = `🚑 Ngất xỉu do ${reason}!`;
-    const feeMsg =
-      confiscatedCount > 0
-        ? `Không đủ 2.000🪙 viện phí! Bệnh viện đã tịch thu toàn bộ hành trang (${confiscatedCount} món & đồ mặc). Đang cấp cứu tại ${hospName}...`
-        : feeGold > 0
-          ? `Chi phí cấp cứu ${feeGold.toLocaleString("vi-VN")} Vàng. Đang phục hồi sức khỏe tại ${hospName}...`
-          : `Không đủ 2.000🪙 viện phí! Đã tịch thu toàn bộ hành trang & trang bị. Đang cấp cứu tại ${hospName}...`;
-    this.hospitalSubEl.textContent = feeMsg;
+    if (fromDungeon) {
+      this.hospitalTitleEl.textContent = `💀 Gục ngã trong Địa Đạo (${reason})!`;
+      this.hospitalSubEl.textContent =
+        confiscatedCount > 0
+          ? `Bạn đã mất toàn bộ hành trang mang theo (${confiscatedCount} món, balo & trang bị mặc trên người)! Đội cứu hộ đang đưa bạn về ${hospName}...`
+          : `Bạn đã mất toàn bộ balo & trang bị mang theo trong Địa Đạo! Đội cứu hộ đang đưa bạn về ${hospName}...`;
+    } else {
+      this.hospitalTitleEl.textContent = `🚑 Ngất xỉu do ${reason}!`;
+      const feeMsg =
+        confiscatedCount > 0
+          ? `Không đủ 2.000🪙 viện phí! Bệnh viện đã tịch thu toàn bộ hành trang (${confiscatedCount} món & đồ mặc). Đang cấp cứu tại ${hospName}...`
+          : feeGold > 0
+            ? `Chi phí cấp cứu ${feeGold.toLocaleString("vi-VN")} Vàng. Đang phục hồi sức khỏe tại ${hospName}...`
+            : `Không đủ 2.000🪙 viện phí! Đã tịch thu toàn bộ hành trang & trang bị. Đang cấp cứu tại ${hospName}...`;
+      this.hospitalSubEl.textContent = feeMsg;
+    }
     this.hospitalOverlayEl.classList.add("is-open");
     this.updateSurvivalHud();
+    this.refreshBagBadge();
 
     if (this.hospitalTimer !== null) {
       window.clearTimeout(this.hospitalTimer);
@@ -3364,14 +3580,19 @@ export class Hud {
     if (now - this.lastHudTick < 50) return;
     this.lastHudTick = now;
 
-    if (this.isBagOpen && this.activeContainer && !this.activeScanUid && now - this.lastCooldownTick >= 500) {
-      this.lastCooldownTick = now;
-      this.updateContainerSubtitle();
+    if (now - this.lastCooldownTick >= 500) {
+      if (this.isBagOpen && this.activeContainer && !this.activeScanUid) {
+        this.lastCooldownTick = now;
+        this.updateContainerSubtitle();
+      } else if (this.isDungeonLobbyOpen) {
+        this.lastCooldownTick = now;
+        this.renderDungeonLobbyModal();
+      }
     }
 
     this.updateSurvivalHud();
     this.updateInteractPrompt();
-    if (!this.isFullmapOpen && now - this.lastMinimapDrawAt >= 240) {
+    if (!this.isFullmapOpen && !this.scene.isInDungeonMode() && now - this.lastMinimapDrawAt >= 240) {
       this.lastMinimapDrawAt = now;
       this.drawMinimap();
     }
@@ -3546,6 +3767,18 @@ export class Hud {
       nextText = `⚖️ Vào ${target.name} [E]`;
     } else if (target.type === "jail_minigame") {
       nextClass = "btn-interact is-jail";
+      nextText = target.label;
+    } else if (target.type === "dungeon_entrance") {
+      nextClass = "btn-interact is-building";
+      nextText = `🏯 Vào ${target.name} [E]`;
+    } else if (target.type === "dungeon_portal") {
+      nextClass = "btn-interact is-shop";
+      nextText = target.label;
+    } else if (target.type === "dungeon_station") {
+      nextClass = "btn-interact is-jail";
+      nextText = target.label;
+    } else if (target.type === "dungeon_chest") {
+      nextClass = "btn-interact";
       nextText = target.label;
     } else if (target.type === "chest") {
       nextClass = target.chest.kind === "trash" ? "btn-interact is-trash" : "btn-interact";
@@ -3747,6 +3980,7 @@ export class Hud {
         return;
       }
       if (this.vaultPuzzle.isOpen()) return;
+      if (this.dungeonMinigameModal.isOpen()) return;
       if (e.key === "Escape") {
         if (this.purchaseModalEl.classList.contains("is-open")) {
           this.closePurchaseConfirm();
@@ -3768,6 +4002,13 @@ export class Hud {
         }
       } else if (e.code === "KeyM" && !e.repeat) {
         if (this.scene.isDetained()) return;
+        if (this.scene.isInDungeonMode()) {
+          this.showDiscoveryToast(
+            "🌀 Mất tín hiệu bản đồ",
+            "Địa đạo nằm sâu dưới lòng đất — không thể xem bản đồ!",
+          );
+          return;
+        }
         this.setFullmapOpen(!this.isFullmapOpen);
       } else if (e.code === "KeyR" && !e.repeat && this.isBagOpen) {
         this.rotateActiveSelectionOrDrag();
@@ -3777,8 +4018,98 @@ export class Hud {
     this.minimapBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
     this.minimapBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (this.isOnboardingOpen || this.isPoliceModalOpen || this.vaultPuzzle.isOpen() || this.scene.isDetained()) return;
+      if (
+        this.isOnboardingOpen ||
+        this.isPoliceModalOpen ||
+        this.vaultPuzzle.isOpen() ||
+        this.dungeonMinigameModal.isOpen() ||
+        this.scene.isDetained()
+      ) {
+        return;
+      }
+      if (this.scene.isInDungeonMode()) {
+        this.showDiscoveryToast(
+          "🌀 Mất tín hiệu bản đồ",
+          "Địa đạo nằm sâu dưới lòng đất — không thể xem bản đồ!",
+        );
+        return;
+      }
       this.setFullmapOpen(true);
+    });
+
+    this.dungeonLobbyCloseBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.dungeonLobbyCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.isDungeonLobbyOpen = false;
+      this.dungeonLobbyModalEl.classList.remove("is-open");
+    });
+    this.dungeonLobbyModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.dungeonLobbyModalEl) {
+        this.isDungeonLobbyOpen = false;
+        this.dungeonLobbyModalEl.classList.remove("is-open");
+      }
+    });
+    const tryEnterDungeon = (bypass: boolean): void => {
+      const res = this.scene.enterDungeon(bypass);
+      if (res.ok) {
+        this.isDungeonLobbyOpen = false;
+        this.dungeonLobbyModalEl.classList.remove("is-open");
+        this.refreshBagBadge();
+        this.showDiscoveryToast("🏯 Địa Đạo Hoàng Thành", res.message);
+      } else {
+        this.renderDungeonLobbyModal();
+        this.showDiscoveryToast("⚠️ Không thể xuống hầm", res.message);
+      }
+    };
+    this.dungeonBuyTicketBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.dungeonBuyTicketBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const res = this.scene.buyDungeonTicket();
+      if (res.ok) {
+        this.dungeonMinigameModal.playTicketPurchaseSfx();
+      }
+      this.renderDungeonLobbyModal();
+      this.refreshBagBadge();
+      this.showDiscoveryToast(res.ok ? "🎟️ Mua Vé Thành Công" : "⚠️ Không Thể Mua Vé", res.message);
+    });
+    this.dungeonEnterBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.dungeonEnterBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      tryEnterDungeon(false);
+    });
+    this.dungeonBypassBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.dungeonBypassBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      tryEnterDungeon(true);
+    });
+
+    this.dungeonRetreatStayBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.dungeonRetreatStayBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.isDungeonRetreatOpen = false;
+      this.dungeonRetreatModalEl.classList.remove("is-open");
+    });
+    this.dungeonRetreatConfirmBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.dungeonRetreatConfirmBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.isDungeonRetreatOpen = false;
+      this.dungeonRetreatModalEl.classList.remove("is-open");
+      const res = this.scene.confirmRetreatFromMinigameRoom();
+      if (!res.died) {
+        this.updateSurvivalHud();
+        this.showDiscoveryToast(
+          "🩸 Đã phá phong ấn rời phòng!",
+          `Mất 60 HP để quay lại Phòng Trung Tâm (còn ${Math.round(res.hpAfter)} HP).`,
+        );
+      }
+    });
+    this.dungeonRetreatModalEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      if (e.target === this.dungeonRetreatModalEl) {
+        this.isDungeonRetreatOpen = false;
+        this.dungeonRetreatModalEl.classList.remove("is-open");
+      }
     });
 
     this.fullmapCloseBtn.addEventListener("click", (e) => {
@@ -4549,6 +4880,13 @@ export class Hud {
   }
 
   private setFullmapOpen(open: boolean): void {
+    if (open && this.scene.isInDungeonMode()) {
+      this.showDiscoveryToast(
+        "🌀 Mất tín hiệu bản đồ",
+        "Địa đạo nằm sâu dưới lòng đất — không thể xem bản đồ!",
+      );
+      return;
+    }
     this.isFullmapOpen = open;
     if (open) {
       this.setBagOpen(false);
@@ -4707,6 +5045,7 @@ export class Hud {
       city_pet_gacha: { color: "#f472b6", label: "🐾 Nhận Nuôi", textColor: "#fbcfe8" },
       city_police_station: { color: "#2563eb", label: isJapanMap ? "🚓 Koban" : "🚓 Phường", textColor: "#93c5fd" },
       city_hospital: { color: "#f43f5e", label: "🏥 Bệnh Viện", textColor: "#fecdd3" },
+      vn_dungeon_hoang_thanh: { color: "#f59e0b", label: "🏯 Địa Đạo (Vùng Vàng)", textColor: "#fde68a" },
       jp_ryokan_inn: { color: "#f97316", label: "🏮 Lữ Quán", textColor: "#fed7aa" },
       jp_shinto_shrine: { color: "#f43f5e", label: "⛩️ Thần Xã", textColor: "#fecdd3" },
       jp_ninja_dojo: { color: "#a855f7", label: "🥷 Võ Đường", textColor: "#e9d5ff" },
@@ -6718,7 +7057,7 @@ export class Hud {
 
   private updateSurvivalHud(): void {
     const { state, result, totalWeightKg } = this.scene.getSurvivalSnapshot();
-    const hp = Math.round(state.hp);
+    const hp = state.hp <= 0 ? 0 : Math.max(1, Math.round(state.hp));
     const hunger = Math.round(state.hunger);
     const stamina = Math.round(state.stamina);
     const nowMs = Date.now();
@@ -6755,8 +7094,12 @@ export class Hud {
 
     const thermalText = `${mapBadge} ${zoneMeta.emoji} ${zoneMeta.label} • 🌡️ ${state.bodyTempC.toFixed(1)}°C • ⚖️ ${totalWeightKg.toFixed(1)}kg • ${result.thermal.statusLabel}${buffSuffix}${ignoreSuffix}`;
     const staminaPct = Math.min(100, (state.stamina / maxStamina) * 100).toFixed(1);
-    const vignetteOpacity = (result.blurIntensity * 0.92).toFixed(2);
-    const sig = `${hp}|${hunger}|${stamina}|${staminaPct}|${result.thermal.isSweating}|${result.thermal.isShivering}|${vignetteOpacity}|${thermalText}`;
+    const hpBlurFallback = state.hp <= 50 ? Math.max(0.08, (50 - state.hp) / 50) : 0;
+    const hungerBlurFallback = state.hunger < 30 ? (30 - state.hunger) / 30 : 0;
+    const effectiveBlur = Math.max(result.blurIntensity, hpBlurFallback, hungerBlurFallback);
+    const blurPx = effectiveBlur > 0.02 ? Number((effectiveBlur * 4.8).toFixed(1)) : 0;
+    const vignetteOpacity = (effectiveBlur * 0.92).toFixed(2);
+    const sig = `${hp}|${hunger}|${stamina}|${staminaPct}|${result.thermal.isSweating}|${result.thermal.isShivering}|${vignetteOpacity}|${blurPx}|${thermalText}`;
     if (sig === this.lastSurvivalSignature) return;
     this.lastSurvivalSignature = sig;
 
@@ -6771,7 +7114,7 @@ export class Hud {
     this.thermalTextEl.classList.toggle("is-hot", result.thermal.isSweating);
     this.thermalTextEl.classList.toggle("is-cold", result.thermal.isShivering);
 
-    // Use lightweight crimson vignette instead of expensive full-canvas CSS blur filter
+    this.appRootEl.style.filter = blurPx > 0 ? `blur(${blurPx}px)` : "none";
     this.vignetteEl.style.opacity = vignetteOpacity;
   }
 
@@ -8022,7 +8365,7 @@ export class Hud {
     uid: string,
     rollbackItem?: GridItemInstance,
   ): void {
-    if (!this.cloudSync) return;
+    if (!this.cloudSync || containerId.startsWith("dungeon_")) return;
     const mapId = this.scene.getActiveMapId();
     const key = `${mapId}:${containerId}`;
     const prevChain = this.containerMutationChains.get(key) ?? Promise.resolve();

@@ -36,6 +36,14 @@
         </div>
       </div>
 
+      <div id="dungeon-scare-overlay" class="dungeon-scare-overlay" role="alert" aria-live="assertive">
+        <div class="dungeon-scare-card">
+          <div id="dungeon-scare-ico" class="dungeon-scare-ico">👻</div>
+          <div id="dungeon-scare-title" class="dungeon-scare-title">SINH VẬT HÙ BẠN!</div>
+          <div id="dungeon-scare-sub" class="dungeon-scare-sub">-25 HP</div>
+        </div>
+      </div>
+
       <div id="detention-overlay" class="detention-banner" role="status" aria-live="polite">
         <div class="detention-banner-head">
           <span class="detention-banner-badge">🚓 PHÒNG TẠM GIAM PHƯỜNG</span>
@@ -46,6 +54,10 @@
 
       <!-- Minimalist Clean HUD Overlay -->
       <div id="hud" aria-label="Game HUD">
+        <div id="dungeon-hud-bar" class="dungeon-hud-bar" role="status" aria-live="polite">
+          <div id="dungeon-hud-title" class="dungeon-hud-title">🏯 Địa Đạo Hoàng Thành</div>
+          <div id="dungeon-hud-sub" class="dungeon-hud-sub"></div>
+        </div>
         <!-- Top Bar: Compact Survival Telemetry (left) + Expandable Minimap (right) -->
         <div class="hud-top">
           <div id="survival-panel" class="survival-panel" aria-label="Chỉ số sinh tồn">
@@ -178,8 +190,9 @@
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_reputation_hall">🏆 Sảnh Danh Vọng</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_pet_gacha">🐾 Nhận Nuôi</button>
               <button class="fullmap-nav-btn" type="button" data-nav-kind="city_airport">✈️ Sân Bay</button>
+              <button class="fullmap-nav-btn" type="button" data-nav-kind="vn_dungeon_hoang_thanh">🏯 Địa Đạo Hoàng Thành</button>
             </div>
-            <span class="fullmap-legend">🏠 Nhà • ⚖️ Đấu Giá • 🏛️ Sưu Tầm • 📜 Nhiệm Vụ • 🏆 Danh Vọng • 🐾 Nhận Nuôi • 🏪 Balo • 👔 Áo • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🚓 Phường • 🏥 Bệnh Viện</span>
+            <span class="fullmap-legend">🏠 Nhà • ⚖️ Đấu Giá • 🏛️ Sưu Tầm • 📜 Nhiệm Vụ • 🏆 Danh Vọng • 🐾 Nhận Nuôi • 🏪 Balo • 👔 Áo • 🍜 Ăn • 💊 Thuốc • ✈️ Sân Bay • 🏯 Địa Đạo (Vùng Vàng) • 🚓 Phường • 🏥 Bệnh Viện</span>
           </div>
         </div>
       </div>
@@ -873,6 +886,82 @@
         </div>
         <div class="consume-progress-track">
           <div id="consume-progress-fill" class="consume-progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Hanoi Underground Dungeon Lobby Modal -->
+      <div id="dungeon-lobby-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="dungeon-lobby-title">
+        <div class="bag-card dungeon-lobby-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="dungeon-lobby-title" class="bag-title">🏯 Địa Đạo Hoàng Thành Thăng Long</h2>
+              <div id="dungeon-lobby-stats" class="bag-stats"></div>
+            </div>
+            <button id="btn-dungeon-lobby-close" class="bag-close" type="button" aria-label="Đóng">✕</button>
+          </div>
+          <div class="dungeon-lobby-body">
+            <div class="dungeon-lore-box">
+              <p class="dungeon-lore-p">
+                Nằm ẩn sâu dưới nền cổng Đoan Môn của Hoàng Thành Thăng Long, hệ thống địa đạo cổ tích tụ hơn một nghìn năm lịch sử kinh thành từ các triều đại Lý, Trần, Lê cho tới thời kỳ kháng chiến bảo vệ Thủ đô.
+              </p>
+              <p class="dungeon-lore-p">
+                Xuyên qua những vòm gạch vồ phủ rêu và cống ngầm đá xanh, địa đạo chia nhánh về bốn phương Đông – Tây – Nam – Bắc, từng là nơi cất giấu bảo vật triều đình, công văn mật và lối rút bí mật thông ra ngoài thành.
+              </p>
+              <p class="dungeon-lore-p">
+                Trải qua bao biến thiên chiến hỏa, nhiều ngách hầm vẫn chìm trong bóng tối ẩm lạnh và chưa từng có bản đồ hoàn chỉnh. Chỉ những ai tự mình tìm ra cửa thoát ẩn giấu mới có thể mang cổ vật trở về mặt đất.
+              </p>
+            </div>
+            <div id="dungeon-lobby-status" class="dungeon-lobby-status">🟢 Sẵn sàng bước xuống Địa Đạo!</div>
+            <div class="dungeon-lobby-actions">
+              <button id="btn-dungeon-buy-ticket" class="btn-card-secondary" type="button">
+                🎟️ Mua Vé Vào Cửa (3.000🪙)
+              </button>
+              <button id="btn-dungeon-enter" class="btn-card-primary" type="button">
+                🕳️ Xuống Địa Đạo (1 Vé)
+              </button>
+              <button id="btn-dungeon-bypass" class="btn-card-secondary" type="button" style="display: none;">
+                🪙 Mở Hầm Sớm (1 Vé + 1.000🪙)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dungeon Minigame Room Early-Retreat Confirm Modal -->
+      <div id="dungeon-retreat-modal" class="bag-modal is-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="dungeon-retreat-title">
+        <div class="bag-card dungeon-retreat-card">
+          <div class="bag-header">
+            <h2 id="dungeon-retreat-title" class="bag-title">🩸 Phong Ấn Cửa Hầm</h2>
+          </div>
+          <div class="dungeon-retreat-body">
+            <p id="dungeon-retreat-desc" class="dungeon-retreat-desc">
+              Cửa phòng thử thách đang bị phong ấn! Bạn bắt buộc phải hoàn thành thử thách tại đây, hoặc phá phong ấn cưỡng bức để quay về Phòng Trung Tâm.
+            </p>
+            <div id="dungeon-retreat-warn" class="dungeon-retreat-warn"></div>
+            <div class="dungeon-lobby-actions">
+              <button id="btn-dungeon-retreat-stay" class="btn-card-primary" type="button">
+                🎮 Ở Lại Chơi Game
+              </button>
+              <button id="btn-dungeon-retreat-confirm" class="btn-card-danger" type="button">
+                🩸 Mất 60 HP Quay Lại
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hanoi Dungeon Mobile-First Minigame Modal -->
+      <div id="dungeon-minigame-modal" class="bag-modal" role="dialog" aria-modal="true" aria-labelledby="dung-mini-title">
+        <div class="bag-card dungeon-mini-card">
+          <div class="bag-header">
+            <div>
+              <h2 id="dung-mini-title" class="bag-title">🎮 Thử Thách Địa Đạo</h2>
+              <div id="dung-mini-guide" class="vp-subtitle"></div>
+            </div>
+            <button id="btn-dung-mini-close" class="bag-close" type="button" aria-label="Hủy">✕</button>
+          </div>
+          <div id="dung-mini-status" class="vp-status"></div>
+          <div id="dung-mini-board"></div>
         </div>
       </div>
     </div>

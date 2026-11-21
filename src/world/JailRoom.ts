@@ -116,8 +116,10 @@ export class JailRoom {
         const texPool = isHallway ? atlas.tiles.road : atlas.tiles.stone;
         const tex = texPool[(r * 7 + c * 3) % texPool.length];
         const spr = new Sprite(tex);
-        spr.position.set(c * TILE_SIZE, r * TILE_SIZE);
-        spr.scale.set(PIXEL_SCALE);
+        spr.roundPixels = false;
+        spr.position.set(c * TILE_SIZE - 0.5, r * TILE_SIZE - 0.5);
+        spr.width = TILE_SIZE + 1;
+        spr.height = TILE_SIZE + 1;
         spr.tint = isHallway ? 0x64748b : 0x94a3b8;
         floorLayer.addChild(spr);
       }
@@ -516,23 +518,34 @@ export class JailRoom {
     }
   }
 
-  public syncCameraTransform(viewW: number, viewH: number, playerX: number, playerY: number): void {
+  public syncCameraTransform(
+    viewW: number,
+    viewH: number,
+    playerX: number,
+    playerY: number,
+    resolution = 1,
+  ): void {
+    const res = Math.max(1, resolution);
     const fitScale = Math.min(viewW / (JAIL_WIDTH + 20), viewH / (JAIL_HEIGHT + 44));
-    const scale = Math.max(0.65, Math.min(1.25, fitScale));
+    const rawScale = Math.max(0.65, Math.min(1.25, fitScale));
+    const tilePhysPx = Math.max(16, Math.round(rawScale * TILE_SIZE * res));
+    const scale = tilePhysPx / (TILE_SIZE * res);
     this.container.scale.set(scale);
 
     const renderedW = JAIL_WIDTH * scale;
     const renderedH = JAIL_HEIGHT * scale;
 
-    const posX =
+    const rawPosX =
       renderedW <= viewW
         ? (viewW - renderedW) / 2
         : Math.max(viewW - renderedW, Math.min(0, viewW / 2 - playerX * scale));
-    const posY =
+    const rawPosY =
       renderedH <= viewH
         ? (viewH - renderedH) / 2
         : Math.max(viewH - renderedH, Math.min(0, viewH / 2 - playerY * scale));
 
+    const posX = Math.round(rawPosX * res) / res;
+    const posY = Math.round(rawPosY * res) / res;
     this.container.position.set(posX, posY);
   }
 }

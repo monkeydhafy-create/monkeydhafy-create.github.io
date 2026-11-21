@@ -53,6 +53,7 @@ import {
   type SafeboxTierDef,
   type SafeboxUpgradeContract,
 } from "../world/LootSystem.ts";
+import type { SavedDungeonState } from "../world/dungeon/DungeonTypes.ts";
 import { createDefaultSurvivalState, type StaminaBuffState, type SurvivalState } from "../world/SurvivalSystem.ts";
 import {
   QUEST_REFRESH_INTERVAL_MS,
@@ -111,6 +112,7 @@ export interface PlayerGameSaveV3 {
   equippedPetId?: string | null;
   estate?: PlayerEstateState;
   jpEstate?: PlayerEstateState;
+  dungeon?: SavedDungeonState;
 }
 
 export interface SaveLoadResult {
@@ -183,6 +185,8 @@ const ALLOWED_SOURCE_TYPES = new Set<LootSourceType>([
   "house_vault",
   "chest_wooden",
   "chest_royal",
+  "dungeon_chest",
+  "dungeon_royal",
 ]);
 const ALLOWED_BIOMES = new Set<BiomeId>(["city", "plains", "countryside"]);
 const ALLOWED_PUZZLE_KINDS = new Set<LockedPuzzleKind>(LOCKED_PUZZLE_KINDS);
@@ -222,6 +226,11 @@ export function createDefaultGameSave(spawnX: number, spawnY: number): PlayerGam
     },
     estate: createDefaultPlayerEstateState("vietnam"),
     jpEstate: createDefaultPlayerEstateState("japan"),
+    dungeon: {
+      cooldownUntil: 0,
+      totalClears: 0,
+      runsEntered: 0,
+    },
   };
 }
 
@@ -1707,6 +1716,47 @@ export function validateSavePayload(
   const validatedEstate = validateEstateForMap(obj.estate, "vietnam");
   const validatedJpEstate = validateEstateForMap(obj.jpEstate, "japan");
 
+  let dungeonState: SavedDungeonState = {
+    cooldownUntil: 0,
+    totalClears: 0,
+    runsEntered: 0,
+  };
+  if (obj.dungeon !== undefined && obj.dungeon !== null) {
+    if (typeof obj.dungeon !== "object" || Array.isArray(obj.dungeon)) {
+      throw new TamperError("Invalid dungeon state");
+    }
+    const rawDung = obj.dungeon as Partial<SavedDungeonState>;
+    if (
+      typeof rawDung.cooldownUntil !== "number" ||
+      !Number.isFinite(rawDung.cooldownUntil) ||
+      rawDung.cooldownUntil < 0 ||
+      rawDung.cooldownUntil > now + 3_600_000
+    ) {
+      throw new TamperError("Dungeon cooldown invariant violated");
+    }
+    if (
+      typeof rawDung.totalClears !== "number" ||
+      !Number.isInteger(rawDung.totalClears) ||
+      rawDung.totalClears < 0 ||
+      rawDung.totalClears > 100_000
+    ) {
+      throw new TamperError("Dungeon totalClears invariant violated");
+    }
+    if (
+      typeof rawDung.runsEntered !== "number" ||
+      !Number.isInteger(rawDung.runsEntered) ||
+      rawDung.runsEntered < 0 ||
+      rawDung.runsEntered > 100_000
+    ) {
+      throw new TamperError("Dungeon runsEntered invariant violated");
+    }
+    dungeonState = {
+      cooldownUntil: rawDung.cooldownUntil > now ? rawDung.cooldownUntil : 0,
+      totalClears: rawDung.totalClears,
+      runsEntered: rawDung.runsEntered,
+    };
+  }
+
   return {
     schemaVersion: 3,
     inventory: {
@@ -1763,6 +1813,7 @@ export function validateSavePayload(
     equippedPetId,
     estate: validatedEstate,
     jpEstate: validatedJpEstate,
+    dungeon: dungeonState,
   };
 }
 

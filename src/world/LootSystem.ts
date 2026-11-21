@@ -42,6 +42,9 @@ export const LOCKED_PUZZLE_KINDS = [
 
 export type LockedPuzzleKind = (typeof LOCKED_PUZZLE_KINDS)[number];
 
+export const DUNGEON_TICKET_ITEM_ID = "b_hn_dungeon_ticket";
+export const DUNGEON_TICKET_PRICE_GOLD = 3000;
+
 export interface ContainerPuzzleLockState {
   kind: LockedPuzzleKind;
   seed: number;
@@ -53,7 +56,9 @@ export type LootSourceType =
   | "house_landmark"
   | "house_vault"
   | "chest_wooden"
-  | "chest_royal";
+  | "chest_royal"
+  | "dungeon_chest"
+  | "dungeon_royal";
 
 export interface CollectibleItemDef {
   id: string;
@@ -72,6 +77,7 @@ export interface CollectibleItemDef {
   backpackId?: string;
   excludeFromRandomLoot?: boolean;
   reputationShop?: boolean;
+  dungeonExclusive?: boolean;
 }
 
 export interface RarityMetaInfo {
@@ -1507,6 +1513,198 @@ export const ITEM_CATALOG: readonly CollectibleItemDef[] = [
     excludeFromRandomLoot: true,
     reputationShop: true,
   },
+  // === HANOI UNDERGROUND DUNGEON ENTRY TICKET & EXCLUSIVE ITEMS ===
+  {
+    id: "b_hn_dungeon_ticket",
+    name: "Vé Tham Quan Địa Đạo",
+    rarity: "B",
+    w: 1,
+    h: 1,
+    weightKg: 0.05,
+    valueGold: 900,
+    homeBiome: "city",
+    mapOrigin: "vietnam",
+    description: "Vé giấy cổ đóng triện đỏ Hoàng Thành Thăng Long. Cần 1 vé cho mỗi lượt bước xuống Địa Đạo.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='tk' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fef08a'/%3E%3Cstop offset='100%25' stop-color='%23d97706'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 20h48v7a5 5 0 0 0 0 10v7H8v-7a5 5 0 0 0 0-10z' fill='url(%23tk)' stroke='%23991b1b' stroke-width='2.6' stroke-linejoin='round'/%3E%3Cpath d='M22 20v24' stroke='%23991b1b' stroke-width='2' stroke-dasharray='3 3'/%3E%3Ccircle cx='39' cy='32' r='8' fill='%23b91c1c' fill-opacity='0.88' stroke='%23fef08a' stroke-width='1.5'/%3E%3Ctext x='39' y='35' text-anchor='middle' font-size='8' font-weight='bold' fill='%23fef08a'%3EH%C3%80%3C/text%3E%3C/svg%3E",
+  },
+  // === HANOI UNDERGROUND DUNGEON EXCLUSIVE ITEMS (11 ITEMS: C / B / A / S) ===
+  {
+    id: "c_hn_brick_shard",
+    name: "Mảnh Gạch Cổ Hoàng Thành",
+    rarity: "C",
+    w: 1,
+    h: 1,
+    weightKg: 0.5,
+    valueGold: 22,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Mảnh gạch vồ thời Lý-Trần bong ra từ vòm địa đạo Hoàng Thành.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon points='14,44 12,24 34,16 52,26 48,46 24,50' fill='%239a3412' stroke='%23fdba74' stroke-width='2.5'/%3E%3Cpath d='M22 24l12 8-4 14' fill='none' stroke='%23431407' stroke-width='2.5'/%3E%3Ccircle cx='40' cy='30' r='3' fill='%234d7c0f'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "c_hn_rusty_lantern",
+    name: "Đèn Dầu Hầm Cũ",
+    rarity: "C",
+    w: 1,
+    h: 2,
+    weightKg: 0.6,
+    valueGold: 26,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Chiếc đèn bão bằng sắt gỉ từng soi sáng lối đi cho thợ đào địa đạo.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M22 14a10 10 0 0 1 20 0' fill='none' stroke='%2394a3b8' stroke-width='3'/%3E%3Crect x='20' y='18' width='24' height='6' rx='2' fill='%23475569'/%3E%3Crect x='22' y='24' width='20' height='20' rx='4' fill='%23fbbf24' fill-opacity='0.35' stroke='%23cbd5e1' stroke-width='2'/%3E%3Cpath d='M32 28c3 4 3 9 0 12-3-3-3-8 0-12z' fill='%23f59e0b'/%3E%3Crect x='18' y='44' width='28' height='10' rx='3' fill='%23334155' stroke='%2394a3b8' stroke-width='2'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "b_hn_ly_coins",
+    name: "Xâu Tiền Xu Cổ Thời Lý",
+    rarity: "B",
+    w: 1,
+    h: 1,
+    weightKg: 0.35,
+    valueGold: 95,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Xâu đồng tiền lỗ vuông xỉn màu thời gian vừa lọc được từ băng chuyền hầm ngầm.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='28' cy='36' r='14' fill='%23b45309' stroke='%23fde047' stroke-width='2.5'/%3E%3Crect x='24' y='32' width='8' height='8' fill='%231e293b'/%3E%3Ccircle cx='39' cy='25' r='13' fill='%23d97706' stroke='%23fef08a' stroke-width='2.5'/%3E%3Crect x='35' y='21' width='8' height='8' fill='%231e293b'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "b_hn_tunnel_map",
+    name: "Bản Đồ Địa Đạo Phố Cổ",
+    rarity: "B",
+    w: 2,
+    h: 1,
+    weightKg: 0.25,
+    valueGold: 115,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Cuộn giấy dó vẽ tay sơ đồ các nhánh hầm ngầm thông sang Hồ Gươm.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='16' width='44' height='32' rx='4' fill='%23fef3c7' stroke='%2392400e' stroke-width='2.5'/%3E%3Cpath d='M18 28h14v10h14' fill='none' stroke='%23b45309' stroke-width='2.5' stroke-dasharray='4 3'/%3E%3Cpath d='M42 22l8 8M50 22l-8 8' stroke='%23dc2626' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "b_hn_bat_trang_vase",
+    name: "Bình Gốm Men Ngọc Bát Tràng",
+    rarity: "B",
+    w: 1,
+    h: 2,
+    weightKg: 1.2,
+    valueGold: 135,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Chiếc bình gốm men ngọc còn nguyên vẹn được cất kỹ trong kho đá Hoàng Thành.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='24' y='10' width='16' height='7' rx='2' fill='%2334d399' stroke='%23064e3b' stroke-width='2'/%3E%3Cpath d='M25 17c0 6-11 10-11 22 0 10 7 16 18 16s18-6 18-16c0-12-11-16-11-22z' fill='%2310b981' stroke='%23a7f3d0' stroke-width='2.5'/%3E%3Cpath d='M22 36c6 4 14 4 20 0' fill='none' stroke='%23ecfdf5' stroke-width='2'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "a_hn_royal_tea_box",
+    name: "Hộp Trà Sen Hồ Tây Ngự Phẩm",
+    rarity: "A",
+    w: 2,
+    h: 1,
+    weightKg: 0.8,
+    valueGold: 265,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Hộp sơn mài thếp vàng đựng trà ướp sen cổ tiến vua còn thơm ngát.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='18' width='44' height='30' rx='5' fill='%2378350f' stroke='%23fbbf24' stroke-width='2.5'/%3E%3Crect x='14' y='22' width='36' height='22' rx='3' fill='%23991b1b'/%3E%3Cpath d='M32 25c4 4 6 8 0 12-6-4-4-8 0-12z' fill='%23fbcfe8'/%3E%3Cpath d='M24 34c4 2 12 2 16 0' fill='none' stroke='%23fde047' stroke-width='2'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "a_hn_jade_dragon_tile",
+    name: "Đầu Rồng Đất Nung Thăng Long",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 2.1,
+    valueGold: 290,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Hiện vật điêu khắc đầu rồng chầu ngọc tinh xảo của Hoàng Thành Thăng Long.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='12' y='12' width='40' height='40' rx='6' fill='%23451a03' stroke='%23f59e0b' stroke-width='2.5'/%3E%3Cpath d='M18 40c2-14 14-22 26-18-3 5-2 9 4 10-4 7-12 10-20 8z' fill='%23d97706' stroke='%23fef08a' stroke-width='2'/%3E%3Ccircle cx='34' cy='27' r='3' fill='%23fef08a'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "a_hn_bronze_incense",
+    name: "Lư Hương Đồng Cổ Trấn Vũ",
+    rarity: "A",
+    w: 2,
+    h: 2,
+    weightKg: 2.6,
+    valueGold: 340,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Đỉnh đồng ba chân chạm song long cổ kính ẩn giấu trong mê cung ngầm.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cellipse cx='32' cy='22' rx='16' ry='6' fill='%23fbbf24' stroke='%2378350f' stroke-width='2'/%3E%3Cpath d='M16 22c0 16 7 22 16 22s16-6 16-22z' fill='%23b45309' stroke='%23fde047' stroke-width='2'/%3E%3Cpath d='M22 44l-4 10M42 44l4 10M32 44v10' stroke='%2392400e' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23fef08a'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "s_hn_imperial_seal",
+    name: "Ngọc Tỷ Hoàng Thành Thăng Long",
+    rarity: "S",
+    w: 2,
+    h: 2,
+    weightKg: 2.4,
+    valueGold: 1650,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Siêu phẩm Địa Đạo — Ngọc tỷ vàng ròng khắc long ấn thất truyền dưới Hoàng Thành.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='hnS1' cx='50%25' cy='50%25' r='50%25'%3E%3Cstop offset='0%25' stop-color='%23ef4444' stop-opacity='0.65'/%3E%3Cstop offset='100%25' stop-color='%23ef4444' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='29' fill='url(%23hnS1)'/%3E%3Cpath d='M22 26c0-8 20-8 20 0' fill='none' stroke='%23fde047' stroke-width='5' stroke-linecap='round'/%3E%3Crect x='14' y='28' width='36' height='22' rx='4' fill='%23b91c1c' stroke='%23fef08a' stroke-width='2.5'/%3E%3Crect x='22' y='34' width='20' height='10' rx='2' fill='%23f59e0b' stroke='%23fef9c3' stroke-width='1.5'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "s_hn_tortoise_sword",
+    name: "Thuận Thiên Cổ Kiếm",
+    rarity: "S",
+    w: 2,
+    h: 3,
+    weightKg: 4.0,
+    valueGold: 2400,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Siêu phẩm Địa Đạo — Thần kiếm truyền thuyết ẩn sâu dưới lòng kinh thành cổ.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='hnS2' cx='50%25' cy='50%25' r='50%25'%3E%3Cstop offset='0%25' stop-color='%23f43f5e' stop-opacity='0.6'/%3E%3Cstop offset='100%25' stop-color='%23f43f5e' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='29' fill='url(%23hnS2)'/%3E%3Cpath d='M48 8L20 42l5 4L53 12z' fill='%23fef08a' stroke='%2310b981' stroke-width='2'/%3E%3Cpath d='M15 39l12 10M18 45l-8 10' stroke='%23dc2626' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='22' cy='43' r='3.5' fill='%2334d399' stroke='%23fef08a' stroke-width='1.5'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
+  {
+    id: "s_hn_golden_turtle_shell",
+    name: "Kim Quy Ngọc Giáp",
+    rarity: "S",
+    w: 3,
+    h: 3,
+    weightKg: 4.6,
+    valueGold: 2750,
+    homeBiome: "plains",
+    mapOrigin: "vietnam",
+    description: "Siêu phẩm Địa Đạo — Thần giáp mai rùa vàng chạm bát quái nghìn năm linh thiêng.",
+    iconSrc:
+      "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='hnS3' cx='50%25' cy='50%25' r='50%25'%3E%3Cstop offset='0%25' stop-color='%23ef4444' stop-opacity='0.65'/%3E%3Cstop offset='100%25' stop-color='%23ef4444' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='29' fill='url(%23hnS3)'/%3E%3Cellipse cx='32' cy='34' rx='20' ry='22' fill='%23d97706' stroke='%23fef08a' stroke-width='3'/%3E%3Cpolygon points='32,20 42,27 42,41 32,48 22,41 22,27' fill='%23991b1b' stroke='%23fde047' stroke-width='2'/%3E%3Ccircle cx='32' cy='34' r='5' fill='%23fef08a'/%3E%3C/svg%3E",
+    excludeFromRandomLoot: true,
+    dungeonExclusive: true,
+  },
   ...CONSUMABLE_CATALOG.map((c): CollectibleItemDef => ({
     id: c.inventoryItemId,
     name: c.name,
@@ -1573,7 +1771,7 @@ export const ITEM_BY_ID: Record<string, CollectibleItemDef> = Object.fromEntries
 export const COLLECTION_RED_ITEMS: readonly CollectibleItemDef[] = ITEM_CATALOG.filter(
   (item) =>
     item.rarity === "S" &&
-    (!item.excludeFromRandomLoot || Boolean(item.reputationShop)) &&
+    (!item.excludeFromRandomLoot || Boolean(item.reputationShop) || Boolean(item.dungeonExclusive)) &&
     !item.backpackId &&
     !item.garmentId &&
     !item.consumableId,
@@ -1790,6 +1988,8 @@ const BASE_RARITY_TABLE: Record<LootSourceType, Record<ItemRarity, number>> = {
   house_vault: { C: 0, B: 28, A: 69.2, S: 2.8 },
   chest_wooden: { C: 12, B: 46, A: 40.0, S: 2.0 },
   chest_royal: { C: 0, B: 26, A: 70.5, S: 3.5 },
+  dungeon_chest: { C: 10, B: 42, A: 44.5, S: 3.5 },
+  dungeon_royal: { C: 0, B: 10, A: 65, S: 25 },
 };
 
 const COUNT_WEIGHT_TABLE: Record<LootSourceType, ReadonlyArray<{ count: number; w: number }>> = {
@@ -1825,6 +2025,16 @@ const COUNT_WEIGHT_TABLE: Record<LootSourceType, ReadonlyArray<{ count: number; 
     { count: 2, w: 40 },
     { count: 3, w: 44 },
     { count: 4, w: 16 },
+  ],
+  dungeon_chest: [
+    { count: 2, w: 42 },
+    { count: 3, w: 44 },
+    { count: 4, w: 14 },
+  ],
+  dungeon_royal: [
+    { count: 2, w: 32 },
+    { count: 3, w: 48 },
+    { count: 4, w: 20 },
   ],
 };
 
@@ -1913,6 +2123,8 @@ export const CONTAINER_REFRESH_RULES: Record<LootSourceType, { minMs: number; ma
   house_standard: { minMs: 864_360, maxMs: 1_368_570 },
   house_landmark: { minMs: 1_296_540, maxMs: 1_728_720 },
   house_vault: { minMs: 1_296_540, maxMs: 1_728_720 },
+  dungeon_chest: { minMs: 900_000, maxMs: 900_000 },
+  dungeon_royal: { minMs: 900_000, maxMs: 900_000 },
 };
 
 export function rollContainerRefreshMs(sourceType: LootSourceType): number {
@@ -2282,6 +2494,7 @@ export class InventoryManager {
   private readonly onPersist?: (state: PersistedInventoryState) => void;
   public onItemLooted?: (def: CollectibleItemDef) => void;
   private cachedBackpackWeightKg: number | null = null;
+  private transientContainers: Record<string, ContainerLootState> = {};
 
   constructor(
     initialState?: PersistedInventoryState,
@@ -2485,6 +2698,10 @@ export class InventoryManager {
   }
 
   public getContainerRemainingMs(containerId: string, now = Date.now()): number | null {
+    const transient = this.transientContainers[containerId];
+    if (transient) {
+      return Math.max(1000, transient.refreshAt - now);
+    }
     const c = this.state.containers[containerId];
     if (!c) return null;
     const rem = this.getContainerExpiresAt(c) - now;
@@ -2497,6 +2714,10 @@ export class InventoryManager {
       return null;
     }
     return rem;
+  }
+
+  public clearTransientContainers(): void {
+    this.transientContainers = {};
   }
 
   public purgeExpiredContainers(now = Date.now()): string[] {
@@ -2526,6 +2747,8 @@ export class InventoryManager {
   }
 
   public getContainer(containerId: string): ContainerLootState | null {
+    const transient = this.transientContainers[containerId];
+    if (transient) return transient;
     const c = this.state.containers[containerId];
     if (!c) return null;
     if (Date.now() >= this.getContainerExpiresAt(c)) {
@@ -2563,6 +2786,14 @@ export class InventoryManager {
   }
 
   public markItemRevealed(containerId: string, uid: string): void {
+    const transient = this.transientContainers[containerId];
+    if (transient) {
+      const target = transient.items.find((it) => it.uid === uid);
+      if (target && target.revealed === false) {
+        target.revealed = true;
+      }
+      return;
+    }
     const c = this.state.containers[containerId];
     if (!c) return;
     const target = c.items.find((it) => it.uid === uid);
@@ -2710,6 +2941,77 @@ export class InventoryManager {
     return container;
   }
 
+  public openOrGenerateDungeonContainer(
+    containerId: string,
+    title: string,
+    sourceType: "dungeon_chest" | "dungeon_royal",
+  ): ContainerLootState {
+    const existing = this.transientContainers[containerId];
+    if (existing) {
+      return existing;
+    }
+
+    const desiredCount = this.rollItemCount(sourceType, "yellow");
+    const generatedDefs: CollectibleItemDef[] = [];
+    for (let i = 0; i < desiredCount; i++) {
+      const rarity = this.rollRarity(sourceType, sourceType === "dungeon_royal" ? "red" : "yellow");
+      const dungeonPool = ITEM_CATALOG.filter(
+        (it) =>
+          it.rarity === rarity &&
+          Boolean(it.dungeonExclusive) &&
+          (!it.mapOrigin || it.mapOrigin === "vietnam"),
+      );
+      const useDungeonPool = dungeonPool.length > 0 && (rarity === "S" || Math.random() < 0.72);
+      const def = useDungeonPool
+        ? dungeonPool[Math.floor(Math.random() * dungeonPool.length)]
+        : this.pickItemByZoneAffinity(rarity, "plains", false, "vietnam");
+      generatedDefs.push(def);
+
+      if (rarity === "S") {
+        this.state.mythicPity = 0;
+        this.state.consecutiveJunk = 0;
+      } else {
+        this.state.mythicPity += 1;
+        this.state.consecutiveJunk = rarity === "C" ? this.state.consecutiveJunk + 1 : 0;
+      }
+    }
+
+    shuffleArray(generatedDefs);
+    const packedItems: GridItemInstance[] = [];
+    for (const def of generatedDefs) {
+      const fit =
+        findRandomFitOnGrid(CONTAINER_COLS, CONTAINER_ROWS, packedItems, def) ??
+        findFirstFitOnGrid(CONTAINER_COLS, CONTAINER_ROWS, packedItems, def);
+      if (fit) {
+        packedItems.push({
+          uid: `it_${this.state.nextUid++}`,
+          itemId: def.id,
+          x: fit.x,
+          y: fit.y,
+          rotated: fit.rotated,
+          originBiome: "plains",
+          revealed: false,
+        });
+      }
+    }
+
+    const now = Date.now();
+    const container: ContainerLootState = {
+      containerId,
+      title,
+      sourceType,
+      biome: "plains",
+      cols: CONTAINER_COLS,
+      rows: CONTAINER_ROWS,
+      items: packedItems,
+      generatedAt: now,
+      refreshAt: now + rollContainerRefreshMs(sourceType),
+    };
+    this.transientContainers[containerId] = container;
+    this.saveState();
+    return container;
+  }
+
   private resolveZoneGrid(
     zone: GridZone,
     containerId: string | null,
@@ -2743,7 +3045,7 @@ export class InventoryManager {
         : { cols: 0, rows: 0, items: this.state.legsItems };
     }
     if (!containerId) return null;
-    const container = this.state.containers[containerId];
+    const container = this.state.containers[containerId] ?? this.transientContainers[containerId];
     if (!container) return null;
     return { cols: container.cols, rows: container.rows, items: container.items };
   }

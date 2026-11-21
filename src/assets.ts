@@ -31,6 +31,7 @@ const RAW_ASSETS = [
   { alias: "bld-city_butcher_shop", src: "assets/world/buildings/city_butcher_shop.png" },
   { alias: "bld-city_backpack_shop", src: "assets/world/buildings/city_backpack_shop.png" },
   { alias: "bld-city_airport", src: "assets/world/buildings/city_airport.png" },
+  { alias: "bld-vn_dungeon_hoang_thanh", src: "assets/world/buildings/vn_dungeon_hoang_thanh.png" },
   { alias: "bld-jp_shogun_castle", src: "assets/world/buildings/jp_shogun_castle.png" },
   { alias: "bld-jp_shinto_shrine", src: "assets/world/buildings/jp_shinto_shrine.png" },
   { alias: "bld-jp_ninja_dojo", src: "assets/world/buildings/jp_ninja_dojo.png" },

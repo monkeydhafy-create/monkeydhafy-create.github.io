@@ -1254,6 +1254,16 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           discovered: false,
         },
         {
+          id: "lm-vn-dungeon-hoang-thanh",
+          name: "Địa Đạo Hoàng Thành Thăng Long",
+          subtitle: "Cổng Đoan Môn cổ tại Vùng Vàng — Lối xuống 4 phòng hầm ngầm săn cổ vật Đỏ",
+          x: 58.5 * TILE_SIZE,
+          y: 35.2 * TILE_SIZE,
+          radius: 230,
+          accentColor: 0xf59e0b,
+          discovered: false,
+        },
+        {
           id: "red-zone-north",
           name: "Phức Hợp Kho Báu Bắc (Vùng Đỏ)",
           subtitle: "Khu nhà nhiều đồ Vàng & Đỏ — Đặc nhiệm tuần tra theo trục đường",
@@ -1557,6 +1567,27 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("city_terrace_houses", 34, 60, 4, 2);
     placeProp("city_flower_shop", 45, 72, 4, 2);
     // West Bank of Sông Hồng & Branch 1 Surroundings (col 58..86)
+    // Cổng Đoan Môn — Địa Đạo Hoàng Thành Thăng Long (Vùng Vàng tại col 58, row 34)
+    for (let r = 31; r <= 38; r++) {
+      for (let c = 55; c <= 61; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = r >= 35 ? "stone" : "sidewalk";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    for (let r = 36; r <= 39; r++) {
+      for (let c = 57; c <= 59; c++) {
+        const idx = r * cols + c;
+        tiles[idx] = "stone";
+        collision[idx] = 0;
+        reserved[idx] = 1;
+      }
+    }
+    placeProp("vn_dungeon_hoang_thanh", 58, 34, 5, 3);
+    placeProp("park_lantern", 55, 35, 1, 1, 0.5, 0.92, false);
+    placeProp("park_lantern", 61, 35, 1, 1, 0.5, 0.92, false);
+
     placeProp("plains_tea_house", 65, 22, 4, 2);
     placeProp("plains_archway", 65, 35, 4, 2);
     placeProp("plains_parasol_market", 74, 26, 5, 2);

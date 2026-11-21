@@ -48,6 +48,8 @@ import {
   type EnvironmentState,
 } from "./HanoiWeatherService.ts";
 import {
+  DUNGEON_TICKET_ITEM_ID,
+  DUNGEON_TICKET_PRICE_GOLD,
   InventoryManager,
   ITEM_BY_ID,
   findFirstFitOnGrid,
@@ -96,6 +98,16 @@ import {
 } from "./types.ts";
 import { generateOpenWorld } from "./WorldGenerator.ts";
 import { JAIL_HEIGHT, JAIL_WIDTH, JailRoom } from "./JailRoom.ts";
+import { generateHanoiDungeonRun } from "./dungeon/DungeonGenerator.ts";
+import { DungeonRoom } from "./dungeon/DungeonRoom.ts";
+import type {
+  DungeonDirection,
+  DungeonMinigameKind,
+  DungeonRoomId,
+  DungeonRoomLayout,
+  DungeonRunState,
+  DungeonScareKind,
+} from "./dungeon/DungeonTypes.ts";
 import { PoliceSystem, type PoliceOfficerMarker } from "./PoliceSystem.ts";
 import {
   QUEST_MANUAL_REROLL_COST_GOLD,
@@ -267,6 +279,32 @@ export type NearbyInteraction =
       label: string;
     }
   | {
+      type: "dungeon_entrance";
+      name: string;
+    }
+  | {
+      type: "dungeon_portal";
+      portalId: string;
+      targetRoom: DungeonRoomId | "exit_world";
+      label: string;
+    }
+  | {
+      type: "dungeon_station";
+      stationId: string;
+      kind: DungeonMinigameKind;
+      title: string;
+      label: string;
+    }
+  | {
+      type: "dungeon_chest";
+      chestId: string;
+      name: string;
+      locked: boolean;
+      opened: boolean;
+      royal: boolean;
+      label: string;
+    }
+  | {
       type: "building";
       propId: number;
       kind: BuildingKind;
@@ -307,6 +345,24 @@ export interface WorldCallbacks {
   onOpenContainer?: (container: ContainerLootState) => void;
   onOpenVaultPuzzle?: (target: PendingVaultTarget) => void;
   onOpenJailMinigame?: (station: { stationId: string; kind: ArcadeMinigameKind }) => void;
+  onOpenDungeonLobby?: () => void;
+  onOpenDungeonMinigame?: (target: { kind: DungeonMinigameKind; stationId: string; title: string }) => void;
+  onDungeonStateChanged?: (info: {
+    inDungeon: boolean;
+    isMaze: boolean;
+    roomTitle: string;
+    roomSubtitle: string;
+    chestsOpened: number;
+    roomChestsRemaining: number;
+    roomChestsTotal: number;
+  }) => void;
+  onConfirmDungeonRetreat?: (info: { currentHp: number; costHp: number }) => void;
+  onDungeonScareTriggered?: (info: {
+    name: string;
+    kind: DungeonScareKind;
+    damageHp: number;
+    died: boolean;
+  }) => void;
   onOpenShop?: (shopKind: ShopKind) => void;
   onOpenHomeStorage?: () => void;
   onOpenCollectionHall?: () => void;
@@ -325,7 +381,12 @@ export interface WorldCallbacks {
   onPoliceDetained?: (lostItemCount: number, durationMs: number, lostBackpack?: boolean) => void;
   onDetentionEnded?: () => void;
   onContainersRefreshed?: (containerIds: string[]) => void;
-  onFaintedToHospital?: (reason: string, hospitalFeeGold: number, confiscatedCount?: number) => void;
+  onFaintedToHospital?: (
+    reason: string,
+    hospitalFeeGold: number,
+    confiscatedCount?: number,
+    fromDungeon?: boolean,
+  ) => void;
   onRequestSave?: (immediate: boolean) => void;
   onPlayerMoveSample?: (sample: {
     mapId: MapId;
@@ -387,6 +448,7 @@ export class WorldScene {
   private readonly weatherParticles: WeatherParticles;
   private police: PoliceSystem;
   private readonly jailRoom: JailRoom;
+  private readonly dungeonRoom: DungeonRoom;
 
   private activeMapId: MapId;
   private readonly discoveredLandmarkIds = new Set<string>();
@@ -538,6 +600,8 @@ export class WorldScene {
   private soundEnabled = true;
 
   private isPointerDown = false;
+  private mazeStraightTarget: Point | null = null;
+  private mazeLookAngle = 0;
   private lastDragPathAt = 0;
   private readonly keysDown = new Set<string>();
   private elapsed = 0;
@@ -578,6 +642,13 @@ export class WorldScene {
   private lastSurvivalTick: SurvivalTickResult;
   private detainedUntil = 0;
   private isInJail = false;
+  private isInDungeon = false;
+  private activeDungeonRun: DungeonRunState | null = null;
+  private activeDungeonStationId: string | null = null;
+  private activeDungeonMinigameKind: DungeonMinigameKind | null = null;
+  private dungeonCooldownUntil = 0;
+  private dungeonTotalClears = 0;
+  private dungeonRunsEntered = 0;
   private ignoreUntilByOfficer: Record<string, number> = {};
   private globalPoliceIgnoreUntil = 0;
   private activePoliceChallengeOfficerId: string | null = null;
@@ -795,6 +866,12 @@ export class WorldScene {
 
     this.police = new PoliceSystem(data, this.atlas, this.entityLayer);
     this.jailRoom = new JailRoom(this.atlas);
+    this.dungeonRoom = new DungeonRoom(this.atlas);
+    if (initialSave?.dungeon) {
+      this.dungeonCooldownUntil = initialSave.dungeon.cooldownUntil ?? 0;
+      this.dungeonTotalClears = initialSave.dungeon.totalClears ?? 0;
+      this.dungeonRunsEntered = initialSave.dungeon.runsEntered ?? 0;
+    }
 
     const savedPolice = initialSave?.policeState;
     if (savedPolice) {
@@ -867,6 +944,7 @@ export class WorldScene {
       this.worldLightsContainer,
       this.atmosphere.screenOverlayLayer,
       this.jailRoom.container,
+      this.dungeonRoom.container,
     );
 
     this.atmosphere.resize(app.screen.width, app.screen.height);
@@ -890,8 +968,18 @@ export class WorldScene {
   }
 
   public getSaveSnapshot(): PlayerGameSaveV3 {
-    const saveX = this.isInJail ? this.data.policeDetainRespawn.x : this.player.x;
-    const saveY = this.isInJail ? this.data.policeDetainRespawn.y : this.player.y;
+    const dungeonEntranceX = 58.5 * TILE_SIZE;
+    const dungeonEntranceY = 36.2 * TILE_SIZE;
+    const saveX = this.isInJail
+      ? this.data.policeDetainRespawn.x
+      : this.isInDungeon
+        ? dungeonEntranceX
+        : this.player.x;
+    const saveY = this.isInJail
+      ? this.data.policeDetainRespawn.y
+      : this.isInDungeon
+        ? dungeonEntranceY
+        : this.player.y;
     return {
       schemaVersion: 3,
       inventory: this.inventory.getPersistedState(),
@@ -933,6 +1021,11 @@ export class WorldScene {
       equippedPetId: this.equippedPetId,
       estate: { ...this.estatesByMap.vietnam },
       jpEstate: { ...this.estatesByMap.japan },
+      dungeon: {
+        cooldownUntil: this.dungeonCooldownUntil,
+        totalClears: this.dungeonTotalClears,
+        runsEntered: this.dungeonRunsEntered,
+      },
     };
   }
 
@@ -1755,8 +1848,8 @@ export class WorldScene {
   }
 
   public applyRemoteLiveState(live: LiveStatePayload): void {
-    // Bỏ qua gói live đang ngất/chết hoặc dữ liệu lỗi để không kéo phiên đang chơi khỏe mạnh về bệnh viện oan
-    if (!Number.isFinite(live.hp) || live.hp <= 0) {
+    // Bỏ qua gói live khi đang ở trong Địa Đạo hoặc gói đang ngất/chết để không kéo phiên về bệnh viện oan
+    if (this.isInDungeon || !Number.isFinite(live.hp) || live.hp <= 0) {
       return;
     }
     if (live.map_id !== this.activeMapId) {
@@ -1824,6 +1917,18 @@ export class WorldScene {
         this.isInJail = false;
         this.jailRoom.container.visible = false;
         this.worldContainer.visible = true;
+      }
+      if (this.isInDungeon) {
+        this.exitDungeonToOverworld();
+      }
+      if (save.dungeon) {
+        this.dungeonCooldownUntil = save.dungeon.cooldownUntil ?? 0;
+        this.dungeonTotalClears = save.dungeon.totalClears ?? 0;
+        this.dungeonRunsEntered = save.dungeon.runsEntered ?? 0;
+      } else {
+        this.dungeonCooldownUntil = 0;
+        this.dungeonTotalClears = 0;
+        this.dungeonRunsEntered = 0;
       }
       if (save.questBoard) {
         this.questBoard = save.questBoard;
@@ -2924,6 +3029,7 @@ export class WorldScene {
   }
 
   public adjustZoom(delta: number): void {
+    if (this.isInDungeon) return;
     this.targetZoom = Math.max(0.6, Math.min(2.0, this.targetZoom + delta));
   }
 
@@ -2933,7 +3039,31 @@ export class WorldScene {
   }
 
   public moveToWorldPoint(worldX: number, worldY: number, playSfx = true): void {
-    if (this.isMovementLocked()) return;
+    if (this.isMovementLocked() || this.isInDungeonMaze()) return;
+    if (this.isInDungeon && this.activeDungeonRun) {
+      const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+      const clampedX = Math.max(0, Math.min(room.cols * TILE_SIZE, worldX));
+      const clampedY = Math.max(0, Math.min(room.rows * TILE_SIZE, worldY));
+      const path = this.dungeonRoom.pathfinder.findPath(
+        { x: this.player.x, y: this.player.y },
+        { x: clampedX, y: clampedY },
+      );
+      if (path.length > 0) {
+        this.player.setPath(path);
+        const end = path[path.length - 1];
+        this.dungeonRoom.addRipple(end.x, end.y, 0x34d399);
+      } else {
+        this.dungeonRoom.addRipple(clampedX, clampedY, 0xf43f5e);
+      }
+      if (playSfx && this.soundEnabled) {
+        try {
+          sound.play("sfx-press", { volume: 0.22 });
+        } catch {
+          // AudioContext unlocks automatically on first user gesture
+        }
+      }
+      return;
+    }
     if (this.isInJail) {
       const clampedX = Math.max(0, Math.min(JAIL_WIDTH, worldX));
       const clampedY = Math.max(0, Math.min(JAIL_HEIGHT, worldY));
@@ -3013,6 +3143,7 @@ export class WorldScene {
 
   public getCurrentSecurityZone(): SecurityZone {
     if (this.isInJail) return "green";
+    if (this.isInDungeon) return "yellow";
     return this.getSecurityZoneAt(this.player.x, this.player.y);
   }
 
@@ -3030,7 +3161,7 @@ export class WorldScene {
   }
 
   public getSurfaceAt(x: number, y: number): SurfaceState {
-    if (this.isInJail) return "dry";
+    if (this.isInJail || this.isInDungeon) return "dry";
     const col = Math.max(0, Math.min(this.data.cols - 1, Math.floor(x / TILE_SIZE)));
     const row = Math.max(0, Math.min(this.data.rows - 1, Math.floor(y / TILE_SIZE)));
     const tile = this.data.tiles[row * this.data.cols + col];
@@ -3106,8 +3237,383 @@ export class WorldScene {
       this.faintRespawnCooldown > 0 ||
       this.activePoliceChallengeOfficerId !== null ||
       this.activeVaultPuzzle !== null ||
-      this.activeJailStationId !== null
+      this.activeJailStationId !== null ||
+      this.activeDungeonStationId !== null
     );
+  }
+
+  public isInDungeonMode(): boolean {
+    return this.isInDungeon;
+  }
+
+  public isInDungeonMaze(): boolean {
+    return Boolean(
+      this.isInDungeon &&
+        this.activeDungeonRun &&
+        this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId]?.isMaze,
+    );
+  }
+
+  public getDungeonStatus(): {
+    cooldownRemainingMs: number;
+    totalClears: number;
+    runsEntered: number;
+    ticketCount: number;
+    ticketPriceGold: number;
+  } {
+    return {
+      cooldownRemainingMs: Math.max(0, this.dungeonCooldownUntil - Date.now()),
+      totalClears: this.dungeonTotalClears,
+      runsEntered: this.dungeonRunsEntered,
+      ticketCount: this.inventory.countItemAcrossZones(DUNGEON_TICKET_ITEM_ID).total,
+      ticketPriceGold: DUNGEON_TICKET_PRICE_GOLD,
+    };
+  }
+
+  public buyDungeonTicket(): { ok: boolean; message: string } {
+    if (this.activeMapId !== "vietnam") {
+      return { ok: false, message: "Chỉ có thể mua Vé Địa Đạo tại bản đồ Hà Nội." };
+    }
+    if (this.inventory.getGold() < DUNGEON_TICKET_PRICE_GOLD) {
+      return {
+        ok: false,
+        message: `Cần ${DUNGEON_TICKET_PRICE_GOLD.toLocaleString("vi-VN")} Vàng để mua 1 Vé Tham Quan Địa Đạo.`,
+      };
+    }
+
+    let storedWhere = "";
+    const packRes = this.inventory.addItemToZone("backpack", DUNGEON_TICKET_ITEM_ID, "city");
+    if (packRes.ok) {
+      storedWhere = "Balo";
+    } else {
+      const safeRes = this.inventory.addItemToZone("safebox", DUNGEON_TICKET_ITEM_ID, "city");
+      if (safeRes.ok) {
+        storedWhere = "Safebox";
+      } else {
+        const homeRes = this.inventory.addItemToZone("home", DUNGEON_TICKET_ITEM_ID, "city");
+        if (homeRes.ok) {
+          storedWhere = "Kho Nhà";
+        }
+      }
+    }
+
+    if (!storedWhere) {
+      return {
+        ok: false,
+        message: "Balo, Safebox và Kho Nhà đều đã đầy ô (1×1)! Hãy dọn bớt chỗ trống để mua vé.",
+      };
+    }
+
+    this.inventory.trySpendGold(DUNGEON_TICKET_PRICE_GOLD);
+    this.playPressSfx();
+    this.callbacks.onRequestSave?.(true);
+    return {
+      ok: true,
+      message: `🎟️ Đã mua 1 Vé Tham Quan Địa Đạo (-${DUNGEON_TICKET_PRICE_GOLD.toLocaleString("vi-VN")}🪙) • Cất vào ${storedWhere}!`,
+    };
+  }
+
+  public getActiveDungeonRoomInfo(): {
+    inDungeon: boolean;
+    isMaze: boolean;
+    roomTitle: string;
+    roomSubtitle: string;
+    chestsOpened: number;
+    roomChestsRemaining: number;
+    roomChestsTotal: number;
+  } {
+    if (!this.isInDungeon || !this.activeDungeonRun) {
+      return {
+        inDungeon: false,
+        isMaze: false,
+        roomTitle: "",
+        roomSubtitle: "",
+        chestsOpened: 0,
+        roomChestsRemaining: 0,
+        roomChestsTotal: 0,
+      };
+    }
+    const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+    let roomChestsTotal = 0;
+    let roomChestsRemaining = 0;
+    for (const ch of room.chests) {
+      if (!ch.revealedInRoom) continue;
+      roomChestsTotal += 1;
+      if (!ch.opened) roomChestsRemaining += 1;
+    }
+    return {
+      inDungeon: true,
+      isMaze: room.isMaze,
+      roomTitle: room.title,
+      roomSubtitle: room.subtitle,
+      chestsOpened: this.activeDungeonRun.chestsOpenedCount,
+      roomChestsRemaining,
+      roomChestsTotal,
+    };
+  }
+
+  private emitDungeonState(): void {
+    this.callbacks.onDungeonStateChanged?.(this.getActiveDungeonRoomInfo());
+  }
+
+  public enterDungeon(payBypassGold = false): { ok: boolean; message: string } {
+    if (this.isMovementLocked() || this.isDetained() || this.isInJail || this.isInDungeon) {
+      return { ok: false, message: "Không thể bước xuống Địa Đạo lúc này." };
+    }
+    if (this.activeMapId !== "vietnam") {
+      return { ok: false, message: "Địa Đạo Hoàng Thành chỉ nằm tại bản đồ Hà Nội." };
+    }
+    if (this.inventory.countItemAcrossZones(DUNGEON_TICKET_ITEM_ID).total < 1) {
+      return {
+        ok: false,
+        message: "Cần 1 🎟️ Vé Tham Quan Địa Đạo để vào cổng! Hãy mua tại quầy vé ngay bên dưới hoặc tìm trong thành phố.",
+      };
+    }
+    const remMs = Math.max(0, this.dungeonCooldownUntil - Date.now());
+    if (remMs > 0) {
+      if (!payBypassGold) {
+        return { ok: false, message: "Địa Đạo đang đóng cửa hồi phục, hãy chờ hết thời gian hoặc dùng Vàng mở hầm sớm." };
+      }
+      if (!this.inventory.trySpendGold(1000)) {
+        return { ok: false, message: "Không đủ 1.000 Vàng để mở hầm sớm!" };
+      }
+    }
+
+    this.inventory.consumeItemsPreferred(DUNGEON_TICKET_ITEM_ID, 1);
+    this.dungeonCooldownUntil = 0;
+    this.dungeonRunsEntered += 1;
+    if (this.estateInteractMode !== "none") {
+      this.exitEstateInteractMode();
+    }
+    this.isPointerDown = false;
+    this.mazeStraightTarget = null;
+    this.activeVaultPuzzle = null;
+    this.activeDungeonStationId = null;
+    this.activeDungeonMinigameKind = null;
+    this.pendingConsume = null;
+    this.isLootingContainerOpen = false;
+    this.lootingCheckAccum = 0;
+    this.inventory.clearTransientContainers();
+    this.dungeonRoom.disposeCurrentRoom(this.player);
+
+    const run = generateHanoiDungeonRun();
+    this.activeDungeonRun = run;
+    this.isInDungeon = true;
+
+    this.worldContainer.visible = false;
+    this.worldLightsContainer.visible = false;
+    this.atmosphere.screenOverlayLayer.visible = false;
+    this.dungeonRoom.container.visible = true;
+    this.dungeonRoom.loadRoom(run.rooms.hub, this.player);
+    this.dungeonRoom.syncCameraTransform(
+      this.app.screen.width,
+      this.app.screen.height,
+      this.player.x,
+      this.player.y,
+      this.app.renderer.resolution || 1,
+    );
+
+    this.playPressSfx();
+    this.emitDungeonState();
+    this.callbacks.onRequestSave?.(true);
+    return { ok: true, message: "Đã bước vào Sảnh Địa Đạo Hoàng Thành Thăng Long!" };
+  }
+
+  public switchDungeonRoom(targetRoomId: DungeonRoomId): void {
+    if (!this.isInDungeon || !this.activeDungeonRun) return;
+    const prevRoomId = this.activeDungeonRun.activeRoomId;
+    const nextRoom: DungeonRoomLayout | undefined = this.activeDungeonRun.rooms[targetRoomId];
+    if (!nextRoom) return;
+
+    this.isPointerDown = false;
+    this.mazeStraightTarget = null;
+    this.activeDungeonRun.activeRoomId = targetRoomId;
+    this.dungeonRoom.loadRoom(nextRoom, this.player);
+
+    // Sync forward vision cone angle to initial inward facing in room_maze
+    const facing = this.player.getFacing();
+    this.mazeLookAngle =
+      facing === "right"
+        ? 0
+        : facing === "down"
+          ? Math.PI / 2
+          : facing === "left"
+            ? Math.PI
+            : -Math.PI / 2;
+
+    // When returning to Hub from a room, spawn directly inside that directional corridor
+    if (targetRoomId === "hub" && prevRoomId !== "hub") {
+      const prevDir = this.activeDungeonRun.roomDirections[prevRoomId];
+      const returnSpawns: Record<
+        DungeonDirection,
+        { x: number; y: number; facing: FacingDir }
+      > = {
+        north: { x: 11 * TILE_SIZE, y: 4.4 * TILE_SIZE, facing: "down" },
+        south: { x: 11 * TILE_SIZE, y: 10.5 * TILE_SIZE, facing: "up" },
+        west: { x: 4.4 * TILE_SIZE, y: 7.4 * TILE_SIZE, facing: "right" },
+        east: { x: 17.6 * TILE_SIZE, y: 7.4 * TILE_SIZE, facing: "left" },
+      };
+      const pt = returnSpawns[prevDir];
+      this.player.position.set(pt.x, pt.y);
+      this.player.zIndex = pt.y;
+      this.player.setFacing(pt.facing);
+    }
+
+    this.dungeonRoom.syncCameraTransform(
+      this.app.screen.width,
+      this.app.screen.height,
+      this.player.x,
+      this.player.y,
+      this.app.renderer.resolution || 1,
+    );
+    this.playPressSfx();
+    this.emitDungeonState();
+  }
+
+  public exitDungeonToOverworld(died = false): { chestsOpened: number; roomsCleared: number } {
+    if (!this.isInDungeon) {
+      return { chestsOpened: 0, roomsCleared: 0 };
+    }
+    const chestsOpened = this.activeDungeonRun?.chestsOpenedCount ?? 0;
+    const roomsCleared = this.activeDungeonRun?.roomsClearedCount ?? 0;
+
+    this.isPointerDown = false;
+    this.mazeStraightTarget = null;
+    this.dungeonRoom.disposeCurrentRoom(this.player);
+    this.dungeonRoom.container.visible = false;
+    this.isInDungeon = false;
+    this.activeDungeonRun = null;
+    this.activeDungeonStationId = null;
+    this.activeDungeonMinigameKind = null;
+    this.inventory.clearTransientContainers();
+
+    this.entityLayer.addChild(this.player);
+    let outX = 58.5 * TILE_SIZE;
+    let outY = 36.2 * TILE_SIZE;
+    if (!this.pathfinder.isWalkableWorld(outX, outY)) {
+      outX = this.data.spawn.x;
+      outY = this.data.spawn.y;
+    }
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.player.position.set(outX, outY);
+    this.player.zIndex = outY;
+    this.player.setFacing("down");
+    this.camX = outX;
+    this.camY = outY;
+    this.lastSavedPlayerX = outX;
+    this.lastSavedPlayerY = outY;
+
+    this.worldContainer.visible = true;
+    this.worldLightsContainer.visible = true;
+    this.atmosphere.screenOverlayLayer.visible = true;
+    this.forceCullUpdate = true;
+    this.syncCameraTransform();
+
+    if (died || chestsOpened > 0 || roomsCleared > 0) {
+      this.dungeonCooldownUntil = Date.now() + 15 * 60_000;
+    }
+    if (!died && (chestsOpened > 0 || roomsCleared > 0)) {
+      this.dungeonTotalClears += 1;
+    }
+
+    this.emitDungeonState();
+    this.callbacks.onRequestSave?.(true);
+    return { chestsOpened, roomsCleared };
+  }
+
+  public resolveDungeonMinigame(won: boolean, hpDamage = 0, rewardChests?: number): {
+    hpAfter: number;
+    fainted: boolean;
+    bonusMessage?: string;
+  } {
+    const stationId = this.activeDungeonStationId;
+    const kind = this.activeDungeonMinigameKind;
+    this.activeDungeonStationId = null;
+    this.activeDungeonMinigameKind = null;
+
+    if (!this.isInDungeon || !this.activeDungeonRun || !stationId || !kind) {
+      return { hpAfter: this.survival.hp, fainted: false };
+    }
+
+    const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+    if (room.station && room.station.id === stationId) {
+      room.station.attempted = true;
+    }
+    if (won && room.station && room.station.id === stationId) {
+      room.station.cleared = true;
+      const revealCount =
+        rewardChests !== undefined
+          ? Math.max(0, Math.min(room.chests.length, Math.floor(rewardChests)))
+          : room.chests.length;
+      for (let i = 0; i < room.chests.length; i++) {
+        room.chests[i].revealedInRoom = i < revealCount;
+      }
+      this.activeDungeonRun.roomsClearedCount += 1;
+      this.dungeonRoom.refreshRoomObjects(room);
+      this.advanceMinigameQuests(1);
+      this.playPressSfx();
+
+      let bonusMessage = `Đã mở khóa ${revealCount} rương báu trong phòng!`;
+      if (kind === "peanut_steal") {
+        this.survival.hunger = Math.min(100, this.survival.hunger + 25);
+        const maxStam = getActiveStaminaMax(
+          this.survival,
+          Date.now(),
+          this.getTotalPermanentStaminaBonusPct(),
+        );
+        this.survival.stamina = Math.min(maxStam, this.survival.stamina + 20);
+        bonusMessage = `Ăn no (+25 Đói, +20 Thể lực) & mở khóa ${revealCount} rương báu!`;
+      }
+
+      this.emitDungeonState();
+      this.callbacks.onRequestSave?.(true);
+      return { hpAfter: this.survival.hp, fainted: false, bonusMessage };
+    }
+
+    const dmg = Math.max(0, Math.round(hpDamage));
+    if (dmg > 0) {
+      this.survival.hp = Math.max(0, this.survival.hp - dmg);
+      if (this.survival.hp <= 0) {
+        this.exitDungeonToOverworld(true);
+        this.triggerHospitalFaint(
+          kind === "peanut_steal"
+            ? "bị Quan Lớn gõ đầu ngất xỉu"
+            : "kiệt sức trong Xưởng Sàng Lọc Xu",
+          this.weatherService.getEnvironmentState(),
+          true,
+        );
+        return { hpAfter: 0, fainted: true };
+      }
+    }
+
+    this.dungeonRoom.refreshRoomObjects(room);
+    this.callbacks.onRequestSave?.(true);
+    return { hpAfter: this.survival.hp, fainted: false };
+  }
+
+  public cancelDungeonMinigame(): void {
+    this.activeDungeonStationId = null;
+    this.activeDungeonMinigameKind = null;
+  }
+
+  public confirmRetreatFromMinigameRoom(): { died: boolean; hpAfter: number } {
+    if (!this.isInDungeon || !this.activeDungeonRun) {
+      return { died: false, hpAfter: this.survival.hp };
+    }
+    this.survival.hp = Math.max(0, this.survival.hp - 60);
+    if (this.survival.hp <= 0) {
+      this.exitDungeonToOverworld(true);
+      this.triggerHospitalFaint(
+        "mất máu khi phá phong ấn rời phòng thử thách",
+        this.weatherService.getEnvironmentState(),
+        true,
+      );
+      return { died: true, hpAfter: 0 };
+    }
+    this.switchDungeonRoom("hub");
+    this.callbacks.onRequestSave?.(true);
+    return { died: false, hpAfter: this.survival.hp };
   }
 
   public getDailyQuestBoard(): DailyQuestBoardState {
@@ -3355,6 +3861,30 @@ export class WorldScene {
     this.activeVaultPuzzle = null;
     if (!v) return;
 
+    if (v.containerId.startsWith("dungeon_") && this.isInDungeon && this.activeDungeonRun) {
+      const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+      const ch = room.chests.find((c) => c.id === v.containerId);
+      const container = this.inventory.openOrGenerateDungeonContainer(
+        v.containerId,
+        v.title,
+        "dungeon_royal",
+      );
+      if (ch) {
+        if (!ch.opened) {
+          this.activeDungeonRun.chestsOpenedCount += 1;
+        }
+        ch.locked = false;
+        ch.opened = true;
+        this.dungeonRoom.refreshRoomObjects(room);
+      }
+      this.playPressSfx();
+      this.advanceMinigameQuests(1);
+      this.emitDungeonState();
+      this.callbacks.onRequestSave?.(true);
+      this.callbacks.onOpenContainer?.(container);
+      return;
+    }
+
     const zone = this.getSecurityZoneAt(this.player.x, this.player.y);
     const container = this.inventory.openOrGenerateContainer(
       v.containerId,
@@ -3456,6 +3986,7 @@ export class WorldScene {
       this.app.screen.height,
       this.player.x,
       this.player.y,
+      this.app.renderer.resolution || 1,
     );
   }
 
@@ -3534,6 +4065,48 @@ export class WorldScene {
         label: `❗ Chơi Minigame: ${nameMap[st.kind]} (Giảm 1 phút) [E]`,
       };
     }
+
+    if (this.isInDungeon && this.activeDungeonRun) {
+      const hit = this.dungeonRoom.getNearbyInteractable(this.player.x, this.player.y);
+      if (!hit) return null;
+      if (hit.type === "station") {
+        return {
+          type: "dungeon_station",
+          stationId: hit.station.id,
+          kind: hit.station.kind,
+          title: hit.station.title,
+          label: hit.station.promptLabel,
+        };
+      }
+      if (hit.type === "chest") {
+        return {
+          type: "dungeon_chest",
+          chestId: hit.chest.id,
+          name: hit.chest.name,
+          locked: hit.chest.locked,
+          opened: hit.chest.opened,
+          royal: hit.chest.royal,
+          label:
+            hit.chest.locked && !hit.chest.opened
+              ? `🔐 Giải Đố Mở Khóa: ${hit.chest.name} [E]`
+              : hit.chest.opened
+                ? `🧰 Xem Lại: ${hit.chest.name} [E]`
+                : `🧰 Mở Rương: ${hit.chest.name} [E]`,
+        };
+      }
+      const activeRoom = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+      const portalLabel =
+        activeRoom.station && !activeRoom.station.cleared && !activeRoom.station.attempted && hit.portal.targetRoom === "hub"
+          ? "🩸 Phá Phong Ấn Quay Lại (-60 HP) [E]"
+          : `${hit.portal.label} [E]`;
+      return {
+        type: "dungeon_portal",
+        portalId: hit.portal.id,
+        targetRoom: hit.portal.targetRoom,
+        label: portalLabel,
+      };
+    }
+
     const px = this.player.x;
     const py = this.player.y;
 
@@ -3739,6 +4312,12 @@ export class WorldScene {
       if (meta.tier === "police") {
         return null;
       }
+      if (meta.tier === "dungeon") {
+        return {
+          type: "dungeon_entrance",
+          name: meta.name,
+        };
+      }
 
       const prefix = this.activeMapId === "japan" ? "jp_bld-" : "bld-";
       const containerId = `${prefix}${closestBuilding.prop.id}`;
@@ -3780,6 +4359,100 @@ export class WorldScene {
     }
 
     if (this.isInJail) return false;
+
+    if (this.isInDungeon && this.activeDungeonRun) {
+      if (target.type === "dungeon_portal") {
+        const activeRoom = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+        if (activeRoom.station && !activeRoom.station.cleared && !activeRoom.station.attempted && target.targetRoom === "hub") {
+          this.mazeStraightTarget = null;
+          this.player.clearPath();
+          this.player.setManualDirection(0, 0);
+          this.playPressSfx();
+          this.callbacks.onConfirmDungeonRetreat?.({
+            currentHp: Math.max(0, Math.round(this.survival.hp)),
+            costHp: 60,
+          });
+          return true;
+        }
+        this.playPressSfx();
+        if (target.targetRoom === "exit_world") {
+          this.exitDungeonToOverworld();
+        } else {
+          this.switchDungeonRoom(target.targetRoom);
+        }
+        return true;
+      }
+      if (target.type === "dungeon_station") {
+        const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+        if (!room.station || room.station.cleared || room.station.attempted) return false;
+        this.activeDungeonStationId = target.stationId;
+        this.activeDungeonMinigameKind = target.kind;
+        this.player.clearPath();
+        this.player.setManualDirection(0, 0);
+        this.playPressSfx();
+        this.callbacks.onOpenDungeonMinigame?.({
+          kind: target.kind,
+          stationId: target.stationId,
+          title: target.title,
+        });
+        return true;
+      }
+      if (target.type === "dungeon_chest") {
+        const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+        const ch = room.chests.find((c) => c.id === target.chestId);
+        if (!ch || !ch.revealedInRoom) return false;
+        if (ch.locked && !ch.opened) {
+          const vaultTarget: PendingVaultTarget = {
+            containerId: ch.id,
+            title: ch.name,
+            sourceType: "chest_royal",
+            biome: "plains",
+            zone: "yellow",
+            kind: ch.puzzleKind ?? "memory_cards",
+            seed: ch.puzzleSeed ?? 1337,
+            chestId: ch.id,
+          };
+          this.activeVaultPuzzle = vaultTarget;
+          this.player.clearPath();
+          this.player.setManualDirection(0, 0);
+          this.playPressSfx();
+          this.callbacks.onOpenVaultPuzzle?.(vaultTarget);
+          return true;
+        }
+        const container = this.inventory.openOrGenerateDungeonContainer(
+          ch.id,
+          ch.name,
+          ch.royal ? "dungeon_royal" : "dungeon_chest",
+        );
+        if (!ch.opened) {
+          ch.opened = true;
+          this.activeDungeonRun.chestsOpenedCount += 1;
+          this.dungeonRoom.refreshRoomObjects(room);
+          this.emitDungeonState();
+          this.callbacks.onRequestSave?.(false);
+        }
+        this.playPressSfx();
+        this.callbacks.onOpenContainer?.(container);
+        return true;
+      }
+      return false;
+    }
+
+    if (
+      target.type === "dungeon_portal" ||
+      target.type === "dungeon_station" ||
+      target.type === "dungeon_chest"
+    ) {
+      return false;
+    }
+
+    if (target.type === "dungeon_entrance") {
+      this.player.clearPath();
+      this.player.setManualDirection(0, 0);
+      this.playPressSfx();
+      this.callbacks.onOpenDungeonLobby?.();
+      return true;
+    }
 
     if (target.type === "shop") {
       this.playPressSfx();
@@ -3970,13 +4643,16 @@ export class WorldScene {
 
     if (this.faintRespawnCooldown > 0) {
       this.faintRespawnCooldown = Math.max(0, this.faintRespawnCooldown - dt);
+      this.mazeStraightTarget = null;
       this.player.setManualDirection(0, 0);
       this.player.clearPath();
     } else if (
       this.activePoliceChallengeOfficerId !== null ||
       this.activeVaultPuzzle !== null ||
-      this.activeJailStationId !== null
+      this.activeJailStationId !== null ||
+      this.activeDungeonStationId !== null
     ) {
+      this.mazeStraightTarget = null;
       this.player.setManualDirection(0, 0);
       this.player.clearPath();
     } else if (this.estateInteractMode !== "none") {
@@ -3989,7 +4665,37 @@ export class WorldScene {
         this.estateCamY = Math.max(b.minY, Math.min(b.maxY, this.estateCamY + ky * panSpeed));
       }
     } else if (kx !== 0 || ky !== 0) {
+      this.mazeStraightTarget = null;
+      this.mazeLookAngle = Math.atan2(ky, kx);
       this.player.setManualDirection(kx, ky);
+    } else if (this.isInDungeonMaze() && this.mazeStraightTarget) {
+      const dx = this.mazeStraightTarget.x - this.player.x;
+      const dy = this.mazeStraightTarget.y - this.player.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= 8) {
+        this.mazeStraightTarget = null;
+        this.player.setManualDirection(0, 0);
+      } else {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        this.mazeLookAngle = Math.atan2(ny, nx);
+        if (
+          !this.dungeonRoom.pathfinder.isWalkableWorld(
+            this.player.x + nx * 12,
+            this.player.y + ny * 12,
+          )
+        ) {
+          this.mazeStraightTarget = null;
+          this.player.setManualDirection(0, 0);
+          this.dungeonRoom.addRipple(
+            this.player.x + nx * 14,
+            this.player.y + ny * 14,
+            0xf43f5e,
+          );
+        } else {
+          this.player.setManualDirection(nx, ny);
+        }
+      }
     } else {
       this.player.setManualDirection(0, 0);
     }
@@ -4016,6 +4722,114 @@ export class WorldScene {
         this.app.screen.height,
         this.player.x,
         this.player.y,
+        this.app.renderer.resolution || 1,
+      );
+      return;
+    }
+
+    if (this.isInDungeon && this.activeDungeonRun) {
+      const activeDungeonRoom = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+      const hadStraightTarget = activeDungeonRoom.isMaze && this.mazeStraightTarget !== null;
+      const prevPx = this.player.x;
+      const prevPy = this.player.y;
+      this.player.update(dt, this.dungeonRoom.pathfinder);
+      if (hadStraightTarget && Math.hypot(this.player.x - prevPx, this.player.y - prevPy) < 0.15) {
+        this.mazeStraightTarget = null;
+        this.player.setManualDirection(0, 0);
+      }
+      this.player.zIndex = this.player.y;
+      const baseEnv = this.weatherService.getEnvironmentState();
+
+      if (activeDungeonRoom.isMaze && !this.isMovementLocked()) {
+        const scare = this.dungeonRoom.checkAndTriggerMazeScare(this.player.x, this.player.y);
+        if (scare) {
+          this.mazeStraightTarget = null;
+          this.isPointerDown = false;
+          this.player.setManualDirection(0, 0);
+          this.survival.hp = Math.max(0, this.survival.hp - scare.damageHp);
+          const died = this.survival.hp <= 0;
+          this.callbacks.onDungeonScareTriggered?.({
+            name: scare.name,
+            kind: scare.kind,
+            damageHp: scare.damageHp,
+            died,
+          });
+          if (died) {
+            this.exitDungeonToOverworld(true);
+            this.triggerHospitalFaint(
+              `bị ${scare.name} hù chết trong Mê Cung`,
+              baseEnv,
+              true,
+            );
+            return;
+          }
+          this.callbacks.onRequestSave?.(false);
+        }
+      }
+
+      const undergroundEnv: EnvironmentState = {
+        ...baseEnv,
+        temperatureC: 19,
+        sunIntensity: 0,
+        rainIntensity: 0,
+        snowIntensity: 0,
+        dustIntensity: 0,
+        windSpeedKmh: 2,
+        windIntensity: 0.1,
+        humidityPct: 68,
+        nightFactor: 0.9,
+        condition: "cloudy",
+        conditionLabel: "Địa Đạo Cổ",
+      };
+      if (!this.isMovementLocked() && !this.isLootingContainerOpen) {
+        this.stepPendingConsume(dt);
+        const activePet = this.getEquippedPet();
+        const survivalTick = stepSurvivalState(this.survival, dt, {
+          isMoving: this.player.isMoving(),
+          surface: "dry",
+          env: undergroundEnv,
+          equip: this.cachedEquipStats,
+          inSnowZone: false,
+          elevation: 0,
+          elevationDelta: 0,
+          securityZone: "yellow",
+          mapId: "vietnam",
+          biome: "plains",
+          totalWeightKg: this.inventory.getCarriedWeightKg(this.cachedEquipStats.weightKg),
+          permanentStaminaBonusPct: this.getTotalPermanentStaminaBonusPct(),
+          heavySpeedBonusPct: this.inventory.getHeavySpeedBonusPct(),
+        });
+        this.lastSurvivalTick = survivalTick;
+        const consumeSlowMul = this.pendingConsume ? 0.34 : 1;
+        const petSpeedMul = 1 + (activePet?.bonuses.speedPct ?? 0) / 100;
+        this.player.setSurvivalVisuals({
+          speedMultiplier: survivalTick.speedMultiplier * consumeSlowMul * petSpeedMul,
+          isSweating: survivalTick.thermal.isSweating,
+          isShivering: survivalTick.thermal.isShivering,
+        });
+        if (survivalTick.fainted) {
+          this.exitDungeonToOverworld(true);
+          this.triggerHospitalFaint(
+            survivalTick.faintReason ?? "kiệt sức trong Địa Đạo",
+            baseEnv,
+            true,
+          );
+          return;
+        }
+      }
+      this.dungeonRoom.renderOverlay(
+        dt,
+        this.player.getRemainingPath(),
+        this.player.x,
+        this.player.y,
+        this.mazeLookAngle,
+      );
+      this.dungeonRoom.syncCameraTransform(
+        this.app.screen.width,
+        this.app.screen.height,
+        this.player.x,
+        this.player.y,
+        this.app.renderer.resolution || 1,
       );
       return;
     }
@@ -4198,70 +5012,7 @@ export class WorldScene {
       });
 
       if (survivalTick.fainted) {
-        this.pendingConsume = null;
-        this.faintRespawnCooldown = 2.6;
-        const HOSPITAL_FEE_GOLD = 2000;
-        const walletGold = this.inventory.getGold();
-        let fee = 0;
-        let confiscatedCount = 0;
-        if (walletGold >= HOSPITAL_FEE_GOLD) {
-          fee = HOSPITAL_FEE_GOLD;
-          this.inventory.trySpendGold(HOSPITAL_FEE_GOLD);
-        } else {
-          // Không đủ 2.000 Vàng viện phí -> mất sạch tiền đang có & mất hết đồ như bị cảnh sát bắt!
-          if (walletGold > 0) {
-            this.inventory.trySpendGold(walletGold);
-          }
-          const { lostItemCount } = this.inventory.confiscateOnArrest();
-          confiscatedCount = lostItemCount;
-          this.equipment = createPrisonerEquippedGear();
-          this.cachedEquipStats = computeEquipmentStats(this.equipment);
-          this.inventory.setEquippedGear(this.equipment);
-          this.player.setAppearance(this.equipment, this.hairId, this.gender);
-        }
-        this.survival = {
-          hp: 75,
-          hunger: 45,
-          stamina: 65,
-          bodyTempC: SURVIVAL_IDEAL_TEMP_C,
-          staminaBuff: null,
-        };
-        this.player.clearPath();
-        this.player.setManualDirection(0, 0);
-        this.player.position.set(this.data.hospitalRespawn.x, this.data.hospitalRespawn.y);
-        this.player.setFacing("down");
-        this.camX = this.data.hospitalRespawn.x;
-        this.camY = this.data.hospitalRespawn.y;
-        this.lastSavedPlayerX = this.data.hospitalRespawn.x;
-        this.lastSavedPlayerY = this.data.hospitalRespawn.y;
-        this.lastSurvivalTick = {
-          thermal: evaluateThermalState(
-            env,
-            "dry",
-            this.cachedEquipStats,
-            SURVIVAL_IDEAL_TEMP_C,
-            {
-              inSnowZone: this.isInSnowZoneAt(this.data.hospitalRespawn.x),
-              securityZone: this.getSecurityZoneAt(
-                this.data.hospitalRespawn.x,
-                this.data.hospitalRespawn.y,
-              ),
-              mapId: this.activeMapId,
-              biome: this.getCurrentBiome(),
-            },
-          ),
-          blurIntensity: 0,
-          speedMultiplier: 1,
-          fainted: false,
-          faintReason: null,
-        };
-        this.player.setSurvivalVisuals({
-          speedMultiplier: 1,
-          isSweating: false,
-          isShivering: false,
-        });
-        this.callbacks.onRequestSave?.(true);
-        this.callbacks.onFaintedToHospital?.(survivalTick.faintReason ?? "kiệt sức", fee, confiscatedCount);
+        this.triggerHospitalFaint(survivalTick.faintReason ?? "kiệt sức", env);
       }
     }
 
@@ -4305,6 +5056,84 @@ export class WorldScene {
     this.streamNextProps(24);
     this.updateCollectionOrbit();
     this.updatePetFollower(dt);
+  }
+
+  private triggerHospitalFaint(reason: string, env: EnvironmentState, fromDungeon = false): void {
+    if (!Number.isFinite(this.survival.hp) || this.survival.hp > 0) {
+      return;
+    }
+    this.pendingConsume = null;
+    this.faintRespawnCooldown = 2.6;
+    const HOSPITAL_FEE_GOLD = 2000;
+    const walletGold = this.inventory.getGold();
+    let fee = 0;
+    let confiscatedCount = 0;
+    if (fromDungeon) {
+      // Gục ngã trong Địa Đạo -> mất toàn bộ đồ mang theo, balo & trang bị mặc (chỉ giữ Kho Nhà & Safebox)
+      const { lostItemCount } = this.inventory.confiscateOnArrest();
+      confiscatedCount = lostItemCount;
+      this.equipment = createPrisonerEquippedGear();
+      this.cachedEquipStats = computeEquipmentStats(this.equipment);
+      this.inventory.setEquippedGear(this.equipment);
+      this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    } else if (walletGold >= HOSPITAL_FEE_GOLD) {
+      fee = HOSPITAL_FEE_GOLD;
+      this.inventory.trySpendGold(HOSPITAL_FEE_GOLD);
+    } else {
+      // Không đủ 2.000 Vàng viện phí -> mất sạch tiền đang có & mất hết đồ như bị cảnh sát bắt!
+      if (walletGold > 0) {
+        this.inventory.trySpendGold(walletGold);
+      }
+      const { lostItemCount } = this.inventory.confiscateOnArrest();
+      confiscatedCount = lostItemCount;
+      this.equipment = createPrisonerEquippedGear();
+      this.cachedEquipStats = computeEquipmentStats(this.equipment);
+      this.inventory.setEquippedGear(this.equipment);
+      this.player.setAppearance(this.equipment, this.hairId, this.gender);
+    }
+    this.survival = {
+      hp: 75,
+      hunger: 45,
+      stamina: 65,
+      bodyTempC: SURVIVAL_IDEAL_TEMP_C,
+      staminaBuff: null,
+    };
+    this.player.clearPath();
+    this.player.setManualDirection(0, 0);
+    this.player.position.set(this.data.hospitalRespawn.x, this.data.hospitalRespawn.y);
+    this.player.setFacing("down");
+    this.camX = this.data.hospitalRespawn.x;
+    this.camY = this.data.hospitalRespawn.y;
+    this.lastSavedPlayerX = this.data.hospitalRespawn.x;
+    this.lastSavedPlayerY = this.data.hospitalRespawn.y;
+    this.lastSurvivalTick = {
+      thermal: evaluateThermalState(
+        env,
+        "dry",
+        this.cachedEquipStats,
+        SURVIVAL_IDEAL_TEMP_C,
+        {
+          inSnowZone: this.isInSnowZoneAt(this.data.hospitalRespawn.x),
+          securityZone: this.getSecurityZoneAt(
+            this.data.hospitalRespawn.x,
+            this.data.hospitalRespawn.y,
+          ),
+          mapId: this.activeMapId,
+          biome: this.getCurrentBiome(),
+        },
+      ),
+      blurIntensity: 0,
+      speedMultiplier: 1,
+      fainted: false,
+      faintReason: null,
+    };
+    this.player.setSurvivalVisuals({
+      speedMultiplier: 1,
+      isSweating: false,
+      isShivering: false,
+    });
+    this.callbacks.onRequestSave?.(true);
+    this.callbacks.onFaintedToHospital?.(reason, fee, confiscatedCount, fromDungeon);
   }
 
   public destroy(): void {
@@ -4365,9 +5194,10 @@ export class WorldScene {
         if (tile === "bridge") {
           const waterTex = this.pickTileVariant(this.atlas.tiles.water, col, row);
           const wSprite = new Sprite(waterTex);
-          wSprite.position.set(px, py);
-          wSprite.width = TILE_SIZE + 0.5;
-          wSprite.height = TILE_SIZE + 0.5;
+          wSprite.roundPixels = false;
+          wSprite.position.set(px - 0.5, py - 0.5);
+          wSprite.width = TILE_SIZE + 1;
+          wSprite.height = TILE_SIZE + 1;
           wSprite.tint = 0x38bdf8;
           ch.node.addChild(wSprite);
 
@@ -4426,9 +5256,10 @@ export class WorldScene {
           const baseTile = puddleUnderlay[idx];
           const baseTex = this.resolveTileTexture(baseTile, col, row);
           const baseSprite = new Sprite(baseTex);
-          baseSprite.position.set(px, py);
-          baseSprite.width = TILE_SIZE + 0.5;
-          baseSprite.height = TILE_SIZE + 0.5;
+          baseSprite.roundPixels = false;
+          baseSprite.position.set(px - 0.5, py - 0.5);
+          baseSprite.width = TILE_SIZE + 1;
+          baseSprite.height = TILE_SIZE + 1;
           ch.node.addChild(baseSprite);
           this.drawPuddleOverlay(decorGfx, tiles, cols, rows, col, row, px, py);
           continue;
@@ -4436,9 +5267,10 @@ export class WorldScene {
 
         const tex = this.resolveTileTexture(tile, col, row);
         const sprite = new Sprite(tex);
-        sprite.position.set(px, py);
-        sprite.width = TILE_SIZE + 0.5;
-        sprite.height = TILE_SIZE + 0.5;
+        sprite.roundPixels = false;
+        sprite.position.set(px - 0.5, py - 0.5);
+        sprite.width = TILE_SIZE + 1;
+        sprite.height = TILE_SIZE + 1;
 
         const isSnowMountain = this.data.mapId === "japan" && col >= JAPAN_SNOW_START_COL && row <= 29;
         const tileElev = this.data.elevation ? (this.data.elevation[row * cols + col] ?? 0) : 0;
@@ -5271,6 +6103,7 @@ export class WorldScene {
       estate_flower_garden: { text: "🌷 VƯỜN HOA HOÀNG GIA", color: 0x34d399 },
       city_hospital: { text: "🏥 BỆNH VIỆN", color: 0xfecdd3 },
       city_police_station: { text: "🚓 CÔNG AN PHƯỜNG", color: 0x93c5fd },
+      vn_dungeon_hoang_thanh: { text: "🏯 ĐỊA ĐẠO HOÀNG THÀNH", color: 0xfbbf24 },
     };
 
     const JP_SERVICE_SIGNS: Partial<Record<PropKind, { text: string; color: number }>> = {
@@ -7420,8 +8253,11 @@ export class WorldScene {
       this.updateResponsiveBaseZoom(width, height, false);
       this.forceCullUpdate = true;
       this.syncCameraTransform();
+      const res = this.app.renderer.resolution || 1;
       if (this.isInJail) {
-        this.jailRoom.syncCameraTransform(width, height, this.player.x, this.player.y);
+        this.jailRoom.syncCameraTransform(width, height, this.player.x, this.player.y, res);
+      } else if (this.isInDungeon) {
+        this.dungeonRoom.syncCameraTransform(width, height, this.player.x, this.player.y, res);
       }
     });
 
@@ -7431,10 +8267,14 @@ export class WorldScene {
   }
 
   private readonly onPointerDown = (e: FederatedPointerEvent): void => {
-    const targetContainer = this.isInJail ? this.jailRoom.container : this.worldContainer;
+    const targetContainer = this.isInDungeon
+      ? this.dungeonRoom.container
+      : this.isInJail
+        ? this.jailRoom.container
+        : this.worldContainer;
     const worldPos = targetContainer.toLocal(e.global);
 
-    if (!this.isInJail && this.estateInteractMode !== "none") {
+    if (!this.isInJail && !this.isInDungeon && this.estateInteractMode !== "none") {
       // Hỗ trợ kéo màn hình (touch drag / mouse drag) để di chuyển camera xem các lô đất ngoài màn hình;
       // chỉ xử lý chạm chọn ô khi thả tay (onPointerUp) nếu khoảng di chuyển < 10px.
       this.estatePointerDownActive = true;
@@ -7461,15 +8301,56 @@ export class WorldScene {
         return;
       }
     }
+    if (this.isInDungeon && !this.isMovementLocked()) {
+      const hit = this.dungeonRoom.getInteractableAtPoint(worldPos.x, worldPos.y);
+      if (this.isInDungeonMaze() && this.activeDungeonRun) {
+        if (hit) {
+          const ix =
+            hit.type === "portal" ? hit.portal.x : hit.type === "station" ? hit.station.x : hit.chest.x;
+          const iy =
+            hit.type === "portal" ? hit.portal.y : hit.type === "station" ? hit.station.y : hit.chest.y;
+          if (Math.hypot(this.player.x - ix, this.player.y - iy) <= 72) {
+            this.isPointerDown = false;
+            this.mazeStraightTarget = null;
+            this.triggerInteraction();
+            return;
+          }
+        }
+        const mazeRoom = this.activeDungeonRun.rooms.room_maze;
+        const clampedX = Math.max(TILE_SIZE, Math.min(mazeRoom.cols * TILE_SIZE - TILE_SIZE, worldPos.x));
+        const clampedY = Math.max(TILE_SIZE, Math.min(mazeRoom.rows * TILE_SIZE - TILE_SIZE, worldPos.y));
+        this.mazeStraightTarget = { x: clampedX, y: clampedY };
+        this.dungeonRoom.addRipple(clampedX, clampedY, 0xfbbf24);
+        return;
+      }
+      if (hit) {
+        const ix =
+          hit.type === "portal" ? hit.portal.x : hit.type === "station" ? hit.station.x : hit.chest.x;
+        const iy =
+          hit.type === "portal" ? hit.portal.y : hit.type === "station" ? hit.station.y : hit.chest.y;
+        if (Math.hypot(this.player.x - ix, this.player.y - iy) <= 72) {
+          this.isPointerDown = false;
+          this.triggerInteraction();
+          return;
+        }
+        this.lastDragPathAt = performance.now();
+        this.moveToWorldPoint(ix, iy, true);
+        return;
+      }
+    }
     this.lastDragPathAt = performance.now();
     this.moveToWorldPoint(worldPos.x, worldPos.y, true);
   };
 
   private readonly onPointerMove = (e: FederatedPointerEvent): void => {
-    const targetContainer = this.isInJail ? this.jailRoom.container : this.worldContainer;
+    const targetContainer = this.isInDungeon
+      ? this.dungeonRoom.container
+      : this.isInJail
+        ? this.jailRoom.container
+        : this.worldContainer;
     const worldPos = targetContainer.toLocal(e.global);
 
-    if (!this.isInJail && this.estateInteractMode !== "none") {
+    if (!this.isInJail && !this.isInDungeon && this.estateInteractMode !== "none") {
       if (this.estatePointerDownActive) {
         const dx = e.global.x - this.estatePanStartScreenX;
         const dy = e.global.y - this.estatePanStartScreenY;
@@ -7499,6 +8380,13 @@ export class WorldScene {
     }
 
     if (!this.isPointerDown) return;
+    if (this.isInDungeonMaze() && this.activeDungeonRun) {
+      const mazeRoom = this.activeDungeonRun.rooms.room_maze;
+      const clampedX = Math.max(TILE_SIZE, Math.min(mazeRoom.cols * TILE_SIZE - TILE_SIZE, worldPos.x));
+      const clampedY = Math.max(TILE_SIZE, Math.min(mazeRoom.rows * TILE_SIZE - TILE_SIZE, worldPos.y));
+      this.mazeStraightTarget = { x: clampedX, y: clampedY };
+      return;
+    }
     const now = performance.now();
     if (now - this.lastDragPathAt < 85) return;
     this.lastDragPathAt = now;
@@ -7509,7 +8397,7 @@ export class WorldScene {
   private readonly onPointerUp = (e: FederatedPointerEvent): void => {
     this.isPointerDown = false;
 
-    if (!this.isInJail && this.estateInteractMode !== "none" && this.estatePointerDownActive) {
+    if (!this.isInJail && !this.isInDungeon && this.estateInteractMode !== "none" && this.estatePointerDownActive) {
       const wasPanning = this.isEstatePanning;
       this.estatePointerDownActive = false;
       this.isEstatePanning = false;
@@ -7612,6 +8500,7 @@ export class WorldScene {
 
   private readonly onWheel = (e: WheelEvent): void => {
     e.preventDefault();
+    if (this.isInDungeon) return;
     const step = e.deltaY > 0 ? -0.1 : 0.1;
     this.adjustZoom(step);
   };

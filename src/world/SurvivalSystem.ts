@@ -508,12 +508,12 @@ export function stepSurvivalState(
   const safeHpDelta = Number.isFinite(hpDelta) ? hpDelta : 0;
   state.hp = clamp(state.hp + safeHpDelta * dt, 0, 100);
 
-  // Vision blur intensity grows when hungry (<30), fatigued (<30), critically wounded (<35), or Hanoi smog/heat
+  // Vision blur intensity grows when hungry (<30), low HP (<=50), fatigued (<30), or Hanoi smog/heat
   const hungerBlur = state.hunger < 30 ? (30 - state.hunger) / 30 : 0;
   const staminaBlur = state.stamina < 30 ? (30 - state.stamina) / 30 : 0;
-  const hpBlur = state.hp < 35 ? (35 - state.hp) / 35 : 0;
+  const hpBlur = state.hp <= 50 ? clamp((50 - state.hp) / 50, 0.08, 1) : 0;
   const blurIntensity = clamp(
-    Math.max(hungerBlur, staminaBlur, hpBlur, hanoiFx.blurBonus * 0.85) * adverseFactor,
+    Math.max(hungerBlur, hpBlur, staminaBlur * 0.65, hanoiFx.blurBonus * 0.85 * adverseFactor),
     0,
     1,
   );

@@ -105,6 +105,7 @@ export const BUILDING_KEYS = [
   "city_real_estate_center",
   "city_player_estate",
   "estate_flower_garden",
+  "vn_dungeon_hoang_thanh",
   "jp_shogun_castle",
   "jp_shinto_shrine",
   "jp_ninja_dojo",
@@ -226,7 +227,7 @@ export const BUILDING_META: Record<
   BuildingKind,
   {
     name: string;
-    tier: "standard" | "landmark" | "shop" | "home" | "collection" | "auction" | "airport" | "police" | "quest" | "reputation" | "gacha" | "real_estate";
+    tier: "standard" | "landmark" | "shop" | "home" | "collection" | "auction" | "airport" | "police" | "quest" | "reputation" | "gacha" | "real_estate" | "dungeon";
     isVault?: boolean;
     shopKind?: "backpack" | "clothing" | "food" | "hair" | "pharmacy";
   }
@@ -258,6 +259,7 @@ export const BUILDING_META: Record<
   city_real_estate_center: { name: "Sàn Giao Dịch Bất Động Sản", tier: "real_estate" },
   city_player_estate: { name: "Dinh Thự Người Chơi", tier: "home" },
   estate_flower_garden: { name: "Vườn Hoa Hoàng Gia", tier: "standard" },
+  vn_dungeon_hoang_thanh: { name: "Địa Đạo Hoàng Thành Thăng Long", tier: "dungeon" },
   jp_shogun_castle: { name: "Lâu Đài Shogun Osaka", tier: "landmark", isVault: true },
   jp_shinto_shrine: { name: "Đền Thần Đạo Inari", tier: "landmark", isVault: true },
   jp_ninja_dojo: { name: "Võ Đường Ninja Iga", tier: "landmark", isVault: true },
