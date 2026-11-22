@@ -249,6 +249,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     carveSandbarIslet(95, 40, 2.0, 1.8);  // Bãi Giữa Sông Hồng (midway between Cầu Bắc & Cầu Nam)
     carveSandbarIslet(64, 49, 1.6, 1.4);  // Cồn Đảo Nhánh Tây
     carveSandbarIslet(128, 25, 1.6, 1.4); // Cồn Đảo Nhánh Đông
+    // Deep wide river basin around the moored Sand Barge Dungeon (col 91, row 55) — swim-only access!
+    paintRiverDisk(91, 55, 6.2, 0.9);
   }
 
   // Countryside (Expanded Red Zone col 142..201): 4 Scenic Alpine / Forest Lakes with Mid-Lake Treasure Islets
@@ -1264,6 +1266,16 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
           discovered: false,
         },
         {
+          id: "lm-vn-dungeon-sand-barge",
+          name: "Tàu Khai Thác Cát Sông Hồng",
+          subtitle: "Xà lan hút cát neo giữa lòng Sông Hồng — Bơi qua sông để lên tàu săn cổ vật",
+          x: 91.5 * TILE_SIZE,
+          y: 55.2 * TILE_SIZE,
+          radius: 240,
+          accentColor: 0x0ea5e9,
+          discovered: false,
+        },
+        {
           id: "red-zone-north",
           name: "Phức Hợp Kho Báu Bắc (Vùng Đỏ)",
           subtitle: "Khu nhà nhiều đồ Vàng & Đỏ — Đặc nhiệm tuần tra theo trục đường",
@@ -1319,7 +1331,7 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
         if (c > 1 && r > 1 && c < cols - 2 && r < rows - 2) {
           const idx = r * cols + c;
           reserved[idx] = 1;
-          if (isBld && (tiles[idx] === "water" || tiles[idx] === "shallow")) {
+          if (isBld && kind !== "vn_dungeon_sand_barge" && (tiles[idx] === "water" || tiles[idx] === "shallow")) {
             tiles[idx] = "grass";
           }
         }
@@ -1587,6 +1599,8 @@ export function generateOpenWorld(seed = 202611, mapId: MapId = "vietnam"): Worl
     placeProp("vn_dungeon_hoang_thanh", 58, 34, 5, 3);
     placeProp("park_lantern", 55, 35, 1, 1, 0.5, 0.92, false);
     placeProp("park_lantern", 61, 35, 1, 1, 0.5, 0.92, false);
+    // Tàu Khai Thác Cát Sông Hồng (neo giữa lòng Sông Hồng tại col 91, row 55 — bơi qua sông để lên tàu)
+    placeProp("vn_dungeon_sand_barge", 91, 55, 3, 2);
 
     placeProp("plains_tea_house", 65, 22, 4, 2);
     placeProp("plains_archway", 65, 35, 4, 2);

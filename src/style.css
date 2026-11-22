@@ -8071,7 +8071,10 @@ button {
 }
 
 .dm-sort-wrap,
-.dm-peanut-wrap {
+.dm-peanut-wrap,
+.dm-beer-wrap,
+.dm-boat-wrap,
+.dm-raft-wrap {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -8870,6 +8873,138 @@ button {
       0 24px 60px rgba(0, 0, 0, 0.68),
       0 0 42px rgba(239, 68, 68, 0.68);
   }
+}
+
+.dm-start-overlay.is-hidden {
+  display: none;
+  pointer-events: none;
+}
+
+.dm-canvas-stage.is-tall .dm-game-canvas {
+  touch-action: none;
+  max-height: min(62vh, 420px);
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.dm-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dm-action-row.dm-single-action {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dm-action-btn {
+  min-height: 70px;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-weight: 800;
+  font-size: 14px;
+  color: #f8fafc;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.06s ease, filter 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease;
+}
+
+.dm-action-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.dm-action-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.dm-action-btn small {
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.dm-action-btn.is-beer {
+  background: linear-gradient(135deg, #b45309, #f59e0b);
+  border-color: #fde68a;
+  color: #0f172a;
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.34);
+}
+
+.dm-action-btn.is-beer.is-held {
+  transform: scale(0.97);
+  filter: brightness(1.1);
+  box-shadow: 0 0 22px rgba(250, 204, 21, 0.65);
+}
+
+.dm-action-btn.is-primary {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  border-color: #93c5fd;
+}
+
+.dm-action-btn.is-accent {
+  background: linear-gradient(135deg, #0f766e, #0d9488);
+  border-color: #5eead4;
+}
+
+.dm-action-btn.is-pull {
+  background: linear-gradient(135deg, #b45309, #f59e0b);
+  border-color: #fde68a;
+  color: #0f172a;
+}
+
+.dm-action-btn.is-brace {
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  border-color: #ddd6fe;
+}
+
+.dm-action-row.dm-quad-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dm-action-row.dm-quad-actions .dm-action-btn {
+  min-height: 58px;
+  font-size: 11.5px;
+  padding: 6px 4px;
+  border-radius: 11px;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.dm-action-btn.is-cue-active {
+  border-color: #fde047;
+  filter: brightness(1.14);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow:
+    0 0 22px rgba(250, 204, 21, 0.58),
+    inset 0 0 12px rgba(255, 255, 255, 0.24);
+}
+
+.dm-action-btn.is-cue-dim {
+  opacity: 0.52;
+  filter: saturate(0.62);
+}
+
+.dm-action-btn.is-cue-wrong {
+  border-color: #f87171;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.68);
+  animation: dmShake 0.25s ease;
+}
+
+.dm-raft-wrap .dm-canvas-stage {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow:
+    inset 0 0 28px rgba(0, 0, 0, 0.55),
+    0 8px 26px rgba(2, 6, 23, 0.5);
 }
 
 

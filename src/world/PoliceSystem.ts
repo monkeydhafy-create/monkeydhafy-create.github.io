@@ -100,6 +100,55 @@ export interface PoliceOfficerMarker {
   ignored: boolean;
 }
 
+export interface PoliceOfficerSeedSpec {
+  officer_id: string;
+  patrol_zone: "yellow" | "red";
+  patrol_speed: number;
+  chase_speed: number;
+  route_points: Array<{ x: number; y: number }>;
+}
+
+export interface ServerPoliceOfficerSnapshot {
+  officerId: string;
+  patrolZone: "yellow" | "red";
+  state: PoliceAiState;
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  facing: FacingDir;
+  segmentStartedAtMs: number;
+  segmentDurationMs: number;
+  chaseUntilMs: number | null;
+}
+
+interface PoliceOfficerVisual {
+  container: Container;
+  shadowSprite: Sprite;
+  bodySprite: Sprite;
+  feetSprite: Sprite;
+  legsSprite: Sprite;
+  torsoSprite: Sprite;
+  headSprite: Sprite;
+  hatSprite: Sprite;
+  statusText: Text;
+  sirenGfx: Graphics;
+}
+
+interface PoliceServerSegment {
+  state: PoliceAiState;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  facing: FacingDir;
+  startedAtMs: number;
+  durationMs: number;
+  chaseUntilMs: number | null;
+}
+
 interface PoliceOfficerAgent {
   id: string;
   name: string;
@@ -109,6 +158,9 @@ interface PoliceOfficerAgent {
   sectorMaxCol: number;
   sectorMinRow?: number;
   sectorMaxRow?: number;
+  patrolSpeed: number;
+  chaseSpeed: number;
+  routePoints: Point[];
   x: number;
   y: number;
   facing: FacingDir;
@@ -126,16 +178,9 @@ interface PoliceOfficerAgent {
   animElapsed: number;
   animFrame: number;
   rngState: number;
-  container: Container;
-  shadowSprite: Sprite;
-  bodySprite: Sprite;
-  feetSprite: Sprite;
-  legsSprite: Sprite;
-  torsoSprite: Sprite;
-  headSprite: Sprite;
-  hatSprite: Sprite;
-  statusText: Text;
-  sirenGfx: Graphics;
+  serverSeg: PoliceServerSegment | null;
+  lastChaseReportMs: number;
+  visual: PoliceOfficerVisual | null;
 }
 
 export const OFFICER_SPECS: ReadonlyArray<{
@@ -202,17 +247,29 @@ const AI_THINK_INTERVAL = 0.16;
 const CATCH_RADIUS = 38;
 const LOOT_WAYPOINT_REJECT_PROB = 0.82;
 const ROAD_PATROL_PREFERENCE = POLICE_ROAD_PATROL_PREFERENCE;
+const VISUAL_MOUNT_DISTANCE = 720;
+const VISUAL_UNMOUNT_DISTANCE = 960;
+const POLICE_LPC_LAYER_KEYS = [
+  "body_male",
+  "feet_boots",
+  "legs_formal",
+  "torso_jacket_navy",
+  "head_male",
+  "hat_cap",
+] as const;
 
 /**
- * Lightweight, low-CPU Police Patrol & Predictive Intercept System:
- * - Precomputes coarse 4x4 walkable biome waypoints once at startup (~0.5ms, zero per-frame allocations).
- * - Staggers AI perception/waypoint decisions every 160ms across 8 zone officers.
- * - Uses building-occluded Line-of-Sight raycasts + forward vision cone + proximity hearing +
- *   predictive target lead + angular obstacle-sliding so officers roam smartly without heavy A* calls.
+ * Lazy-Rendered, Server-Authoritative Police Patrol & Intercept System:
+ * - Never instantiates Pixi sprites/LPC sheets until the player approaches within 720px;
+ *   destroys & detaches visuals when player moves past 960px to keep RAM flat.
+ * - Precomputes closed walkable road patrol loops (`routePoints`) once per map so Supabase
+ *   can advance positions deterministically across all connected players via clock_timestamp().
+ * - Falls back cleanly to local obstacle-sliding AI when offline or before server sync responds.
  */
 export class PoliceSystem {
   private readonly world: WorldData;
   private readonly atlas: WorldAtlas;
+  private readonly entityLayer: Container;
   private readonly zoneWaypoints: Record<"yellow" | "red", ZoneWaypoint[]> = {
     yellow: [],
     red: [],
@@ -222,19 +279,84 @@ export class PoliceSystem {
   private prevPlayerX: number;
   private prevPlayerY: number;
   private serverClockOffsetMs = 0;
+  private hasServerAuthority = false;
+  private lastServerSyncLocalMs = 0;
+  private policeLayersRequested = false;
+  private chaseReporter:
+    | ((officerId: string, targetX: number, targetY: number, durationMs: number) => void)
+    | null = null;
 
   constructor(world: WorldData, atlas: WorldAtlas, entityLayer: Container) {
     this.world = world;
     this.atlas = atlas;
+    this.entityLayer = entityLayer;
     this.prevPlayerX = world.spawn.x;
     this.prevPlayerY = world.spawn.y;
 
     this.precomputeWaypoints();
-    this.spawnOfficers(entityLayer);
+    this.spawnOfficers();
   }
 
   public setServerClockOffsetMs(offsetMs: number): void {
     this.serverClockOffsetMs = offsetMs;
+  }
+
+  public setChaseReporter(
+    cb: ((officerId: string, targetX: number, targetY: number, durationMs: number) => void) | null,
+  ): void {
+    this.chaseReporter = cb;
+  }
+
+  public getServerSeedPayload(): PoliceOfficerSeedSpec[] {
+    return this.officers.map((o) => ({
+      officer_id: o.id,
+      patrol_zone: o.patrolZone,
+      patrol_speed: o.patrolSpeed,
+      chase_speed: o.chaseSpeed,
+      route_points: o.routePoints.map((pt) => ({
+        x: Math.round(pt.x),
+        y: Math.round(pt.y),
+      })),
+    }));
+  }
+
+  public applyServerPoliceSnapshots(
+    rows: ServerPoliceOfficerSnapshot[],
+    serverNowMs: number,
+  ): void {
+    if (rows.length === 0) return;
+    const nowLocal = Date.now();
+    this.hasServerAuthority = true;
+    this.lastServerSyncLocalMs = nowLocal;
+    if (serverNowMs > 0) {
+      this.serverClockOffsetMs = serverNowMs - nowLocal;
+    }
+    const byId = new Map<string, ServerPoliceOfficerSnapshot>();
+    for (const r of rows) {
+      byId.set(r.officerId, r);
+    }
+    for (const agent of this.officers) {
+      const snap = byId.get(agent.id);
+      if (!snap) continue;
+      const hadPrev = agent.serverSeg !== null;
+      agent.serverSeg = {
+        state: snap.state,
+        startX: snap.startX,
+        startY: snap.startY,
+        targetX: snap.targetX,
+        targetY: snap.targetY,
+        facing: snap.facing,
+        startedAtMs: snap.segmentStartedAtMs,
+        durationMs: snap.segmentDurationMs,
+        chaseUntilMs: snap.chaseUntilMs,
+      };
+      agent.state = snap.state;
+      agent.facing = snap.facing;
+      if (!hadPrev || Math.hypot(agent.x - snap.x, agent.y - snap.y) > 140) {
+        agent.x = snap.x;
+        agent.y = snap.y;
+      }
+    }
   }
 
   public applyRemoteChase(officerId: string, x: number, y: number, untilMs: number): void {
@@ -312,11 +434,186 @@ export class PoliceSystem {
     return { x: fallback.x, y: fallback.y };
   }
 
-  private spawnOfficers(entityLayer: Container): void {
+  private isSegmentWalkable(ax: number, ay: number, bx: number, by: number): boolean {
+    const dist = Math.hypot(bx - ax, by - ay);
+    const steps = Math.max(8, Math.ceil(dist / 24));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      if (!this.isWalkablePixel(ax + (bx - ax) * t, ay + (by - ay) * t)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private buildOfficerPatrolRoute(start: Point, pool: ZoneWaypoint[], seed: number): Point[] {
+    const route: Point[] = [{ x: start.x, y: start.y }];
+    if (pool.length === 0) return route;
+
+    const roadPool = pool.filter((w) => w.onRoad);
+    const preferredPool = roadPool.length >= 4 ? roadPool : pool;
+    let rng = (seed * 1664525 + 1013904223) >>> 0;
+    const rand = (): number => {
+      rng = (rng * 1664525 + 1013904223) >>> 0;
+      return rng / 0x100000000;
+    };
+
+    const desiredHops = 5;
+    for (let hop = 0; hop < desiredHops; hop++) {
+      const cur = route[route.length - 1];
+      let chosen: Point | null = null;
+      for (let tries = 0; tries < 28; tries++) {
+        const candPool = tries < 20 ? preferredPool : pool;
+        const cand = candPool[Math.floor(rand() * candPool.length)];
+        if (cand.nearLoot && tries < 14) continue;
+        const dist = Math.hypot(cand.x - cur.x, cand.y - cur.y);
+        if (dist < 110 || dist > 540) continue;
+        if (route.some((p) => Math.hypot(p.x - cand.x, p.y - cand.y) < 95)) continue;
+        if (!this.isSegmentWalkable(cur.x, cur.y, cand.x, cand.y)) continue;
+        if (hop >= 3 && tries < 12 && !this.isSegmentWalkable(cand.x, cand.y, route[0].x, route[0].y)) {
+          continue;
+        }
+        chosen = { x: cand.x, y: cand.y };
+        break;
+      }
+      if (!chosen) break;
+      route.push(chosen);
+    }
+
+    if (route.length === 1) {
+      // Fallback: pick any reachable neighbor 64..320px away
+      for (const cand of preferredPool) {
+        const dist = Math.hypot(cand.x - start.x, cand.y - start.y);
+        if (dist >= 64 && dist <= 320 && this.isSegmentWalkable(start.x, start.y, cand.x, cand.y)) {
+          route.push({ x: cand.x, y: cand.y });
+          break;
+        }
+      }
+    }
+
+    if (route.length >= 3) {
+      const last = route[route.length - 1];
+      if (!this.isSegmentWalkable(last.x, last.y, route[0].x, route[0].y)) {
+        // Out-and-back closure keeps every server leg 100% obstacle-free
+        for (let i = route.length - 2; i >= 1; i--) {
+          route.push({ x: route[i].x, y: route[i].y });
+        }
+      }
+    }
+    return route;
+  }
+
+  private ensurePoliceLpcLayers(): void {
+    if (this.policeLayersRequested) return;
+    this.policeLayersRequested = true;
+    void this.atlas.ensureLpcLayers(POLICE_LPC_LAYER_KEYS);
+  }
+
+  private mountOfficerVisual(agent: PoliceOfficerAgent): void {
+    if (agent.visual) return;
+    this.ensurePoliceLpcLayers();
+
+    const container = new Container();
+    container.x = agent.x;
+    container.y = agent.y;
+    container.zIndex = agent.y;
+
+    const shadowSprite = new Sprite(this.atlas.shadow);
+    shadowSprite.anchor.set(0.5, 0.5);
+    shadowSprite.scale.set(3.2);
+    shadowSprite.y = 2;
+    shadowSprite.alpha = 0.55;
+
+    const makeLayer = (): Sprite => {
+      const s = new Sprite(Texture.EMPTY);
+      s.anchor.set(0.5, 0.94);
+      s.scale.set(1.16);
+      return s;
+    };
+
+    const bodySprite = makeLayer();
+    const feetSprite = makeLayer();
+    const legsSprite = makeLayer();
+    const torsoSprite = makeLayer();
+    const headSprite = makeLayer();
+    const hatSprite = makeLayer();
+
+    const isJapan = this.world.mapId === "japan";
+    if (isJapan) {
+      if (agent.patrolZone === "red") {
+        // Crimson Samurai / Oniwaban elite guard armor in Red Snow Zone
+        legsSprite.tint = 0x18181b;
+        torsoSprite.tint = 0xdc2626;
+        hatSprite.tint = 0xfacc15;
+        feetSprite.tint = 0x09090b;
+      } else {
+        // Bright Shinsengumi cyan-blue haori & deep indigo hakama in Tokyo / Samurai Zone
+        legsSprite.tint = 0x1e1b4b;
+        torsoSprite.tint = 0x38bdf8;
+        hatSprite.tint = 0xfef08a;
+        feetSprite.tint = 0x1e293b;
+      }
+    } else {
+      legsSprite.tint = 0x1e293b;
+      torsoSprite.tint = 0xdbeafe;
+      hatSprite.tint = 0x1d4ed8;
+      feetSprite.tint = 0x334155;
+    }
+
+    const sirenGfx = new Graphics();
+    const statusText = new Text({
+      text: isJapan ? (agent.patrolZone === "red" ? "👹" : "⚔️") : "🚓",
+      style: {
+        fontSize: 13,
+        fontWeight: "800",
+        fill: "#93c5fd",
+        stroke: { color: "#020617", width: 3 },
+      },
+    });
+    statusText.anchor.set(0.5, 1);
+    statusText.y = -66;
+
+    container.addChild(
+      shadowSprite,
+      sirenGfx,
+      bodySprite,
+      feetSprite,
+      legsSprite,
+      torsoSprite,
+      headSprite,
+      hatSprite,
+      statusText,
+    );
+    this.entityLayer.addChild(container);
+
+    agent.visual = {
+      container,
+      shadowSprite,
+      bodySprite,
+      feetSprite,
+      legsSprite,
+      torsoSprite,
+      headSprite,
+      hatSprite,
+      statusText,
+      sirenGfx,
+    };
+  }
+
+  private unmountOfficerVisual(agent: PoliceOfficerAgent): void {
+    const vis = agent.visual;
+    if (!vis) return;
+    vis.container.removeFromParent();
+    vis.container.destroy({ children: true });
+    agent.visual = null;
+  }
+
+  private spawnOfficers(): void {
     const specs =
       this.world.mapId === "japan"
         ? [...OFFICER_SPECS, ...JP_EXTRA_OFFICER_SPECS]
         : OFFICER_SPECS;
+    const isJapan = this.world.mapId === "japan";
     specs.forEach((spec, idx) => {
       const minX = spec.sectorMinCol * TILE_SIZE;
       const maxX = (spec.sectorMaxCol + 1) * TILE_SIZE;
@@ -352,93 +649,28 @@ export class PoliceSystem {
         start = { x: bestWp.x, y: bestWp.y };
       }
 
-      const container = new Container();
-      container.x = start.x;
-      container.y = start.y;
-      container.zIndex = start.y;
-
-      const shadowSprite = new Sprite(this.atlas.shadow);
-      shadowSprite.anchor.set(0.5, 0.5);
-      shadowSprite.scale.set(3.2);
-      shadowSprite.y = 2;
-      shadowSprite.alpha = 0.55;
-
-      const makeLayer = (): Sprite => {
-        const s = new Sprite(Texture.EMPTY);
-        s.anchor.set(0.5, 0.94);
-        s.scale.set(1.16);
-        return s;
-      };
-
-      const bodySprite = makeLayer();
-      const feetSprite = makeLayer();
-      const legsSprite = makeLayer();
-      const torsoSprite = makeLayer();
-      const headSprite = makeLayer();
-      const hatSprite = makeLayer();
-
-      const isJapan = this.world.mapId === "japan";
-      if (isJapan) {
-        if (spec.patrolZone === "red") {
-          // Crimson Samurai / Oniwaban elite guard armor in Red Snow Zone
-          legsSprite.tint = 0x18181b;
-          torsoSprite.tint = 0xdc2626;
-          hatSprite.tint = 0xfacc15;
-          feetSprite.tint = 0x09090b;
-        } else {
-          // Bright Shinsengumi cyan-blue haori & deep indigo hakama in Tokyo / Samurai Zone
-          legsSprite.tint = 0x1e1b4b;
-          torsoSprite.tint = 0x38bdf8;
-          hatSprite.tint = 0xfef08a;
-          feetSprite.tint = 0x1e293b;
-        }
-      } else {
-        legsSprite.tint = 0x1e293b;
-        torsoSprite.tint = 0xdbeafe;
-        hatSprite.tint = 0x1d4ed8;
-        feetSprite.tint = 0x334155;
-      }
-
-      const sirenGfx = new Graphics();
-      const statusText = new Text({
-        text: "🚓",
-        style: {
-          fontSize: 13,
-          fontWeight: "800",
-          fill: "#93c5fd",
-          stroke: { color: "#020617", width: 3 },
-        },
-      });
-      statusText.anchor.set(0.5, 1);
-      statusText.y = -66;
-
-      container.addChild(
-        shadowSprite,
-        sirenGfx,
-        bodySprite,
-        feetSprite,
-        legsSprite,
-        torsoSprite,
-        headSprite,
-        hatSprite,
-        statusText,
-      );
-      entityLayer.addChild(container);
+      const redSpeedScale = spec.patrolZone === "red" ? 0.78 : 1;
+      const patrolSpeed = Math.round((isJapan ? JP_PATROL_SPEED : PATROL_SPEED) * redSpeedScale * 10) / 10;
+      const chaseSpeed = Math.round((isJapan ? JP_CHASE_SPEED : CHASE_SPEED) * redSpeedScale * 10) / 10;
+      const routePoints = this.buildOfficerPatrolRoute(start, basePool, (idx + 1) * 7919 + (isJapan ? 104729 : 4242));
 
       const agent: PoliceOfficerAgent = {
         id: spec.id,
-        name: this.world.mapId === "japan" ? spec.japanName : spec.name,
+        name: isJapan ? spec.japanName : spec.name,
         homeBiome: spec.biome,
         patrolZone: spec.patrolZone,
         sectorMinCol: spec.sectorMinCol,
         sectorMaxCol: spec.sectorMaxCol,
         sectorMinRow: spec.sectorMinRow,
         sectorMaxRow: spec.sectorMaxRow,
+        patrolSpeed,
+        chaseSpeed,
+        routePoints,
         x: start.x,
         y: start.y,
         facing: "down",
         state: "patrol",
-        target: start,
+        target: routePoints[1] ?? start,
         lastSeenPlayer: null,
         chaseTimer: 0,
         investigateTimer: 0,
@@ -451,19 +683,13 @@ export class PoliceSystem {
         animElapsed: idx * 0.17,
         animFrame: 0,
         rngState: (idx + 1) * 7919 + 4242,
-        container,
-        shadowSprite,
-        bodySprite,
-        feetSprite,
-        legsSprite,
-        torsoSprite,
-        headSprite,
-        hatSprite,
-        statusText,
-        sirenGfx,
+        serverSeg: null,
+        lastChaseReportMs: 0,
+        visual: null,
       };
-      agent.target = this.pickZoneWaypoint(agent, true);
-      this.syncOfficerSprite(agent, 0, false);
+      if (routePoints.length <= 1) {
+        agent.target = this.pickZoneWaypoint(agent, true);
+      }
       this.officers.push(agent);
     });
   }
@@ -678,35 +904,37 @@ export class PoliceSystem {
   }
 
   private syncOfficerSprite(agent: PoliceOfficerAgent, nowMs: number, ignored: boolean): void {
-    agent.container.x = agent.x;
-    agent.container.y = agent.y;
-    agent.container.zIndex = agent.y;
+    const vis = agent.visual;
+    if (!vis) return;
+    vis.container.x = agent.x;
+    vis.container.y = agent.y;
+    vis.container.zIndex = agent.y;
 
-    this.setOfficerSpriteLayer(agent.bodySprite, "body_male", agent.facing, agent.animFrame);
-    this.setOfficerSpriteLayer(agent.feetSprite, "feet_boots", agent.facing, agent.animFrame);
-    this.setOfficerSpriteLayer(agent.legsSprite, "legs_formal", agent.facing, agent.animFrame);
-    this.setOfficerSpriteLayer(agent.torsoSprite, "torso_jacket_navy", agent.facing, agent.animFrame);
-    this.setOfficerSpriteLayer(agent.headSprite, "head_male", agent.facing, agent.animFrame);
-    this.setOfficerSpriteLayer(agent.hatSprite, "hat_cap", agent.facing, agent.animFrame);
+    this.setOfficerSpriteLayer(vis.bodySprite, "body_male", agent.facing, agent.animFrame);
+    this.setOfficerSpriteLayer(vis.feetSprite, "feet_boots", agent.facing, agent.animFrame);
+    this.setOfficerSpriteLayer(vis.legsSprite, "legs_formal", agent.facing, agent.animFrame);
+    this.setOfficerSpriteLayer(vis.torsoSprite, "torso_jacket_navy", agent.facing, agent.animFrame);
+    this.setOfficerSpriteLayer(vis.headSprite, "head_male", agent.facing, agent.animFrame);
+    this.setOfficerSpriteLayer(vis.hatSprite, "hat_cap", agent.facing, agent.animFrame);
 
-    agent.sirenGfx.clear();
+    vis.sirenGfx.clear();
     if (ignored) {
-      agent.statusText.text = "✓";
-      agent.statusText.style.fill = "#6ee7b7";
+      vis.statusText.text = "✓";
+      vis.statusText.style.fill = "#6ee7b7";
     } else if (agent.state === "chase") {
-      agent.statusText.text = "❗";
-      agent.statusText.style.fill = "#f87171";
+      vis.statusText.text = "❗";
+      vis.statusText.style.fill = "#f87171";
       const flashRed = Math.floor(nowMs / 180) % 2 === 0;
-      agent.sirenGfx
+      vis.sirenGfx
         .circle(0, -30, 18)
         .fill({ color: flashRed ? 0xef4444 : 0x3b82f6, alpha: 0.22 });
     } else if (agent.state === "investigate") {
-      agent.statusText.text = "?";
-      agent.statusText.style.fill = "#fbbf24";
+      vis.statusText.text = "?";
+      vis.statusText.style.fill = "#fbbf24";
     } else {
-      agent.statusText.text =
+      vis.statusText.text =
         this.world.mapId === "japan" ? (agent.patrolZone === "red" ? "👹" : "⚔️") : "🚓";
-      agent.statusText.style.fill =
+      vis.statusText.style.fill =
         this.world.mapId === "japan" && agent.patrolZone === "red" ? "#fca5a5" : "#93c5fd";
     }
   }
@@ -746,63 +974,150 @@ export class PoliceSystem {
     const safeGreenZone = playerZone === "green";
     const effectiveCanArrest = canArrest && !safeGreenZone;
     let caughtOfficer: { id: string; name: string; biome: BiomeId; zone: SecurityZone } | null = null;
+    const serverAuthorityFresh =
+      this.hasServerAuthority && nowMs - this.lastServerSyncLocalMs < 15_000;
+    const serverNowMs = nowMs + this.serverClockOffsetMs;
 
     for (const agent of this.officers) {
+      const distToPlayer = Math.hypot(playerX - agent.x, playerY - agent.y);
+      if (distToPlayer <= VISUAL_MOUNT_DISTANCE) {
+        if (!agent.visual) this.mountOfficerVisual(agent);
+      } else if (distToPlayer > VISUAL_UNMOUNT_DISTANCE) {
+        if (agent.visual) this.unmountOfficerVisual(agent);
+      }
+
       const isIgnored =
         safeGreenZone ||
         globalIgnoreUntil > nowMs ||
         (ignoreUntilById[agent.id] ?? 0) > nowMs;
-      if (isIgnored && agent.state !== "patrol") {
-        agent.state = "patrol";
-        agent.lastSeenPlayer = null;
-      }
 
-      if (agent.state === "chase") {
-        agent.chaseTimer = Math.max(0, agent.chaseTimer - dt);
-      } else if (agent.state === "investigate") {
-        agent.investigateTimer = Math.max(0, agent.investigateTimer - dt);
-      }
+      if (serverAuthorityFresh && agent.serverSeg) {
+        const seg = agent.serverSeg;
+        const t =
+          seg.durationMs > 0
+            ? Math.max(0, Math.min(1, (serverNowMs - seg.startedAtMs) / seg.durationMs))
+            : 1;
+        const evalX = seg.startX + (seg.targetX - seg.startX) * t;
+        const evalY = seg.startY + (seg.targetY - seg.startY) * t;
+        const gap = Math.hypot(evalX - agent.x, evalY - agent.y);
+        if (gap > 120) {
+          agent.x = evalX;
+          agent.y = evalY;
+        } else if (gap > 0.25) {
+          const lerp = Math.min(1, dt * 14);
+          agent.x += (evalX - agent.x) * lerp;
+          agent.y += (evalY - agent.y) * lerp;
+        }
+        agent.facing = seg.facing;
+        const segChaseActive = seg.chaseUntilMs !== null && seg.chaseUntilMs > serverNowMs;
+        agent.state = segChaseActive ? seg.state : "patrol";
 
-      agent.aiAccum += dt;
-      if (agent.aiAccum >= AI_THINK_INTERVAL) {
-        agent.aiAccum = 0;
-        this.updateOfficerDecision(
-          agent,
-          playerX,
-          playerY,
-          pvx,
-          pvy,
-          nightFactor,
-          isIgnored,
-          effectiveCanArrest,
-          isLooting,
-        );
-      }
+        if (agent.visual) {
+          if (gap > 0.4 || t < 0.995) {
+            agent.animElapsed += dt;
+            const cycleDur = agent.state === "chase" ? 0.52 : 0.78;
+            const stepIdx = Math.floor((agent.animElapsed % cycleDur) / (cycleDur / 8));
+            agent.animFrame = 1 + stepIdx;
+          } else {
+            agent.animFrame = 0;
+          }
+          this.syncOfficerSprite(
+            agent,
+            nowMs,
+            globalIgnoreUntil > nowMs || (ignoreUntilById[agent.id] ?? 0) > nowMs,
+          );
+        }
 
-      const moved = this.steerOfficer(agent, dt);
-      if (moved) {
-        agent.animElapsed += dt;
-        const cycleDur = agent.state === "chase" ? 0.52 : 0.78;
-        const step = Math.floor((agent.animElapsed % cycleDur) / (cycleDur / 8));
-        agent.animFrame = 1 + step;
+        agent.aiAccum += dt;
+        if (
+          distToPlayer <= 360 &&
+          effectiveCanArrest &&
+          !isIgnored &&
+          agent.aiAccum >= AI_THINK_INTERVAL
+        ) {
+          agent.aiAccum = 0;
+          if (this.canDetectPlayer(agent, playerX, playerY, nightFactor, isLooting)) {
+            const leadX = Math.max(
+              TILE_SIZE * 3,
+              Math.min(WORLD_WIDTH - TILE_SIZE * 3, playerX + pvx * 0.32),
+            );
+            const leadY = Math.max(
+              TILE_SIZE * 3,
+              Math.min(WORLD_HEIGHT - TILE_SIZE * 3, playerY + pvy * 0.32),
+            );
+            const tx = this.isWalkablePixel(leadX, leadY) ? leadX : playerX;
+            const ty = this.isWalkablePixel(leadX, leadY) ? leadY : playerY;
+            if (nowMs - agent.lastChaseReportMs >= 900) {
+              agent.lastChaseReportMs = nowMs;
+              const chaseDurMs = Math.round(
+                (this.world.mapId === "japan" ? 10500 : 8500) *
+                  (agent.patrolZone === "red" ? 0.72 : 1),
+              );
+              this.chaseReporter?.(agent.id, tx, ty, chaseDurMs);
+            }
+          }
+        }
       } else {
-        agent.animFrame = 0;
-      }
+        if (isIgnored && agent.state !== "patrol") {
+          agent.state = "patrol";
+          agent.lastSeenPlayer = null;
+        }
 
-      // Anti-stuck detector: swap waypoint if officer couldn't make 12px progress over 0.9s
-      agent.stuckCheckAccum += dt;
-      if (agent.stuckCheckAccum >= 0.9) {
-        const progress = Math.hypot(agent.x - agent.stuckOriginX, agent.y - agent.stuckOriginY);
-        agent.stuckOriginX = agent.x;
-        agent.stuckOriginY = agent.y;
-        agent.stuckCheckAccum = 0;
-        if (progress < 12 && agent.pauseTimer <= 0) {
-          agent.turnBias = agent.turnBias === 1 ? -1 : 1;
-          agent.target = this.pickZoneWaypoint(agent, false);
+        if (agent.state === "chase") {
+          agent.chaseTimer = Math.max(0, agent.chaseTimer - dt);
+        } else if (agent.state === "investigate") {
+          agent.investigateTimer = Math.max(0, agent.investigateTimer - dt);
+        }
+
+        agent.aiAccum += dt;
+        if (agent.aiAccum >= AI_THINK_INTERVAL) {
+          agent.aiAccum = 0;
+          this.updateOfficerDecision(
+            agent,
+            playerX,
+            playerY,
+            pvx,
+            pvy,
+            nightFactor,
+            isIgnored,
+            effectiveCanArrest,
+            isLooting,
+          );
+        }
+
+        const moved = this.steerOfficer(agent, dt);
+        if (agent.visual) {
+          if (moved) {
+            agent.animElapsed += dt;
+            const cycleDur = agent.state === "chase" ? 0.52 : 0.78;
+            const stepIdx = Math.floor((agent.animElapsed % cycleDur) / (cycleDur / 8));
+            agent.animFrame = 1 + stepIdx;
+          } else {
+            agent.animFrame = 0;
+          }
+        }
+
+        // Anti-stuck detector: swap waypoint if officer couldn't make 12px progress over 0.9s
+        agent.stuckCheckAccum += dt;
+        if (agent.stuckCheckAccum >= 0.9) {
+          const progress = Math.hypot(agent.x - agent.stuckOriginX, agent.y - agent.stuckOriginY);
+          agent.stuckOriginX = agent.x;
+          agent.stuckOriginY = agent.y;
+          agent.stuckCheckAccum = 0;
+          if (progress < 12 && agent.pauseTimer <= 0) {
+            agent.turnBias = agent.turnBias === 1 ? -1 : 1;
+            agent.target = this.pickZoneWaypoint(agent, false);
+          }
+        }
+
+        if (agent.visual) {
+          this.syncOfficerSprite(
+            agent,
+            nowMs,
+            globalIgnoreUntil > nowMs || (ignoreUntilById[agent.id] ?? 0) > nowMs,
+          );
         }
       }
-
-      this.syncOfficerSprite(agent, nowMs, globalIgnoreUntil > nowMs || (ignoreUntilById[agent.id] ?? 0) > nowMs);
 
       if (!caughtOfficer && effectiveCanArrest && !isIgnored) {
         const d = Math.hypot(playerX - agent.x, playerY - agent.y);
@@ -836,8 +1151,7 @@ export class PoliceSystem {
 
   public destroy(): void {
     for (const o of this.officers) {
-      o.container.removeFromParent();
-      o.container.destroy({ children: true });
+      this.unmountOfficerVisual(o);
     }
     this.officers.length = 0;
   }

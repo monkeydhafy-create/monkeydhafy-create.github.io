@@ -241,4 +241,63 @@ export class DungeonSfx {
     this.playTone(1110, 920, 0.22, { type: "square", gain: 0.12, delaySec: 0.02 });
     this.playFilteredNoise(0.24, "bandpass", 2200, 520, { gain: 0.26, q: 1.8 });
   }
+
+  // ===================== RED RIVER SAND BARGE MINIGAMES =====================
+
+  public playBeerGulp(): void {
+    this.playTone(170, 290, 0.065, { type: "sine", gain: 0.11 });
+    this.playFilteredNoise(0.04, "bandpass", 720, 480, { gain: 0.05, q: 2.2, delaySec: 0.02 });
+  }
+
+  public playBeerMugClink(): void {
+    this.playTone(1720, 1680, 0.09, { type: "sine", gain: 0.14 });
+    this.playTone(2340, 2290, 0.12, { type: "triangle", gain: 0.1, delaySec: 0.01 });
+  }
+
+  public playBeerCough(): void {
+    this.playFilteredNoise(0.085, "bandpass", 620, 260, { gain: 0.2, q: 1.1 });
+    this.playTone(135, 85, 0.09, { type: "sawtooth", gain: 0.12 });
+    this.playFilteredNoise(0.085, "bandpass", 680, 250, { gain: 0.18, q: 1.2, delaySec: 0.18 });
+    this.playTone(125, 78, 0.09, { type: "sawtooth", gain: 0.11, delaySec: 0.18 });
+    this.playFilteredNoise(0.11, "bandpass", 590, 210, { gain: 0.17, q: 1.0, delaySec: 0.36 });
+  }
+
+  public playPaddleSplash(side: "left" | "right"): void {
+    const baseFreq = side === "left" ? 640 : 720;
+    this.playFilteredNoise(0.12, "bandpass", baseFreq, 240, { gain: 0.14, q: 1.3 });
+    this.playTone(side === "left" ? 190 : 215, 110, 0.09, { type: "sine", gain: 0.09 });
+  }
+
+  public playBoatYawSlip(): void {
+    this.playTone(280, 145, 0.14, { type: "sawtooth", gain: 0.11 });
+    this.playFilteredNoise(0.14, "lowpass", 520, 180, { gain: 0.12, q: 1.2, delaySec: 0.03 });
+  }
+
+  public playRaftSignFlip(): void {
+    this.playTone(540, 810, 0.06, { type: "triangle", gain: 0.11 });
+    this.playFilteredNoise(0.04, "highpass", 1800, 2600, { gain: 0.06, q: 1.2 });
+  }
+
+  public playRaftSinkSplash(): void {
+    this.playTone(165, 55, 0.24, { type: "sine", gain: 0.22 });
+    this.playFilteredNoise(0.32, "bandpass", 950, 260, { gain: 0.24, q: 0.9, delaySec: 0.02 });
+  }
+
+  public playRaftDriftSnap(): void {
+    this.playTone(260, 130, 0.08, { type: "triangle", gain: 0.12 });
+    this.playFilteredNoise(0.09, "bandpass", 1400, 480, { gain: 0.13, q: 1.4, delaySec: 0.03 });
+  }
+
+  public playRaftRoundClear(): void {
+    this.playTone(523.25, 659.25, 0.09, { type: "triangle", gain: 0.13 });
+    this.playTone(783.99, 783.99, 0.13, { type: "sine", gain: 0.14, delaySec: 0.08 });
+  }
+
+  public dispose(): void {
+    if (this.ctx) {
+      void this.ctx.close().catch(() => {});
+      this.ctx = null;
+    }
+    this.noiseBuffer = null;
+  }
 }

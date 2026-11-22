@@ -1,7 +1,17 @@
 import type { LockedPuzzleKind } from "../LootSystem.ts";
 import type { Point } from "../types.ts";
 
-export type DungeonRoomId = "hub" | "room_sort" | "room_beans" | "room_free" | "room_maze";
+export type DungeonId = "hoang_thanh" | "sand_barge";
+
+export type DungeonRoomId =
+  | "hub"
+  | "room_sort"
+  | "room_beans"
+  | "room_free"
+  | "room_maze"
+  | "room_beer"
+  | "room_boat"
+  | "room_rafts";
 
 export type DungeonBranchRoomId = Exclude<DungeonRoomId, "hub">;
 
@@ -11,12 +21,15 @@ export type DungeonMazeStyle = "dfs" | "prim" | "growing_tree" | "kruskal_chambe
 
 export type DungeonScareKind = "shadow_ghost" | "ancient_centipede" | "stone_phantom";
 
-export type DungeonMinigameKind = "coin_sort" | "peanut_steal";
+export type DungeonMinigameKind = "coin_sort" | "peanut_steal" | "beer_boss" | "boat_row" | "raft_signs";
 
 export interface SavedDungeonState {
   cooldownUntil: number;
   totalClears: number;
   runsEntered: number;
+  bargeCooldownUntil?: number;
+  bargeTotalClears?: number;
+  bargeRunsEntered?: number;
 }
 
 export interface DungeonChestNode {
@@ -57,7 +70,7 @@ export interface DungeonMazeScareNode {
 
 export interface DungeonStationNode {
   id: string;
-  roomId: "room_sort" | "room_beans";
+  roomId: "room_sort" | "room_beans" | "room_beer" | "room_boat" | "room_rafts";
   kind: DungeonMinigameKind;
   title: string;
   promptLabel: string;
@@ -88,12 +101,13 @@ export interface DungeonRoomLayout {
 }
 
 export interface DungeonRunState {
+  dungeonId: DungeonId;
   runId: string;
   seed: number;
   startedAt: number;
-  rooms: Record<DungeonRoomId, DungeonRoomLayout>;
+  rooms: Partial<Record<DungeonRoomId, DungeonRoomLayout>> & { hub: DungeonRoomLayout };
   activeRoomId: DungeonRoomId;
-  roomDirections: Record<DungeonBranchRoomId, DungeonDirection>;
+  roomDirections: Partial<Record<DungeonBranchRoomId, DungeonDirection>>;
   exitRoomId: DungeonBranchRoomId;
   chestsOpenedCount: number;
   roomsClearedCount: number;

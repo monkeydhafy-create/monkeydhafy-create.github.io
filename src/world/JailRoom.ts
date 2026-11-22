@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Text } from "pixi.js";
+import { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { ArcadeMinigameKind } from "../ui/ArcadeMinigames.ts";
 import { Pathfinder } from "./Pathfinder.ts";
 import type { WorldAtlas } from "./SpriteAtlas.ts";
@@ -448,14 +448,24 @@ export class JailRoom {
       ["head_male", 0xffffff],
       ["hat_cap", 0x1d4ed8],
     ];
+    const spritesByKey: Array<{ key: string; spr: Sprite }> = [];
     for (const [key, tint] of layers) {
       const frames = atlas.lpcLayers[key];
-      if (!frames) continue;
-      const spr = new Sprite(frames.up[0]);
+      const spr = new Sprite(frames ? frames.up[0] : Texture.EMPTY);
       spr.anchor.set(0.5, 0.94);
       spr.scale.set(1.16);
       spr.tint = tint;
       c.addChild(spr);
+      if (!frames) spritesByKey.push({ key, spr });
+    }
+    if (spritesByKey.length > 0) {
+      void atlas.ensureLpcLayers(spritesByKey.map((item) => item.key)).then(() => {
+        if (c.destroyed) return;
+        for (const item of spritesByKey) {
+          const loaded = atlas.lpcLayers[item.key];
+          if (loaded) item.spr.texture = loaded.up[0];
+        }
+      });
     }
 
     const label = new Text({

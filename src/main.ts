@@ -139,6 +139,9 @@ async function bootstrap(): Promise<void> {
     onServerClockOffset: (offsetMs) => {
       worldScene?.setServerClockOffsetMs(offsetMs);
     },
+    onServerPoliceSnapshots: (mapId, rows, serverNowMs) => {
+      worldScene?.applyServerPoliceSnapshots(mapId, rows, serverNowMs);
+    },
     onPersistentWorldEstatesChanged: (estates, localUserId) => {
       worldScene?.syncPersistentWorldEstates(estates, localUserId);
     },
@@ -160,11 +163,14 @@ async function bootstrap(): Promise<void> {
       onOpenJailMinigame: (station) => {
         hud?.openJailMinigameModal(station);
       },
-      onOpenDungeonLobby: () => {
-        hud?.openDungeonLobbyModal();
+      onOpenDungeonLobby: (dungeonId) => {
+        hud?.openDungeonLobbyModal(dungeonId);
       },
       onOpenDungeonMinigame: (target) => {
         hud?.openDungeonMinigameModal(target);
+      },
+      onDungeonExited: () => {
+        hud?.disposeDungeonResources();
       },
       onDungeonStateChanged: (info) => {
         hud?.handleDungeonStateChanged(info);
@@ -205,6 +211,9 @@ async function bootstrap(): Promise<void> {
       onMapChanged: (nextMapId) => {
         hud?.handleMapChanged();
         void cloudSync.syncPersistentWorldEstates(nextMapId);
+        if (worldScene) {
+          cloudSync.startWorldPoliceSync(nextMapId, worldScene.getPoliceServerSeedPayload());
+        }
       },
       onConsumeCompleted: (title, message) => {
         hud?.handleConsumeCompleted(title, message);
@@ -242,6 +251,9 @@ async function bootstrap(): Promise<void> {
       onPoliceChaseStarted: (officerId, x, y) => {
         cloudSync.broadcastPoliceChase(officerId, x, y);
       },
+      onPoliceServerChaseReported: (mapId, officerId, x, y, durationMs) => {
+        cloudSync.reportWorldPoliceChase(mapId, officerId, x, y, durationMs);
+      },
       onVaultUnlocked: ({ mapId, containerId, chestId, container }) => {
         cloudSync.broadcastVaultUnlocked(mapId, containerId, chestId, container);
       },
@@ -278,6 +290,7 @@ async function bootstrap(): Promise<void> {
   }
 
   void cloudSync.syncPersistentWorldEstates(savedMapId);
+  cloudSync.startWorldPoliceSync(savedMapId, worldScene.getPoliceServerSeedPayload());
 
   void cloudSync.restoreSession().then((res) => {
     if (!res.authenticated || !worldScene) return;

@@ -230,6 +230,9 @@ export function createDefaultGameSave(spawnX: number, spawnY: number): PlayerGam
       cooldownUntil: 0,
       totalClears: 0,
       runsEntered: 0,
+      bargeCooldownUntil: 0,
+      bargeTotalClears: 0,
+      bargeRunsEntered: 0,
     },
   };
 }
@@ -1720,6 +1723,9 @@ export function validateSavePayload(
     cooldownUntil: 0,
     totalClears: 0,
     runsEntered: 0,
+    bargeCooldownUntil: 0,
+    bargeTotalClears: 0,
+    bargeRunsEntered: 0,
   };
   if (obj.dungeon !== undefined && obj.dungeon !== null) {
     if (typeof obj.dungeon !== "object" || Array.isArray(obj.dungeon)) {
@@ -1750,10 +1756,40 @@ export function validateSavePayload(
     ) {
       throw new TamperError("Dungeon runsEntered invariant violated");
     }
+    const rawBargeCooldown = rawDung.bargeCooldownUntil ?? 0;
+    if (
+      typeof rawBargeCooldown !== "number" ||
+      !Number.isFinite(rawBargeCooldown) ||
+      rawBargeCooldown < 0 ||
+      rawBargeCooldown > now + 3_600_000
+    ) {
+      throw new TamperError("Barge dungeon cooldown invariant violated");
+    }
+    const rawBargeClears = rawDung.bargeTotalClears ?? 0;
+    if (
+      typeof rawBargeClears !== "number" ||
+      !Number.isInteger(rawBargeClears) ||
+      rawBargeClears < 0 ||
+      rawBargeClears > 100_000
+    ) {
+      throw new TamperError("Barge dungeon totalClears invariant violated");
+    }
+    const rawBargeRuns = rawDung.bargeRunsEntered ?? 0;
+    if (
+      typeof rawBargeRuns !== "number" ||
+      !Number.isInteger(rawBargeRuns) ||
+      rawBargeRuns < 0 ||
+      rawBargeRuns > 100_000
+    ) {
+      throw new TamperError("Barge dungeon runsEntered invariant violated");
+    }
     dungeonState = {
       cooldownUntil: rawDung.cooldownUntil > now ? rawDung.cooldownUntil : 0,
       totalClears: rawDung.totalClears,
       runsEntered: rawDung.runsEntered,
+      bargeCooldownUntil: rawBargeCooldown > now ? rawBargeCooldown : 0,
+      bargeTotalClears: rawBargeClears,
+      bargeRunsEntered: rawBargeRuns,
     };
   }
 

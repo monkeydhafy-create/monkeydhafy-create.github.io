@@ -462,6 +462,11 @@ export class Player extends Container {
     const frames = this.atlas.lpcLayers[layerKey];
     if (!frames) {
       sprite.visible = false;
+      void this.atlas.ensureLpcLayer(layerKey).then((loaded) => {
+        if (loaded && !this.destroyed) {
+          this.refreshTexture();
+        }
+      });
       return;
     }
     const tex = frames[this.facing][this.animFrame] ?? frames[this.facing][0];

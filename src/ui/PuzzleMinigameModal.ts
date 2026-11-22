@@ -1091,6 +1091,11 @@ export class PuzzleMinigameModal {
     this.signal = null;
     this.code4 = null;
     this.solveTransitionPending = false;
+    for (const cv of this.boardWrapEl.querySelectorAll("canvas")) {
+      cv.width = 0;
+      cv.height = 0;
+    }
+    this.boardWrapEl.replaceChildren();
     this.modalEl.classList.remove("is-open");
   }
 

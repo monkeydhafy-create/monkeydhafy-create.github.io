@@ -267,8 +267,21 @@ export class DungeonRoom {
       for (let r = 2; r < rows - 1; r++) {
         for (let c = 1; c < cols - 1; c++) {
           if (collision[r * cols + c] !== 1) continue;
-          if (room.id === "room_beans" && (c === 9 || c === 10) && r === 5) continue;
-          if (room.id === "room_sort" && r === 4 && c >= 8 && c <= 11) continue;
+          if (
+            (room.id === "room_beans" || room.id === "room_beer") &&
+            (c === 9 || c === 10) &&
+            r === 5
+          ) {
+            continue;
+          }
+          if (
+            (room.id === "room_sort" || room.id === "room_boat" || room.id === "room_rafts") &&
+            r === 4 &&
+            c >= 8 &&
+            c <= 11
+          ) {
+            continue;
+          }
           const px = (c + 0.5) * TILE_SIZE;
           const py = (r + 0.85) * TILE_SIZE;
           const pillar = new Sprite(this.atlas.props.ruin_pillar);
@@ -283,10 +296,11 @@ export class DungeonRoom {
 
     // Room-specific thematic dressings
     if (room.id === "hub") {
+      const isBarge = room.title.includes("Tàu");
       decorGfx
         .roundRect(8 * TILE_SIZE, 5.2 * TILE_SIZE, 6 * TILE_SIZE, 5 * TILE_SIZE, 14)
-        .fill({ color: 0x7f1d1d, alpha: 0.45 })
-        .stroke({ width: 3, color: 0xf59e0b, alpha: 0.65 });
+        .fill({ color: isBarge ? 0x1e3a5f : 0x7f1d1d, alpha: 0.45 })
+        .stroke({ width: 3, color: isBarge ? 0x38bdf8 : 0xf59e0b, alpha: 0.65 });
     } else if (room.id === "room_sort") {
       // Conveyor belt visual prop at rows 4..5
       decorGfx
@@ -298,6 +312,31 @@ export class DungeonRoom {
       }
     } else if (room.id === "room_beans") {
       this.addBossTeaTableAndNpc(10 * TILE_SIZE, 5.8 * TILE_SIZE);
+    } else if (room.id === "room_beer") {
+      this.addBeerBossTableAndNpc(10 * TILE_SIZE, 5.8 * TILE_SIZE);
+    } else if (room.id === "room_boat") {
+      // Dock & moored red-river wooden sampan prop at rows 4..5
+      decorGfx
+        .roundRect(7.7 * TILE_SIZE, 3.85 * TILE_SIZE, 4.6 * TILE_SIZE, 1.2 * TILE_SIZE, 8)
+        .fill(0x0c4a6e)
+        .stroke({ width: 2, color: 0x38bdf8 });
+      decorGfx
+        .ellipse(10 * TILE_SIZE, 4.45 * TILE_SIZE, 46, 14)
+        .fill(0x92400e)
+        .stroke({ width: 2, color: 0x451a03 });
+    } else if (room.id === "room_rafts") {
+      // Floating barrel raft & 3-sign crane beam prop at rows 4..5
+      decorGfx
+        .roundRect(7.9 * TILE_SIZE, 3.9 * TILE_SIZE, 4.2 * TILE_SIZE, 1.15 * TILE_SIZE, 8)
+        .fill(0x78350f)
+        .stroke({ width: 2.5, color: 0xfbbf24 });
+      decorGfx
+        .roundRect(8.3 * TILE_SIZE, 4.1 * TILE_SIZE, 16, 16, 3)
+        .fill(0xef4444)
+        .roundRect(9.8 * TILE_SIZE, 4.1 * TILE_SIZE, 16, 16, 3)
+        .fill(0xf59e0b)
+        .roundRect(11.3 * TILE_SIZE, 4.1 * TILE_SIZE, 16, 16, 3)
+        .fill(0x10b981);
     }
 
     const titleText = new Text({
@@ -408,6 +447,15 @@ export class DungeonRoom {
     this.currentRoom = null;
   }
 
+  public destroy(player?: Player): void {
+    this.disposeCurrentRoom(player);
+    this.ripples.length = 0;
+    this.torchGlowTex.destroy(true);
+    this.fogCutoutTex.destroy(true);
+    this.container.removeFromParent();
+    this.container.destroy({ children: true });
+  }
+
   public refreshRoomObjects(room: DungeonRoomLayout): void {
     if (this.stationVisual && room.station) {
       this.stationVisual.node.visible = !room.station.cleared && !room.station.attempted;
@@ -487,6 +535,69 @@ export class DungeonRoom {
     this.entityLayer.addChild(boss);
   }
 
+  private addBeerBossTableAndNpc(cx: number, bottomY: number): void {
+    // Plastic green Hanoi street-pub table with beer mugs
+    const table = new Container();
+    table.position.set(cx, bottomY);
+    table.zIndex = bottomY;
+    const g = new Graphics();
+    g.ellipse(0, 0, 52, 14).fill({ color: 0x000000, alpha: 0.35 });
+    g.roundRect(-48, -36, 96, 30, 5).fill(0x166534).stroke({ width: 2, color: 0x052e16 });
+    g.roundRect(-43, -32, 86, 20, 3).fill(0x15803d);
+    // Two frosted amber beer mugs + plate of peanuts
+    g.roundRect(-24, -30, 12, 14, 2).fill(0xf59e0b).stroke({ width: 1.5, color: 0xe2e8f0 });
+    g.roundRect(-24, -33, 12, 4, 2).fill(0xf8fafc);
+    g.roundRect(12, -30, 12, 14, 2).fill(0xf59e0b).stroke({ width: 1.5, color: 0xe2e8f0 });
+    g.roundRect(12, -33, 12, 4, 2).fill(0xf8fafc);
+    g.ellipse(0, -22, 11, 5).fill(0xfef3c7).stroke({ width: 1.2, color: 0x92400e });
+    table.addChild(g);
+    this.entityLayer.addChild(table);
+
+    // Đại Ca Giang Hồ NPC behind table (sunglasses + gold chain + dark shirt)
+    const boss = new Container();
+    boss.position.set(cx, bottomY - 24);
+    boss.zIndex = bottomY - 24;
+    const layers: Array<[string, number]> = [
+      ["body_male", 0xffffff],
+      ["legs_formal", 0x0f172a],
+      ["torso_trench", 0x111827],
+      ["head_male", 0xffffff],
+    ];
+    for (const [partKey, tint] of layers) {
+      const frames = this.atlas.lpcLayers[partKey];
+      if (!frames) continue;
+      const spr = new Sprite(frames.down[0]);
+      spr.anchor.set(0.5, 0.94);
+      spr.scale.set(1.16);
+      spr.tint = tint;
+      boss.addChild(spr);
+    }
+    const bling = new Graphics()
+      .roundRect(-9, -46, 8, 5, 1)
+      .fill(0x020617)
+      .roundRect(1, -46, 8, 5, 1)
+      .fill(0x020617)
+      .rect(-1, -44, 2, 2)
+      .fill(0xfacc15)
+      .arc(0, -29, 7, 0.2, Math.PI - 0.2)
+      .stroke({ width: 2.5, color: 0xfacc15 });
+    boss.addChild(bling);
+
+    const lbl = new Text({
+      text: "😎 Đại Ca Giang Hồ",
+      style: {
+        fontSize: 11,
+        fontWeight: "800",
+        fill: "#fde047",
+        stroke: { color: "#020617", width: 3 },
+      },
+    });
+    lbl.anchor.set(0.5, 1);
+    lbl.y = -68;
+    boss.addChild(lbl);
+    this.entityLayer.addChild(boss);
+  }
+
   private createPortalVisual(portal: DungeonPortalNode): PortalVisual {
     const node = new Container();
     node.position.set(portal.x, portal.y);
@@ -552,8 +663,16 @@ export class DungeonRoom {
     bangText.anchor.set(0.5, 0.5);
     bangText.position.set(0, -24);
 
+    const stationLabels: Record<DungeonStationNode["kind"], string> = {
+      coin_sort: "🪙 SÀNG LỌC XU",
+      peanut_steal: "🥜 ĂN TRỘM LẠC",
+      beer_boss: "🍺 NHẬU ĐẠI CA",
+      boat_row: "🛶 TRÈO THUYỀN",
+      raft_signs: "🪵 BÈ PHAO 6×6",
+    };
+
     const subText = new Text({
-      text: station.kind === "coin_sort" ? "🪙 SÀNG LỌC XU" : "🥜 ĂN TRỘM LẠC",
+      text: stationLabels[station.kind],
       style: {
         fontSize: 10,
         fontWeight: "800",

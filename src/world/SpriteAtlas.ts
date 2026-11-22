@@ -1,6 +1,8 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
+import { LAZY_ASSET_URLS } from "../assets.ts";
 import {
   BUILDING_KEYS,
+  isBuildingProp,
   type BuildingKind,
   type FacingDir,
   type PropKind,
@@ -39,6 +41,11 @@ export interface WorldAtlas {
   leafFrames: Texture[];
   shadow: Texture;
   lpcLayers: Record<string, CharacterFrames>;
+  ensureBuildingTexture: (kind: BuildingKind) => Promise<Texture>;
+  ensurePropTexture: (kind: PropKind) => Promise<Texture>;
+  ensureLpcLayer: (key: string) => Promise<CharacterFrames | null>;
+  ensureLpcLayers: (keys: readonly string[]) => Promise<void>;
+  unloadLazyAlias: (alias: string) => Promise<void>;
 }
 
 const TILE_UV_INSET = 0.12;
@@ -145,6 +152,19 @@ function sliceLpcWalkSheet(base: Texture): CharacterFrames {
   return frames;
 }
 
+export function getBuildingAssetAlias(kind: BuildingKind): string {
+  return BUILDING_ASSET_ALIAS[kind] ?? `bld-${kind}`;
+}
+
+export function isDungeonPropKind(kind: PropKind): boolean {
+  return kind === "vn_dungeon_hoang_thanh" || kind === "vn_dungeon_sand_barge";
+}
+
+function getCachedTexture(alias: string): Texture | null {
+  if (!Assets.cache.has(alias)) return null;
+  return Assets.get<Texture>(alias) ?? null;
+}
+
 export function createWorldAtlas(): WorldAtlas {
   const floorTex = Assets.get<Texture>("tileset-floor");
   const plazaTex = Assets.get<Texture>("tileset-plaza");
@@ -176,11 +196,24 @@ export function createWorldAtlas(): WorldAtlas {
 
   const buildings = {} as Record<BuildingKind, Texture>;
   for (const key of BUILDING_KEYS) {
-    const alias = BUILDING_ASSET_ALIAS[key] ?? `bld-${key}`;
-    const tex = Assets.get<Texture>(alias);
-    tex.source.scaleMode = "nearest";
-    buildings[key] = tex;
+    const alias = getBuildingAssetAlias(key);
+    const cached = getCachedTexture(alias);
+    if (cached) {
+      cached.source.scaleMode = "nearest";
+      buildings[key] = cached;
+    } else {
+      buildings[key] = Texture.EMPTY;
+    }
   }
+
+  const getLazyPropOrEmpty = (alias: string): Texture => {
+    const cached = getCachedTexture(alias);
+    if (cached) {
+      cached.source.scaleMode = "nearest";
+      return cached;
+    }
+    return Texture.EMPTY;
+  };
 
   const baseProps = {
     oak_warm: sliceCell(villageTex, 0, 6, 4, 3),
@@ -205,16 +238,16 @@ export function createWorldAtlas(): WorldAtlas {
     sakura_small: sliceCell(villageTex, 4, 6, 2, 2),
     momiji_tree: sliceCell(villageTex, 0, 6, 4, 3),
     momiji_small: sliceCell(villageTex, 4, 6, 2, 2),
-    jp_torii_gate: Assets.get<Texture>("prop-jp_torii_gate"),
-    jp_stone_lantern: Assets.get<Texture>("prop-jp_stone_lantern"),
-    jp_bamboo_cluster: Assets.get<Texture>("prop-jp_bamboo_cluster"),
-    jp_vending_machine: Assets.get<Texture>("prop-jp_vending_machine"),
-    jp_snow_pine: Assets.get<Texture>("prop-jp_snow_pine"),
-    jp_snowman_jizo: Assets.get<Texture>("prop-jp_snowman_jizo"),
-    jp_island_palm: Assets.get<Texture>("prop-jp_island_palm"),
-    jp_island_boat: Assets.get<Texture>("prop-jp_island_boat"),
-    jp_island_fish_rack: Assets.get<Texture>("prop-jp_island_fish_rack"),
-    jp_island_campfire: Assets.get<Texture>("prop-jp_island_campfire"),
+    jp_torii_gate: getLazyPropOrEmpty("prop-jp_torii_gate"),
+    jp_stone_lantern: getLazyPropOrEmpty("prop-jp_stone_lantern"),
+    jp_bamboo_cluster: getLazyPropOrEmpty("prop-jp_bamboo_cluster"),
+    jp_vending_machine: getLazyPropOrEmpty("prop-jp_vending_machine"),
+    jp_snow_pine: getLazyPropOrEmpty("prop-jp_snow_pine"),
+    jp_snowman_jizo: getLazyPropOrEmpty("prop-jp_snowman_jizo"),
+    jp_island_palm: getLazyPropOrEmpty("prop-jp_island_palm"),
+    jp_island_boat: getLazyPropOrEmpty("prop-jp_island_boat"),
+    jp_island_fish_rack: getLazyPropOrEmpty("prop-jp_island_fish_rack"),
+    jp_island_campfire: getLazyPropOrEmpty("prop-jp_island_campfire"),
     park_lantern: sliceCell(urbanTex, 7, 6, 1, 2),
     street_lamp: sliceCell(urbanTex, 3, 6, 1, 2),
     traffic_light: sliceCell(urbanTex, 3, 15, 1, 1),
@@ -228,22 +261,110 @@ export function createWorldAtlas(): WorldAtlas {
   const chestOpen = Assets.get<Texture>("chest-open");
   chestClosed.source.scaleMode = "nearest";
   chestOpen.source.scaleMode = "nearest";
-  baseProps.jp_torii_gate.source.scaleMode = "nearest";
-  baseProps.jp_stone_lantern.source.scaleMode = "nearest";
-  baseProps.jp_bamboo_cluster.source.scaleMode = "nearest";
-  baseProps.jp_vending_machine.source.scaleMode = "nearest";
-  baseProps.jp_snow_pine.source.scaleMode = "nearest";
-  baseProps.jp_snowman_jizo.source.scaleMode = "nearest";
-  baseProps.jp_island_palm.source.scaleMode = "nearest";
-  baseProps.jp_island_boat.source.scaleMode = "nearest";
-  baseProps.jp_island_fish_rack.source.scaleMode = "nearest";
-  baseProps.jp_island_campfire.source.scaleMode = "nearest";
 
   const lpcLayers: Record<string, CharacterFrames> = {};
   for (const key of LPC_WALK_KEYS) {
-    const tex = Assets.get<Texture>(`lpc-${key}`);
-    lpcLayers[key] = sliceLpcWalkSheet(tex);
+    const tex = getCachedTexture(`lpc-${key}`);
+    if (tex) {
+      lpcLayers[key] = sliceLpcWalkSheet(tex);
+    }
   }
+
+  const propsMap: Record<PropKind, Texture> = {
+    ...baseProps,
+    ...buildings,
+  };
+
+  const inFlight = new Map<string, Promise<Texture>>();
+  const loadAliasTexture = (alias: string): Promise<Texture> => {
+    const cached = getCachedTexture(alias);
+    if (cached) {
+      cached.source.scaleMode = "nearest";
+      return Promise.resolve(cached);
+    }
+    const existing = inFlight.get(alias);
+    if (existing) return existing;
+    const url = LAZY_ASSET_URLS[alias];
+    if (!url) return Promise.resolve(Texture.EMPTY);
+    const p = Assets.load<Texture>({ alias, src: url })
+      .then((tex) => {
+        if (tex && tex !== Texture.EMPTY) {
+          tex.source.scaleMode = "nearest";
+        }
+        return tex ?? Texture.EMPTY;
+      })
+      .catch(() => Texture.EMPTY)
+      .finally(() => {
+        inFlight.delete(alias);
+      });
+    inFlight.set(alias, p);
+    return p;
+  };
+
+  const ensureBuildingTexture = async (kind: BuildingKind): Promise<Texture> => {
+    const cur = buildings[kind];
+    if (cur && cur !== Texture.EMPTY) return cur;
+    const alias = getBuildingAssetAlias(kind);
+    const tex = await loadAliasTexture(alias);
+    if (tex && tex !== Texture.EMPTY) {
+      for (const bk of BUILDING_KEYS) {
+        if (getBuildingAssetAlias(bk) === alias) {
+          buildings[bk] = tex;
+          propsMap[bk] = tex;
+        }
+      }
+    }
+    return tex;
+  };
+
+  const ensurePropTexture = async (kind: PropKind): Promise<Texture> => {
+    if (isBuildingProp(kind)) {
+      return ensureBuildingTexture(kind);
+    }
+    const cur = propsMap[kind];
+    if (cur && cur !== Texture.EMPTY) return cur;
+    const alias = `prop-${kind}`;
+    const tex = await loadAliasTexture(alias);
+    if (tex && tex !== Texture.EMPTY) {
+      propsMap[kind] = tex;
+    }
+    return tex;
+  };
+
+  const ensureLpcLayer = async (key: string): Promise<CharacterFrames | null> => {
+    if (lpcLayers[key]) return lpcLayers[key];
+    const tex = await loadAliasTexture(`lpc-${key}`);
+    if (!tex || tex === Texture.EMPTY) return null;
+    if (!lpcLayers[key]) {
+      lpcLayers[key] = sliceLpcWalkSheet(tex);
+    }
+    return lpcLayers[key];
+  };
+
+  const ensureLpcLayers = async (keys: readonly string[]): Promise<void> => {
+    await Promise.all(keys.map((k) => ensureLpcLayer(k)));
+  };
+
+  const unloadLazyAlias = async (alias: string): Promise<void> => {
+    if (!LAZY_ASSET_URLS[alias]) return;
+    if (alias.startsWith("lpc-")) {
+      const k = alias.slice(4);
+      delete lpcLayers[k];
+    } else if (alias.startsWith("prop-")) {
+      const pk = alias.slice(5) as PropKind;
+      if (pk in propsMap) propsMap[pk] = Texture.EMPTY;
+    } else {
+      for (const bk of BUILDING_KEYS) {
+        if (getBuildingAssetAlias(bk) === alias) {
+          buildings[bk] = Texture.EMPTY;
+          propsMap[bk] = Texture.EMPTY;
+        }
+      }
+    }
+    if (Assets.cache.has(alias)) {
+      await Assets.unload(alias).catch(() => {});
+    }
+  };
 
   return {
     tiles: {
@@ -319,10 +440,7 @@ export function createWorldAtlas(): WorldAtlas {
         sliceGroundTile(cityTex, 7, 21, 17),
       ],
     },
-    props: {
-      ...baseProps,
-      ...buildings,
-    },
+    props: propsMap,
     buildings,
     chestClosed,
     chestOpen,
@@ -335,5 +453,10 @@ export function createWorldAtlas(): WorldAtlas {
     leafFrames,
     shadow: shadowTex,
     lpcLayers,
+    ensureBuildingTexture,
+    ensurePropTexture,
+    ensureLpcLayer,
+    ensureLpcLayers,
+    unloadLazyAlias,
   };
 }

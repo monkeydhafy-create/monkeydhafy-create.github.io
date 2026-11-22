@@ -1,11 +1,11 @@
 import { withAssetHash } from "./assetUrl.ts";
 
 /**
- * Static assets preloaded before the PixiJS v8 open-world scene initializes.
- * Pixel art packs sourced from NinjaAdventure, Kenney City/Urban, and
- * hoanglong256/pixel-buildings (all CC0 Public Domain).
+ * Core assets preloaded at startup before rendering begins.
+ * Heavy buildings, dungeons, estates, Japan props, and police/outfit LPC sheets
+ * live in `LAZY_RAW_ASSETS` and are streamed strictly on demand.
  */
-const RAW_ASSETS = [
+const CORE_RAW_ASSETS = [
   { alias: "sfx-press", src: "assets/sounds/sfx-press.wav" },
   { alias: "char-shadow", src: "assets/world/shadow.png" },
   { alias: "tileset-floor", src: "assets/world/tileset_floor.png" },
@@ -15,8 +15,25 @@ const RAW_ASSETS = [
   { alias: "tileset-city", src: "assets/world/tileset_city.png" },
   { alias: "tileset-urban", src: "assets/world/tileset_urban.png" },
   { alias: "particle-leaf", src: "assets/world/particle_leaf.png" },
+  { alias: "chest-closed", src: "assets/world/chest_closed.png" },
+  { alias: "chest-open", src: "assets/world/chest_open.png" },
+  // Starter LPC base doll + starter casual clothes only (everything else lazy-loads on demand)
+  { alias: "lpc-body_male", src: "assets/world/lpc/body_male.png" },
+  { alias: "lpc-head_male", src: "assets/world/lpc/head_male.png" },
+  { alias: "lpc-body_female", src: "assets/world/lpc/body_female.png" },
+  { alias: "lpc-head_female", src: "assets/world/lpc/head_female.png" },
+  { alias: "lpc-hair_bangs", src: "assets/world/lpc/hair_bangs.png" },
+  { alias: "lpc-hair_natural", src: "assets/world/lpc/hair_natural.png" },
+  { alias: "lpc-torso_tshirt", src: "assets/world/lpc/torso_tshirt.png" },
+  { alias: "lpc-torso_tshirt_female", src: "assets/world/lpc/torso_tshirt_female.png" },
+  { alias: "lpc-legs_pants", src: "assets/world/lpc/legs_pants.png" },
+  { alias: "lpc-legs_pants_female", src: "assets/world/lpc/legs_pants_female.png" },
+  { alias: "lpc-feet_shoes", src: "assets/world/lpc/feet_shoes.png" },
+  { alias: "lpc-feet_shoes_female", src: "assets/world/lpc/feet_shoes_female.png" },
+] as const;
 
-  // Curated CC0 high-detail pixel buildings (shared PNGs deduplicated via BUILDING_ASSET_ALIAS)
+const LAZY_RAW_ASSETS = [
+  // Curated CC0 high-detail pixel buildings & dungeons
   { alias: "bld-city_twin_towers", src: "assets/world/buildings/city_twin_towers.png" },
   { alias: "bld-city_green_terrace", src: "assets/world/buildings/city_green_terrace.png" },
   { alias: "bld-city_courtyard_apt", src: "assets/world/buildings/city_courtyard_apt.png" },
@@ -32,6 +49,7 @@ const RAW_ASSETS = [
   { alias: "bld-city_backpack_shop", src: "assets/world/buildings/city_backpack_shop.png" },
   { alias: "bld-city_airport", src: "assets/world/buildings/city_airport.png" },
   { alias: "bld-vn_dungeon_hoang_thanh", src: "assets/world/buildings/vn_dungeon_hoang_thanh.png" },
+  { alias: "bld-vn_dungeon_sand_barge", src: "assets/world/buildings/vn_dungeon_sand_barge.png" },
   { alias: "bld-jp_shogun_castle", src: "assets/world/buildings/jp_shogun_castle.png" },
   { alias: "bld-jp_shinto_shrine", src: "assets/world/buildings/jp_shinto_shrine.png" },
   { alias: "bld-jp_ninja_dojo", src: "assets/world/buildings/jp_ninja_dojo.png" },
@@ -106,9 +124,7 @@ const RAW_ASSETS = [
   { alias: "estate-jp_tier4_01_imperial_tenshu", src: "assets/world/estates/jp_tier4_01_imperial_tenshu.png" },
   { alias: "estate-jp_tier4_02_tokyo_imperial_palace", src: "assets/world/estates/jp_tier4_02_tokyo_imperial_palace.png" },
 
-  // World-space interactive chests (item PNGs are lazy-loaded by HTML <img> inside UI modals)
-  { alias: "chest-closed", src: "assets/world/chest_closed.png" },
-  { alias: "chest-open", src: "assets/world/chest_open.png" },
+  // Japan World Props
   { alias: "prop-jp_torii_gate", src: "assets/world/props/jp_torii_gate.png" },
   { alias: "prop-jp_stone_lantern", src: "assets/world/props/jp_stone_lantern.png" },
   { alias: "prop-jp_bamboo_cluster", src: "assets/world/props/jp_bamboo_cluster.png" },
@@ -120,33 +136,21 @@ const RAW_ASSETS = [
   { alias: "prop-jp_island_fish_rack", src: "assets/world/props/jp_island_fish_rack.png" },
   { alias: "prop-jp_island_campfire", src: "assets/world/props/jp_island_campfire.png" },
 
-  // Liberated Pixel Cup (LPC) 64x64 modular paper-doll character & clothing layers (see CREDITS_LPC.txt)
-  { alias: "lpc-body_male", src: "assets/world/lpc/body_male.png" },
-  { alias: "lpc-head_male", src: "assets/world/lpc/head_male.png" },
-  { alias: "lpc-body_female", src: "assets/world/lpc/body_female.png" },
-  { alias: "lpc-head_female", src: "assets/world/lpc/head_female.png" },
-  { alias: "lpc-hair_bangs", src: "assets/world/lpc/hair_bangs.png" },
-  { alias: "lpc-hair_natural", src: "assets/world/lpc/hair_natural.png" },
+  // Additional LPC Police, Dungeon NPC & Equipment Sheets (loaded only when needed!)
   { alias: "lpc-hair_bob", src: "assets/world/lpc/hair_bob.png" },
   { alias: "lpc-hair_long_straight", src: "assets/world/lpc/hair_long_straight.png" },
   { alias: "lpc-hair_curly_long", src: "assets/world/lpc/hair_curly_long.png" },
   { alias: "lpc-hair_pixie", src: "assets/world/lpc/hair_pixie.png" },
-  { alias: "lpc-torso_tshirt", src: "assets/world/lpc/torso_tshirt.png" },
-  { alias: "lpc-torso_tshirt_female", src: "assets/world/lpc/torso_tshirt_female.png" },
   { alias: "lpc-torso_polo", src: "assets/world/lpc/torso_polo.png" },
   { alias: "lpc-torso_polo_female", src: "assets/world/lpc/torso_polo_female.png" },
   { alias: "lpc-torso_longsleeve", src: "assets/world/lpc/torso_longsleeve.png" },
   { alias: "lpc-torso_jacket_navy", src: "assets/world/lpc/torso_jacket_navy.png" },
   { alias: "lpc-torso_jacket_brown", src: "assets/world/lpc/torso_jacket_brown.png" },
   { alias: "lpc-torso_trench", src: "assets/world/lpc/torso_trench.png" },
-  { alias: "lpc-legs_pants", src: "assets/world/lpc/legs_pants.png" },
-  { alias: "lpc-legs_pants_female", src: "assets/world/lpc/legs_pants_female.png" },
   { alias: "lpc-legs_formal", src: "assets/world/lpc/legs_formal.png" },
   { alias: "lpc-legs_shorts", src: "assets/world/lpc/legs_shorts.png" },
   { alias: "lpc-legs_shorts_female", src: "assets/world/lpc/legs_shorts_female.png" },
   { alias: "lpc-legs_skirt_plain", src: "assets/world/lpc/legs_skirt_plain.png" },
-  { alias: "lpc-feet_shoes", src: "assets/world/lpc/feet_shoes.png" },
-  { alias: "lpc-feet_shoes_female", src: "assets/world/lpc/feet_shoes_female.png" },
   { alias: "lpc-feet_boots", src: "assets/world/lpc/feet_boots.png" },
   { alias: "lpc-feet_boots_female", src: "assets/world/lpc/feet_boots_female.png" },
   { alias: "lpc-hat_cap", src: "assets/world/lpc/hat_cap.png" },
@@ -157,9 +161,13 @@ const RAW_ASSETS = [
   { alias: "lpc-acc_scarf", src: "assets/world/lpc/acc_scarf.png" },
   { alias: "lpc-acc_cape_fg", src: "assets/world/lpc/acc_cape_fg.png" },
   { alias: "lpc-acc_cape_bg", src: "assets/world/lpc/acc_cape_bg.png" },
-];
+] as const;
 
-export const assets = RAW_ASSETS.map((entry) => ({
+export const assets = CORE_RAW_ASSETS.map((entry) => ({
   alias: entry.alias,
   src: withAssetHash(entry.src),
 }));
+
+export const LAZY_ASSET_URLS: Readonly<Record<string, string>> = Object.fromEntries(
+  LAZY_RAW_ASSETS.map((entry) => [entry.alias, withAssetHash(entry.src)]),
+);

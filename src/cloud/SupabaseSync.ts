@@ -3,6 +3,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabaseConfig.ts";
 import type { PlayerGameSaveV3 } from "../security/SaveVault.ts";
 import type { EquippedGear } from "../world/EquipmentCatalog.ts";
 import type { ContainerLootState, GridItemInstance, LootSourceType } from "../world/LootSystem.ts";
+import type { PoliceOfficerSeedSpec, ServerPoliceOfficerSnapshot } from "../world/PoliceSystem.ts";
 import { MAP_COLS, MAP_ROWS, TILE_SIZE, type BiomeId, type CharacterGender, type CharacterSkinId, type FacingDir, type MapId, type SecurityZone } from "../world/types.ts";
 
 export interface RemotePlayerEstateSummary {
@@ -119,6 +120,11 @@ export interface SupabaseSyncCallbacks {
     container?: ContainerLootState;
   }) => void;
   onServerClockOffset?: (offsetMs: number) => void;
+  onServerPoliceSnapshots?: (
+    mapId: MapId,
+    rows: ServerPoliceOfficerSnapshot[],
+    serverNowMs: number,
+  ) => void;
   onPersistentWorldEstatesChanged?: (
     estates: Map<string, RemotePlayerEstateSummary>,
     localUserId: string | null,
@@ -177,6 +183,12 @@ export class SupabaseSync {
   private worldChannel: RealtimeChannel | null = null;
   private auctionChannel: RealtimeChannel | null = null;
   private estatesChannel: RealtimeChannel | null = null;
+  private policeChannel: RealtimeChannel | null = null;
+  private policePollTimer: number | null = null;
+  private policeSyncInFlight = false;
+  private activePoliceMapId: MapId = "vietnam";
+  private readonly seededPoliceMaps = new Set<MapId>();
+  private serverClockOffsetMs = 0;
   private activeSectorKey: string | null = null;
   private activeEstatesMapId: MapId = "vietnam";
   private readonly persistentWorldEstates = new Map<string, RemotePlayerEstateSummary>();
@@ -340,7 +352,9 @@ export class SupabaseSync {
       const t1 = Date.now();
       if (!error && typeof data === "number" && Number.isFinite(data)) {
         const midpoint = Math.round((t0 + t1) / 2);
-        this.callbacks.onServerClockOffset?.(data - midpoint);
+        const offset = data - midpoint;
+        this.serverClockOffsetMs = offset;
+        this.callbacks.onServerClockOffset?.(offset);
       }
     } catch {
       // Optional clock sync; fall back to local clock when offline or schema not yet created
@@ -969,6 +983,179 @@ export class SupabaseSync {
         until: Date.now() + durationMs,
       },
     });
+  }
+
+  private mapRpcPoliceRow(raw: Record<string, unknown>): ServerPoliceOfficerSnapshot | null {
+    const oid = typeof raw.officer_id === "string" ? raw.officer_id : "";
+    if (!oid) return null;
+    const facingRaw = raw.facing;
+    const facing: FacingDir =
+      facingRaw === "up" || facingRaw === "down" || facingRaw === "left" || facingRaw === "right"
+        ? facingRaw
+        : "down";
+    const stateRaw = raw.state;
+    const state =
+      stateRaw === "chase" || stateRaw === "investigate" ? stateRaw : "patrol";
+    return {
+      officerId: oid,
+      patrolZone: raw.patrol_zone === "red" ? "red" : "yellow",
+      state,
+      x: Number(raw.x ?? raw.start_x ?? 0),
+      y: Number(raw.y ?? raw.start_y ?? 0),
+      startX: Number(raw.start_x ?? 0),
+      startY: Number(raw.start_y ?? 0),
+      targetX: Number(raw.target_x ?? raw.start_x ?? 0),
+      targetY: Number(raw.target_y ?? raw.start_y ?? 0),
+      facing,
+      segmentStartedAtMs: Number(raw.segment_started_at_ms ?? Date.now()),
+      segmentDurationMs: Math.max(100, Number(raw.segment_duration_ms ?? 1000)),
+      chaseUntilMs:
+        raw.chase_until_ms !== null && raw.chase_until_ms !== undefined
+          ? Number(raw.chase_until_ms)
+          : null,
+    };
+  }
+
+  private mapRealtimePoliceRow(
+    raw: Record<string, unknown>,
+    serverNowMs: number,
+  ): ServerPoliceOfficerSnapshot | null {
+    const oid = typeof raw.officer_id === "string" ? raw.officer_id : "";
+    if (!oid) return null;
+    const facingRaw = raw.facing;
+    const facing: FacingDir =
+      facingRaw === "up" || facingRaw === "down" || facingRaw === "left" || facingRaw === "right"
+        ? facingRaw
+        : "down";
+    const stateRaw = raw.state;
+    const state =
+      stateRaw === "chase" || stateRaw === "investigate" ? stateRaw : "patrol";
+    const startX = Number(raw.start_x ?? 0);
+    const startY = Number(raw.start_y ?? 0);
+    const targetX = Number(raw.target_x ?? startX);
+    const targetY = Number(raw.target_y ?? startY);
+    const segStartMs =
+      typeof raw.segment_started_at === "string"
+        ? Date.parse(raw.segment_started_at)
+        : serverNowMs;
+    const durationMs = Math.max(100, Number(raw.segment_duration_ms ?? 1000));
+    const t = Math.max(0, Math.min(1, (serverNowMs - segStartMs) / durationMs));
+    const chaseUntilMs =
+      typeof raw.chase_until === "string" ? Date.parse(raw.chase_until) : null;
+    return {
+      officerId: oid,
+      patrolZone: raw.patrol_zone === "red" ? "red" : "yellow",
+      state,
+      x: startX + (targetX - startX) * t,
+      y: startY + (targetY - startY) * t,
+      startX,
+      startY,
+      targetX,
+      targetY,
+      facing,
+      segmentStartedAtMs: Number.isFinite(segStartMs) ? segStartMs : serverNowMs,
+      segmentDurationMs: durationMs,
+      chaseUntilMs: chaseUntilMs !== null && Number.isFinite(chaseUntilMs) ? chaseUntilMs : null,
+    };
+  }
+
+  public startWorldPoliceSync(mapId: MapId, seedOfficers: PoliceOfficerSeedSpec[]): void {
+    this.activePoliceMapId = mapId;
+    if (this.policePollTimer !== null) {
+      window.clearInterval(this.policePollTimer);
+      this.policePollTimer = null;
+    }
+
+    if (!this.policeChannel) {
+      this.policeChannel = this.client
+        .channel("world_police_sync_global")
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "world_police_officers" },
+          (payload) => {
+            const row = payload.new as Record<string, unknown> | null;
+            if (!row || row.map_id !== this.activePoliceMapId) return;
+            const serverNowMs = Date.now() + this.serverClockOffsetMs;
+            const snap = this.mapRealtimePoliceRow(row, serverNowMs);
+            if (snap) {
+              this.callbacks.onServerPoliceSnapshots?.(this.activePoliceMapId, [snap], serverNowMs);
+            }
+          },
+        )
+        .subscribe();
+    }
+
+    void this.pollWorldPolice(mapId, seedOfficers);
+    this.policePollTimer = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || this.policeSyncInFlight) return;
+      void this.pollWorldPolice(this.activePoliceMapId, null);
+    }, 2500);
+  }
+
+  private async pollWorldPolice(
+    mapId: MapId,
+    seedOfficers: PoliceOfficerSeedSpec[] | null,
+  ): Promise<void> {
+    if (this.policeSyncInFlight) return;
+    this.policeSyncInFlight = true;
+    try {
+      const seedPayload =
+        !this.seededPoliceMaps.has(mapId) && seedOfficers && seedOfficers.length > 0
+          ? seedOfficers
+          : null;
+      const { data, error } = await this.client.rpc("sync_world_police", {
+        p_map_id: mapId,
+        p_seed_officers: seedPayload,
+      });
+      if (error || !Array.isArray(data) || data.length === 0) return;
+      this.seededPoliceMaps.add(mapId);
+      const first = data[0] as Record<string, unknown>;
+      const serverNowMs = Number(first.server_now_ms ?? 0) || Date.now();
+      this.serverClockOffsetMs = serverNowMs - Date.now();
+      const mapped: ServerPoliceOfficerSnapshot[] = [];
+      for (const item of data) {
+        const snap = this.mapRpcPoliceRow(item as Record<string, unknown>);
+        if (snap) mapped.push(snap);
+      }
+      if (mapped.length > 0 && mapId === this.activePoliceMapId) {
+        this.callbacks.onServerPoliceSnapshots?.(mapId, mapped, serverNowMs);
+      }
+    } catch {
+      // Offline / optional migration fallback
+    } finally {
+      this.policeSyncInFlight = false;
+    }
+  }
+
+  public reportWorldPoliceChase(
+    mapId: MapId,
+    officerId: string,
+    targetX: number,
+    targetY: number,
+    durationMs = 6000,
+  ): void {
+    void (async () => {
+      try {
+        const { data, error } = await this.client.rpc("report_world_police_chase", {
+          p_map_id: mapId,
+          p_officer_id: officerId,
+          p_target_x: Math.round(targetX),
+          p_target_y: Math.round(targetY),
+          p_player_id: this.getActiveWorldPlayerId(),
+          p_duration_ms: Math.round(durationMs),
+        });
+        if (error || !Array.isArray(data) || data.length === 0) return;
+        const first = data[0] as Record<string, unknown>;
+        const serverNowMs = Number(first.server_now_ms ?? 0) || Date.now();
+        this.serverClockOffsetMs = serverNowMs - Date.now();
+        const snap = this.mapRpcPoliceRow(first);
+        if (snap && mapId === this.activePoliceMapId) {
+          this.callbacks.onServerPoliceSnapshots?.(mapId, [snap], serverNowMs);
+        }
+      } catch {
+        // Ignore if offline; local fallback + P2P broadcast handles chase
+      }
+    })();
   }
 
   public broadcastVaultUnlocked(

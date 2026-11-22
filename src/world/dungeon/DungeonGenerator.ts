@@ -6,6 +6,7 @@ import type {
   DungeonDirection,
   DungeonMazeScareNode,
   DungeonMazeStyle,
+  DungeonMinigameKind,
   DungeonRoomId,
   DungeonRoomLayout,
   DungeonRunState,
@@ -18,6 +19,8 @@ let dungeonRunSeq = 0;
 const recentMazeHashes = new Set<string>();
 let lastDirToRoom: Record<DungeonDirection, DungeonBranchRoomId> | null = null;
 let lastExitDirection: DungeonDirection | null = null;
+let lastBargeDirToRoom: Record<DungeonDirection, DungeonBranchRoomId> | null = null;
+let lastBargeExitDirection: DungeonDirection | null = null;
 
 function createFreshSeed(): number {
   dungeonRunSeq += 1;
@@ -41,6 +44,7 @@ function hashMazeCollision(collision: Uint8Array, style: DungeonMazeStyle, start
 }
 
 const BRANCH_ROOM_IDS: readonly DungeonBranchRoomId[] = ["room_sort", "room_beans", "room_free", "room_maze"];
+const BARGE_BRANCH_ROOM_IDS: readonly DungeonBranchRoomId[] = ["room_beer", "room_boat", "room_rafts", "room_free"];
 const DIRECTIONS: readonly DungeonDirection[] = ["north", "south", "east", "west"];
 const DIRECTION_LABELS: Record<DungeonDirection, string> = {
   north: "Hướng Bắc",
@@ -55,12 +59,14 @@ function makeSurfaceExitPortal(
   x: number,
   y: number,
   requiresStationClear = false,
+  exitLabel = "🚪 Cửa Thoát Lên Mặt Đất",
+  exitTag = "🚪 LÊN MẶT ĐẤT",
 ) {
   return {
     id: `${runId}_${roomId}_exit_surface`,
     targetRoom: "exit_world" as const,
-    label: "🚪 Cửa Thoát Lên Mặt Đất",
-    shortTag: "🚪 LÊN MẶT ĐẤT",
+    label: exitLabel,
+    shortTag: exitTag,
     x,
     y,
     color: 0x10b981,
@@ -101,15 +107,17 @@ function buildAllPermutations<T>(items: readonly T[]): T[][] {
   return result;
 }
 
-const ALL_BRANCH_PERMUTATIONS: readonly (readonly DungeonBranchRoomId[])[] = buildAllPermutations(BRANCH_ROOM_IDS);
+const ALL_HOANG_THANH_PERMS: readonly (readonly DungeonBranchRoomId[])[] = buildAllPermutations(BRANCH_ROOM_IDS);
+const ALL_BARGE_PERMS: readonly (readonly DungeonBranchRoomId[])[] = buildAllPermutations(BARGE_BRANCH_ROOM_IDS);
 
-function pickDirToRoom(
+function pickDirToRoomFromPerms(
+  perms: readonly (readonly DungeonBranchRoomId[])[],
   rng: () => number,
   prev: Record<DungeonDirection, DungeonBranchRoomId> | null,
 ): Record<DungeonDirection, DungeonBranchRoomId> {
   const pool = prev
-    ? ALL_BRANCH_PERMUTATIONS.filter((perm) => DIRECTIONS.every((dir, idx) => perm[idx] !== prev[dir]))
-    : ALL_BRANCH_PERMUTATIONS;
+    ? perms.filter((perm) => DIRECTIONS.every((dir, idx) => perm[idx] !== prev[dir]))
+    : perms;
   const chosen = pool[Math.floor(rng() * pool.length)];
   const dirToRoom = {} as Record<DungeonDirection, DungeonBranchRoomId>;
   DIRECTIONS.forEach((dir, idx) => {
@@ -144,6 +152,10 @@ function createBoxCollision(cols: number, rows: number, obstacles: ReadonlyArray
 function buildHubRoom(
   runId: string,
   dirToRoom: Record<DungeonDirection, DungeonBranchRoomId>,
+  title = "🏯 Sảnh Trung Tâm — Địa Đạo Hoàng Thành",
+  subtitle = "Bốn lối rẽ dẫn về Đông – Tây – Nam – Bắc. Hãy tìm cửa thoát ẩn giấu trong một trong bốn hướng để trở về mặt đất.",
+  floorTint = 0x94a3b8,
+  wallColor = 0x334155,
 ): DungeonRoomLayout {
   const cols = 22;
   const rows = 15;
@@ -156,13 +168,13 @@ function buildHubRoom(
   const collision = createBoxCollision(cols, rows, pillars);
   return {
     id: "hub",
-    title: "🏯 Sảnh Trung Tâm — Địa Đạo Hoàng Thành",
-    subtitle: "Bốn lối rẽ dẫn về Đông – Tây – Nam – Bắc. Hãy tìm cửa thoát ẩn giấu trong một trong bốn hướng để trở về mặt đất.",
+    title,
+    subtitle,
     cols,
     rows,
     collision,
-    floorTint: 0x94a3b8,
-    wallColor: 0x334155,
+    floorTint,
+    wallColor,
     spawn: { x: 11 * TILE_SIZE, y: 7.4 * TILE_SIZE },
     portals: [
       {
@@ -392,6 +404,15 @@ function buildFreeRoom(
   rng: () => number,
   direction: DungeonDirection,
   hasSurfaceExit: boolean,
+  theme?: {
+    titlePrefix: string;
+    subtitle: string;
+    backTag: string;
+    exitLabel: string;
+    exitTag: string;
+    floorTint: number;
+    wallColor: number;
+  },
 ): DungeonRoomLayout {
   const cols = 20;
   const rows = 14;
@@ -421,7 +442,7 @@ function buildFreeRoom(
       id: `dungeon_${runId}_free_${idx}`,
       roomId: "room_free",
       name: isRoyal
-        ? `Rương Hiếm Phòng Cổ #${idx + 1}`
+        ? `Rương Hiếm Khoang Chứa #${idx + 1}`
         : isLocked
           ? `Két Cổ Bị Khóa #${idx + 1}`
           : `Rương Kho Cổ #${idx + 1}`,
@@ -440,26 +461,38 @@ function buildFreeRoom(
       id: `${runId}_free_back`,
       targetRoom: "hub",
       label: "⬅️ Quay Về Sảnh Trung Tâm",
-      shortTag: "⬅️ VỀ SẢNH",
+      shortTag: theme?.backTag ?? "⬅️ VỀ SẢNH",
       x: 10 * TILE_SIZE,
       y: 12.1 * TILE_SIZE,
       color: 0x38bdf8,
     },
   ];
   if (hasSurfaceExit) {
-    portals.push(makeSurfaceExitPortal(runId, "room_free", 10 * TILE_SIZE, 2.7 * TILE_SIZE));
+    portals.push(
+      makeSurfaceExitPortal(
+        runId,
+        "room_free",
+        10 * TILE_SIZE,
+        2.7 * TILE_SIZE,
+        false,
+        theme?.exitLabel,
+        theme?.exitTag,
+      ),
+    );
   }
 
   return {
     id: "room_free",
     direction,
-    title: `🧭 Địa Đạo — ${DIRECTION_LABELS[direction]}`,
-    subtitle: "Hầm gạch cổ lạnh lẽo sâu dưới Hoàng Thành — Tìm kiếm cổ vật và lối thoát lên mặt đất.",
+    title: `${theme?.titlePrefix ?? "🧭 Địa Đạo"} — ${DIRECTION_LABELS[direction]}`,
+    subtitle:
+      theme?.subtitle ??
+      "Hầm gạch cổ lạnh lẽo sâu dưới Hoàng Thành — Tìm kiếm cổ vật và lối thoát lên mặt đất.",
     cols,
     rows,
     collision,
-    floorTint: 0x8ea4b8,
-    wallColor: 0x1e293b,
+    floorTint: theme?.floorTint ?? 0x8ea4b8,
+    wallColor: theme?.wallColor ?? 0x1e293b,
     spawn: { x: 10 * TILE_SIZE, y: 10.6 * TILE_SIZE },
     portals,
     chests,
@@ -901,8 +934,12 @@ export function generateHanoiDungeonRun(explicitSeed?: number): DungeonRunState 
     const resolvedSeed = explicitSeed !== undefined ? (explicitSeed + attempt) >>> 0 : createFreshSeed();
     const rng = createRng(resolvedSeed);
     const runId = `r${(++dungeonRunSeq).toString(36)}_${resolvedSeed.toString(36)}`;
-    const dirToRoom = pickDirToRoom(rng, explicitSeed === undefined ? lastDirToRoom : null);
-    const roomDirections = {} as Record<DungeonBranchRoomId, DungeonDirection>;
+    const dirToRoom = pickDirToRoomFromPerms(
+      ALL_HOANG_THANH_PERMS,
+      rng,
+      explicitSeed === undefined ? lastDirToRoom : null,
+    );
+    const roomDirections: Partial<Record<DungeonBranchRoomId, DungeonDirection>> = {};
     for (const dir of DIRECTIONS) {
       roomDirections[dirToRoom[dir]] = dir;
     }
@@ -916,7 +953,7 @@ export function generateHanoiDungeonRun(explicitSeed?: number): DungeonRunState 
     const mazeRoom = buildMazeRoom(
       runId,
       rng,
-      roomDirections.room_maze,
+      roomDirections.room_maze!,
       exitRoomId === "room_maze",
     );
     const mazeSig = hashMazeCollision(
@@ -933,11 +970,11 @@ export function generateHanoiDungeonRun(explicitSeed?: number): DungeonRunState 
     }
     recentMazeHashes.add(mazeSig);
 
-    const rooms: Record<DungeonRoomId, DungeonRoomLayout> = {
+    const rooms: Partial<Record<DungeonRoomId, DungeonRoomLayout>> & { hub: DungeonRoomLayout } = {
       hub: buildHubRoom(runId, dirToRoom),
-      room_sort: buildCoinSortRoom(runId, rng, roomDirections.room_sort, exitRoomId === "room_sort"),
-      room_beans: buildPeanutStealRoom(runId, rng, roomDirections.room_beans, exitRoomId === "room_beans"),
-      room_free: buildFreeRoom(runId, rng, roomDirections.room_free, exitRoomId === "room_free"),
+      room_sort: buildCoinSortRoom(runId, rng, roomDirections.room_sort!, exitRoomId === "room_sort"),
+      room_beans: buildPeanutStealRoom(runId, rng, roomDirections.room_beans!, exitRoomId === "room_beans"),
+      room_free: buildFreeRoom(runId, rng, roomDirections.room_free!, exitRoomId === "room_free"),
       room_maze: mazeRoom,
     };
 
@@ -947,6 +984,7 @@ export function generateHanoiDungeonRun(explicitSeed?: number): DungeonRunState 
     }
 
     return {
+      dungeonId: "hoang_thanh",
       runId,
       seed: resolvedSeed,
       startedAt: Date.now(),
@@ -960,4 +998,235 @@ export function generateHanoiDungeonRun(explicitSeed?: number): DungeonRunState 
   }
 
   throw new Error("Failed to generate unique dungeon run");
+}
+
+interface BargeRoomCfg {
+  roomId: "room_beer" | "room_boat" | "room_rafts";
+  kind: DungeonMinigameKind;
+  stationTitle: string;
+  promptLabel: string;
+  chestRoyalName: string;
+  chestNormalPrefix: string;
+  floorTint: number;
+  wallColor: number;
+  stationY: number;
+  obstacles: ReadonlyArray<[number, number]>;
+}
+
+const BARGE_CHALLENGE_CONFIGS: readonly BargeRoomCfg[] = [
+  {
+    roomId: "room_beer",
+    kind: "beer_boss",
+    stationTitle: "🍺 Quầy Bia Hơi Đại Ca Giang Hồ",
+    promptLabel: "❗ Ngồi Vào Bàn Nhậu Đại Ca [E]",
+    chestRoyalName: "Rương Hàng Nóng Đại Ca",
+    chestNormalPrefix: "Rương Quầy Nhậu",
+    floorTint: 0xa19484,
+    wallColor: 0x3b2f2f,
+    stationY: 6.9,
+    obstacles: [
+      [9, 5],
+      [10, 5],
+      [2, 2],
+      [17, 2],
+    ],
+  },
+  {
+    roomId: "room_boat",
+    kind: "boat_row",
+    stationTitle: "🛶 Bến Thuyền Nan Ngược Dòng Sông Hồng",
+    promptLabel: "❗ Xuống Thuyền Trèo Ngược Dòng [E]",
+    chestRoyalName: "Rương Bãi Cát Đỏ Sông Hồng",
+    chestNormalPrefix: "Rương Bến Thuyền",
+    floorTint: 0x8ea9bd,
+    wallColor: 0x1e293b,
+    stationY: 6.2,
+    obstacles: [
+      [2, 2],
+      [17, 2],
+      [8, 4],
+      [9, 4],
+      [10, 4],
+      [11, 4],
+    ],
+  },
+  {
+    roomId: "room_rafts",
+    kind: "raft_signs",
+    stationTitle: "🪵 Bè Phao 6×6 Biển Báo Sông Hồng",
+    promptLabel: "❗ Lên Bè Phao Vượt Sông [E]",
+    chestRoyalName: "Rương Đáy Xà Lan Cát",
+    chestNormalPrefix: "Rương Bè Phao",
+    floorTint: 0x9c8b75,
+    wallColor: 0x292524,
+    stationY: 6.2,
+    obstacles: [
+      [2, 2],
+      [17, 2],
+      [8, 4],
+      [9, 4],
+      [10, 4],
+      [11, 4],
+    ],
+  },
+];
+
+function buildBargeChallengeRoom(
+  cfg: BargeRoomCfg,
+  runId: string,
+  rng: () => number,
+  direction: DungeonDirection,
+  hasSurfaceExit: boolean,
+): DungeonRoomLayout {
+  const cols = 20;
+  const rows = 14;
+  const collision = createBoxCollision(cols, rows, cfg.obstacles);
+  const chestSpots: ReadonlyArray<[number, number]> = [
+    [3.5, 4.2],
+    [3.5, 8.8],
+    [16.5, 4.2],
+    [16.5, 8.8],
+    [6.5, 3.2],
+    [13.5, 3.2],
+  ];
+  const chosen = shuffleInPlace([...chestSpots], rng);
+  const chests: DungeonChestNode[] = chosen.map(([cx, cy], idx) => {
+    const isRoyal = rng() < RARE_CHEST_CHANCE;
+    return {
+      id: `dungeon_${runId}_${cfg.roomId}_${idx}`,
+      roomId: cfg.roomId,
+      name: isRoyal ? cfg.chestRoyalName : `${cfg.chestNormalPrefix} #${idx + 1}`,
+      x: cx * TILE_SIZE,
+      y: cy * TILE_SIZE,
+      locked: false,
+      opened: false,
+      royal: isRoyal,
+      revealedInRoom: false,
+    };
+  });
+
+  const portals: DungeonRoomLayout["portals"] = [
+    {
+      id: `${runId}_${cfg.roomId}_back`,
+      targetRoom: "hub",
+      label: "⬅️ Quay Về Boong Chính",
+      shortTag: "⬅️ VỀ BOONG CHÍNH",
+      x: 10 * TILE_SIZE,
+      y: 12.1 * TILE_SIZE,
+      color: 0x38bdf8,
+    },
+  ];
+  if (hasSurfaceExit) {
+    portals.push(
+      makeSurfaceExitPortal(
+        runId,
+        cfg.roomId,
+        10 * TILE_SIZE,
+        2.7 * TILE_SIZE,
+        true,
+        "🚢 Mạn Tàu Thoát Về Sông Hồng",
+        "🚢 RỜI TÀU",
+      ),
+    );
+  }
+
+  return {
+    id: cfg.roomId,
+    direction,
+    title: `🚢 Khoang Tàu — ${DIRECTION_LABELS[direction]}`,
+    subtitle: "Xà lan khai thác cát Sông Hồng — Thắng thử thách để mở rương & tìm mạn tàu thoát thân.",
+    cols,
+    rows,
+    collision,
+    floorTint: cfg.floorTint,
+    wallColor: cfg.wallColor,
+    spawn: { x: 10 * TILE_SIZE, y: 10.6 * TILE_SIZE },
+    portals,
+    station: {
+      id: `${runId}_st_${cfg.roomId}`,
+      roomId: cfg.roomId,
+      kind: cfg.kind,
+      title: cfg.stationTitle,
+      promptLabel: cfg.promptLabel,
+      x: 10 * TILE_SIZE,
+      y: cfg.stationY * TILE_SIZE,
+      cleared: false,
+    },
+    chests,
+    torches: [
+      { x: 4 * TILE_SIZE, y: 2.2 * TILE_SIZE },
+      { x: 16 * TILE_SIZE, y: 2.2 * TILE_SIZE },
+      { x: 10 * TILE_SIZE, y: 5.5 * TILE_SIZE },
+    ],
+    isMaze: false,
+  };
+}
+
+export function generateRedRiverBargeRun(explicitSeed?: number): DungeonRunState {
+  const resolvedSeed = explicitSeed !== undefined ? explicitSeed >>> 0 : createFreshSeed();
+  const rng = createRng(resolvedSeed);
+  const runId = `b${(++dungeonRunSeq).toString(36)}_${resolvedSeed.toString(36)}`;
+  const dirToRoom = pickDirToRoomFromPerms(
+    ALL_BARGE_PERMS,
+    rng,
+    explicitSeed === undefined ? lastBargeDirToRoom : null,
+  );
+  const roomDirections: Partial<Record<DungeonBranchRoomId, DungeonDirection>> = {};
+  for (const dir of DIRECTIONS) {
+    roomDirections[dirToRoom[dir]] = dir;
+  }
+  const exitCandidates =
+    explicitSeed === undefined && lastBargeExitDirection !== null
+      ? DIRECTIONS.filter((d) => d !== lastBargeExitDirection)
+      : DIRECTIONS;
+  const exitDir = exitCandidates[Math.floor(rng() * exitCandidates.length)];
+  const exitRoomId = dirToRoom[exitDir];
+
+  const rooms: Partial<Record<DungeonRoomId, DungeonRoomLayout>> & { hub: DungeonRoomLayout } = {
+    hub: buildHubRoom(
+      runId,
+      dirToRoom,
+      "🚢 Boong Chính — Tàu Khai Thác Cát Sông Hồng",
+      "Bốn khoang dẫn về Đông – Tây – Nam – Bắc. Tìm lối xuống mạn tàu ẩn giấu trong một trong bốn hướng!",
+      0xa19484,
+      0x3b2f2f,
+    ),
+    room_free: buildFreeRoom(runId, rng, roomDirections.room_free!, exitRoomId === "room_free", {
+      titlePrefix: "🚢 Khoang Tàu",
+      subtitle: "Khoang chứa cát & hàng lậu — Mở rương và tìm mạn tàu thoát ra Sông Hồng.",
+      backTag: "⬅️ VỀ BOONG CHÍNH",
+      exitLabel: "🚢 Mạn Tàu Thoát Về Sông Hồng",
+      exitTag: "🚢 RỜI TÀU",
+      floorTint: 0x9c8b75,
+      wallColor: 0x292524,
+    }),
+  };
+
+  for (const cfg of BARGE_CHALLENGE_CONFIGS) {
+    rooms[cfg.roomId] = buildBargeChallengeRoom(
+      cfg,
+      runId,
+      rng,
+      roomDirections[cfg.roomId]!,
+      exitRoomId === cfg.roomId,
+    );
+  }
+
+  if (explicitSeed === undefined) {
+    lastBargeDirToRoom = { ...dirToRoom };
+    lastBargeExitDirection = exitDir;
+  }
+
+  return {
+    dungeonId: "sand_barge",
+    runId,
+    seed: resolvedSeed,
+    startedAt: Date.now(),
+    rooms,
+    activeRoomId: "hub",
+    roomDirections,
+    exitRoomId,
+    chestsOpenedCount: 0,
+    roomsClearedCount: 0,
+  };
 }

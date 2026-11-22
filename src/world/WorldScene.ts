@@ -64,7 +64,12 @@ import {
 } from "./LootSystem.ts";
 import { Pathfinder } from "./Pathfinder.ts";
 import { Player } from "./Player.ts";
-import { createWorldAtlas, type WorldAtlas } from "./SpriteAtlas.ts";
+import {
+  createWorldAtlas,
+  getBuildingAssetAlias,
+  isDungeonPropKind,
+  type WorldAtlas,
+} from "./SpriteAtlas.ts";
 import {
   BUILDING_META,
   BUILDING_PIXEL_SCALE,
@@ -98,17 +103,24 @@ import {
 } from "./types.ts";
 import { generateOpenWorld } from "./WorldGenerator.ts";
 import { JAIL_HEIGHT, JAIL_WIDTH, JailRoom } from "./JailRoom.ts";
-import { generateHanoiDungeonRun } from "./dungeon/DungeonGenerator.ts";
-import { DungeonRoom } from "./dungeon/DungeonRoom.ts";
+import type * as DungeonGeneratorModule from "./dungeon/DungeonGenerator.ts";
+import type { DungeonRoom } from "./dungeon/DungeonRoom.ts";
+import type * as DungeonRoomModule from "./dungeon/DungeonRoom.ts";
 import type {
   DungeonDirection,
+  DungeonId,
   DungeonMinigameKind,
   DungeonRoomId,
   DungeonRoomLayout,
   DungeonRunState,
   DungeonScareKind,
 } from "./dungeon/DungeonTypes.ts";
-import { PoliceSystem, type PoliceOfficerMarker } from "./PoliceSystem.ts";
+import {
+  PoliceSystem,
+  type PoliceOfficerMarker,
+  type PoliceOfficerSeedSpec,
+  type ServerPoliceOfficerSnapshot,
+} from "./PoliceSystem.ts";
 import {
   QUEST_MANUAL_REROLL_COST_GOLD,
   generateDailyQuestBoard,
@@ -281,6 +293,7 @@ export type NearbyInteraction =
   | {
       type: "dungeon_entrance";
       name: string;
+      dungeonId: DungeonId;
     }
   | {
       type: "dungeon_portal";
@@ -345,8 +358,9 @@ export interface WorldCallbacks {
   onOpenContainer?: (container: ContainerLootState) => void;
   onOpenVaultPuzzle?: (target: PendingVaultTarget) => void;
   onOpenJailMinigame?: (station: { stationId: string; kind: ArcadeMinigameKind }) => void;
-  onOpenDungeonLobby?: () => void;
+  onOpenDungeonLobby?: (dungeonId: DungeonId) => void;
   onOpenDungeonMinigame?: (target: { kind: DungeonMinigameKind; stationId: string; title: string }) => void;
+  onDungeonExited?: () => void;
   onDungeonStateChanged?: (info: {
     inDungeon: boolean;
     isMaze: boolean;
@@ -408,6 +422,13 @@ export interface WorldCallbacks {
     estate?: RemotePlayerEstateSummary | null;
   }) => void;
   onPoliceChaseStarted?: (officerId: string, x: number, y: number) => void;
+  onPoliceServerChaseReported?: (
+    mapId: MapId,
+    officerId: string,
+    x: number,
+    y: number,
+    durationMs: number,
+  ) => void;
   onVaultUnlocked?: (info: {
     mapId: MapId;
     containerId: string;
@@ -448,13 +469,22 @@ export class WorldScene {
   private readonly weatherParticles: WeatherParticles;
   private police: PoliceSystem;
   private readonly jailRoom: JailRoom;
-  private readonly dungeonRoom: DungeonRoom;
+  private dungeonRoom: DungeonRoom | null = null;
+  private dungeonRoomCtor: (typeof DungeonRoomModule)["DungeonRoom"] | null = null;
+  private dungeonGenMod: typeof DungeonGeneratorModule | null = null;
+  private dungeonModulesPromise: Promise<void> | null = null;
 
   private activeMapId: MapId;
   private readonly discoveredLandmarkIds = new Set<string>();
 
   private readonly lilypadSprites: Array<{ sprite: Sprite; x: number; y: number; phase: number }> = [];
-  private readonly propNodes: Array<{ node: Container; x: number; y: number }> = [];
+  private readonly propNodes: Array<{
+    node: Container;
+    prop: WorldProp;
+    x: number;
+    y: number;
+    occludable: OccludableProp | null;
+  }> = [];
   private pendingProps: WorldProp[] = [];
   private readonly foodCartProps: WorldProp[] = [];
   private readonly occludableProps: OccludableProp[] = [];
@@ -587,7 +617,6 @@ export class WorldScene {
     built: boolean;
   }> = [];
   private readonly worldCache = new Map<MapId, { data: WorldData; pathfinder: Pathfinder }>();
-  private prewarmTimerId: number | null = null;
 
   private camX: number;
   private camY: number;
@@ -606,6 +635,7 @@ export class WorldScene {
   private readonly keysDown = new Set<string>();
   private elapsed = 0;
   private refreshCheckAccumulator = 0;
+  private mapUnloadAccum = 0;
   private positionSaveAccumulator = 0;
   private survivalSaveAccumulator = 0;
   private faintRespawnCooldown = 0;
@@ -649,6 +679,9 @@ export class WorldScene {
   private dungeonCooldownUntil = 0;
   private dungeonTotalClears = 0;
   private dungeonRunsEntered = 0;
+  private bargeCooldownUntil = 0;
+  private bargeTotalClears = 0;
+  private bargeRunsEntered = 0;
   private ignoreUntilByOfficer: Record<string, number> = {};
   private globalPoliceIgnoreUntil = 0;
   private activePoliceChallengeOfficerId: string | null = null;
@@ -865,12 +898,15 @@ export class WorldScene {
     this.refreshPetFollower();
 
     this.police = new PoliceSystem(data, this.atlas, this.entityLayer);
+    this.attachPoliceHooks();
     this.jailRoom = new JailRoom(this.atlas);
-    this.dungeonRoom = new DungeonRoom(this.atlas);
     if (initialSave?.dungeon) {
       this.dungeonCooldownUntil = initialSave.dungeon.cooldownUntil ?? 0;
       this.dungeonTotalClears = initialSave.dungeon.totalClears ?? 0;
       this.dungeonRunsEntered = initialSave.dungeon.runsEntered ?? 0;
+      this.bargeCooldownUntil = initialSave.dungeon.bargeCooldownUntil ?? 0;
+      this.bargeTotalClears = initialSave.dungeon.bargeTotalClears ?? 0;
+      this.bargeRunsEntered = initialSave.dungeon.bargeRunsEntered ?? 0;
     }
 
     const savedPolice = initialSave?.policeState;
@@ -944,7 +980,6 @@ export class WorldScene {
       this.worldLightsContainer,
       this.atmosphere.screenOverlayLayer,
       this.jailRoom.container,
-      this.dungeonRoom.container,
     );
 
     this.atmosphere.resize(app.screen.width, app.screen.height);
@@ -957,14 +992,6 @@ export class WorldScene {
     }
     this.bindInputs();
     this.isSceneReady = true;
-
-    if (typeof window !== "undefined") {
-      const otherMapId: MapId = this.activeMapId === "vietnam" ? "japan" : "vietnam";
-      this.prewarmTimerId = window.setTimeout(() => {
-        this.prewarmTimerId = null;
-        this.getOrCreateWorld(otherMapId);
-      }, 1200);
-    }
   }
 
   public getSaveSnapshot(): PlayerGameSaveV3 {
@@ -1025,6 +1052,9 @@ export class WorldScene {
         cooldownUntil: this.dungeonCooldownUntil,
         totalClears: this.dungeonTotalClears,
         runsEntered: this.dungeonRunsEntered,
+        bargeCooldownUntil: this.bargeCooldownUntil,
+        bargeTotalClears: this.bargeTotalClears,
+        bargeRunsEntered: this.bargeRunsEntered,
       },
     };
   }
@@ -1234,6 +1264,7 @@ export class WorldScene {
     this.refreshPetFollower();
     this.syncEstateAndCollectionDisplay();
     this.police = new PoliceSystem(nextWorld, this.atlas, this.entityLayer);
+    this.attachPoliceHooks();
     this.atmosphere.rebuildForWorld(nextWorld);
 
     const landingCandidates: Array<[number, number]> =
@@ -1291,6 +1322,31 @@ export class WorldScene {
       this.entityLayer.addChild(rp.label);
       if (rp.petNode) this.entityLayer.addChild(rp.petNode);
     }
+  }
+
+  private attachPoliceHooks(): void {
+    this.police.setChaseReporter((officerId, x, y, durationMs) => {
+      this.callbacks.onPoliceServerChaseReported?.(
+        this.activeMapId,
+        officerId,
+        x,
+        y,
+        durationMs,
+      );
+    });
+  }
+
+  public getPoliceServerSeedPayload(): PoliceOfficerSeedSpec[] {
+    return this.police.getServerSeedPayload();
+  }
+
+  public applyServerPoliceSnapshots(
+    mapId: MapId,
+    rows: ServerPoliceOfficerSnapshot[],
+    serverNowMs: number,
+  ): void {
+    if (mapId !== this.activeMapId) return;
+    this.police.applyServerPoliceSnapshots(rows, serverNowMs);
   }
 
   public setServerClockOffsetMs(offsetMs: number): void {
@@ -1741,11 +1797,12 @@ export class WorldScene {
       displayRecord.height = sprite.height || 110;
       tag.position.set(0, -displayRecord.height * 0.94 - 8);
     };
-    const cachedTex = Assets.get<Texture>("estate-" + model.id);
+    const estateAlias = "estate-" + model.id;
+    const cachedTex = Assets.cache.has(estateAlias) ? Assets.get<Texture>(estateAlias) : null;
     if (cachedTex) {
       applyTex(cachedTex);
     } else {
-      void Assets.load<Texture>(withAssetHash(model.assetSrc)).then(applyTex);
+      void Assets.load<Texture>({ alias: estateAlias, src: withAssetHash(model.assetSrc) }).then(applyTex);
     }
 
     // Dựng toàn bộ vật phẩm đang trưng bày xoay quanh nóc nhà người chơi khác
@@ -1925,10 +1982,16 @@ export class WorldScene {
         this.dungeonCooldownUntil = save.dungeon.cooldownUntil ?? 0;
         this.dungeonTotalClears = save.dungeon.totalClears ?? 0;
         this.dungeonRunsEntered = save.dungeon.runsEntered ?? 0;
+        this.bargeCooldownUntil = save.dungeon.bargeCooldownUntil ?? 0;
+        this.bargeTotalClears = save.dungeon.bargeTotalClears ?? 0;
+        this.bargeRunsEntered = save.dungeon.bargeRunsEntered ?? 0;
       } else {
         this.dungeonCooldownUntil = 0;
         this.dungeonTotalClears = 0;
         this.dungeonRunsEntered = 0;
+        this.bargeCooldownUntil = 0;
+        this.bargeTotalClears = 0;
+        this.bargeRunsEntered = 0;
       }
       if (save.questBoard) {
         this.questBoard = save.questBoard;
@@ -2044,6 +2107,7 @@ export class WorldScene {
     this.syncEstateAndCollectionDisplay();
     this.refreshPetFollower();
     this.police = new PoliceSystem(nextWorld, this.atlas, this.entityLayer);
+    this.attachPoliceHooks();
     this.atmosphere.rebuildForWorld(nextWorld);
 
     this.player.clearPath();
@@ -3040,8 +3104,9 @@ export class WorldScene {
 
   public moveToWorldPoint(worldX: number, worldY: number, playSfx = true): void {
     if (this.isMovementLocked() || this.isInDungeonMaze()) return;
-    if (this.isInDungeon && this.activeDungeonRun) {
+    if (this.isInDungeon && this.activeDungeonRun && this.dungeonRoom) {
       const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+      if (!room) return;
       const clampedX = Math.max(0, Math.min(room.cols * TILE_SIZE, worldX));
       const clampedY = Math.max(0, Math.min(room.rows * TILE_SIZE, worldY));
       const path = this.dungeonRoom.pathfinder.findPath(
@@ -3254,19 +3319,31 @@ export class WorldScene {
     );
   }
 
-  public getDungeonStatus(): {
+  public getDungeonStatus(dungeonId: DungeonId = "hoang_thanh"): {
+    dungeonId: DungeonId;
     cooldownRemainingMs: number;
     totalClears: number;
     runsEntered: number;
     ticketCount: number;
     ticketPriceGold: number;
+    entryGoldCost: number;
+    bypassGoldCost: number;
+    requiresTicket: boolean;
   } {
+    const isBarge = dungeonId === "sand_barge";
     return {
-      cooldownRemainingMs: Math.max(0, this.dungeonCooldownUntil - Date.now()),
-      totalClears: this.dungeonTotalClears,
-      runsEntered: this.dungeonRunsEntered,
+      dungeonId,
+      cooldownRemainingMs: Math.max(
+        0,
+        (isBarge ? this.bargeCooldownUntil : this.dungeonCooldownUntil) - Date.now(),
+      ),
+      totalClears: isBarge ? this.bargeTotalClears : this.dungeonTotalClears,
+      runsEntered: isBarge ? this.bargeRunsEntered : this.dungeonRunsEntered,
       ticketCount: this.inventory.countItemAcrossZones(DUNGEON_TICKET_ITEM_ID).total,
       ticketPriceGold: DUNGEON_TICKET_PRICE_GOLD,
+      entryGoldCost: isBarge ? DUNGEON_TICKET_PRICE_GOLD : 0,
+      bypassGoldCost: 1000,
+      requiresTicket: !isBarge,
     };
   }
 
@@ -3334,6 +3411,17 @@ export class WorldScene {
       };
     }
     const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+    if (!room) {
+      return {
+        inDungeon: false,
+        isMaze: false,
+        roomTitle: "",
+        roomSubtitle: "",
+        chestsOpened: 0,
+        roomChestsRemaining: 0,
+        roomChestsTotal: 0,
+      };
+    }
     let roomChestsTotal = 0;
     let roomChestsRemaining = 0;
     for (const ch of room.chests) {
@@ -3356,32 +3444,99 @@ export class WorldScene {
     this.callbacks.onDungeonStateChanged?.(this.getActiveDungeonRoomInfo());
   }
 
-  public enterDungeon(payBypassGold = false): { ok: boolean; message: string } {
+  private preloadDungeonModules(): Promise<void> {
+    if (this.dungeonRoomCtor && this.dungeonGenMod) {
+      return Promise.resolve();
+    }
+    if (!this.dungeonModulesPromise) {
+      this.dungeonModulesPromise = Promise.all([
+        import("./dungeon/DungeonRoom.ts"),
+        import("./dungeon/DungeonGenerator.ts"),
+      ])
+        .then(([roomMod, genMod]) => {
+          this.dungeonRoomCtor = roomMod.DungeonRoom;
+          this.dungeonGenMod = genMod;
+        })
+        .catch((err) => {
+          this.dungeonModulesPromise = null;
+          throw err;
+        });
+    }
+    return this.dungeonModulesPromise;
+  }
+
+  public async enterDungeon(
+    dungeonId: DungeonId = "hoang_thanh",
+    payBypassGold = false,
+  ): Promise<{ ok: boolean; message: string }> {
+    const isBarge = dungeonId === "sand_barge";
+    const label = isBarge ? "Tàu Khai Thác Cát Sông Hồng" : "Địa Đạo Hoàng Thành";
     if (this.isMovementLocked() || this.isDetained() || this.isInJail || this.isInDungeon) {
-      return { ok: false, message: "Không thể bước xuống Địa Đạo lúc này." };
-    }
-    if (this.activeMapId !== "vietnam") {
-      return { ok: false, message: "Địa Đạo Hoàng Thành chỉ nằm tại bản đồ Hà Nội." };
-    }
-    if (this.inventory.countItemAcrossZones(DUNGEON_TICKET_ITEM_ID).total < 1) {
       return {
         ok: false,
-        message: "Cần 1 🎟️ Vé Tham Quan Địa Đạo để vào cổng! Hãy mua tại quầy vé ngay bên dưới hoặc tìm trong thành phố.",
+        message: isBarge ? "Không thể lên Tàu Khai Thác Cát lúc này." : "Không thể bước xuống Địa Đạo lúc này.",
       };
     }
-    const remMs = Math.max(0, this.dungeonCooldownUntil - Date.now());
-    if (remMs > 0) {
-      if (!payBypassGold) {
-        return { ok: false, message: "Địa Đạo đang đóng cửa hồi phục, hãy chờ hết thời gian hoặc dùng Vàng mở hầm sớm." };
-      }
-      if (!this.inventory.trySpendGold(1000)) {
-        return { ok: false, message: "Không đủ 1.000 Vàng để mở hầm sớm!" };
-      }
+    if (this.activeMapId !== "vietnam") {
+      return { ok: false, message: `${label} chỉ nằm tại bản đồ Hà Nội.` };
+    }
+    const remMs = Math.max(
+      0,
+      (isBarge ? this.bargeCooldownUntil : this.dungeonCooldownUntil) - Date.now(),
+    );
+    const bypassCost = remMs > 0 ? 1000 : 0;
+    if (remMs > 0 && !payBypassGold) {
+      return {
+        ok: false,
+        message: isBarge
+          ? "Tàu Cát đang reload 15 phút (lượt khai thác mới), hãy chờ hết thời gian hoặc trả thêm 1.000🪙 để lên tàu sớm."
+          : "Địa Đạo đang đóng cửa hồi phục, hãy chờ hết thời gian hoặc dùng Vàng mở hầm sớm.",
+      };
     }
 
-    this.inventory.consumeItemsPreferred(DUNGEON_TICKET_ITEM_ID, 1);
-    this.dungeonCooldownUntil = 0;
-    this.dungeonRunsEntered += 1;
+    await this.preloadDungeonModules();
+
+    // Re-check state after async module load to avoid race / double-spend
+    if (
+      this.isMovementLocked() ||
+      this.isDetained() ||
+      this.isInJail ||
+      this.isInDungeon ||
+      this.activeMapId !== "vietnam"
+    ) {
+      return {
+        ok: false,
+        message: isBarge ? "Không thể lên Tàu Khai Thác Cát lúc này." : "Không thể bước xuống Địa Đạo lúc này.",
+      };
+    }
+
+    if (isBarge) {
+      const totalGold = DUNGEON_TICKET_PRICE_GOLD + bypassCost;
+      if (!this.inventory.trySpendGold(totalGold)) {
+        return {
+          ok: false,
+          message:
+            bypassCost > 0
+              ? `Cần ${totalGold.toLocaleString("vi-VN")}🪙 (${DUNGEON_TICKET_PRICE_GOLD.toLocaleString("vi-VN")}🪙 phí lên tàu + 1.000🪙 lên sớm)!`
+              : `Cần ${totalGold.toLocaleString("vi-VN")}🪙 Vàng để đóng phí lên Tàu Khai Thác Cát!`,
+        };
+      }
+      this.bargeCooldownUntil = 0;
+      this.bargeRunsEntered += 1;
+    } else {
+      if (this.inventory.countItemAcrossZones(DUNGEON_TICKET_ITEM_ID).total < 1) {
+        return {
+          ok: false,
+          message: "Cần 1 🎟️ Vé Tham Quan Địa Đạo để vào cổng! Hãy mua tại quầy vé ngay bên dưới hoặc tìm trong thành phố.",
+        };
+      }
+      if (bypassCost > 0 && !this.inventory.trySpendGold(bypassCost)) {
+        return { ok: false, message: "Không đủ 1.000 Vàng để mở hầm sớm!" };
+      }
+      this.inventory.consumeItemsPreferred(DUNGEON_TICKET_ITEM_ID, 1);
+      this.dungeonCooldownUntil = 0;
+      this.dungeonRunsEntered += 1;
+    }
     if (this.estateInteractMode !== "none") {
       this.exitEstateInteractMode();
     }
@@ -3394,18 +3549,27 @@ export class WorldScene {
     this.isLootingContainerOpen = false;
     this.lootingCheckAccum = 0;
     this.inventory.clearTransientContainers();
-    this.dungeonRoom.disposeCurrentRoom(this.player);
+    if (this.dungeonRoom) {
+      this.dungeonRoom.destroy(this.player);
+      this.dungeonRoom = null;
+    }
 
-    const run = generateHanoiDungeonRun();
+    const RoomCtor = this.dungeonRoomCtor!;
+    const genMod = this.dungeonGenMod!;
+    const dungeonRoom = new RoomCtor(this.atlas);
+    this.dungeonRoom = dungeonRoom;
+    this.stageLayer.addChild(dungeonRoom.container);
+
+    const run = isBarge ? genMod.generateRedRiverBargeRun() : genMod.generateHanoiDungeonRun();
     this.activeDungeonRun = run;
     this.isInDungeon = true;
 
     this.worldContainer.visible = false;
     this.worldLightsContainer.visible = false;
     this.atmosphere.screenOverlayLayer.visible = false;
-    this.dungeonRoom.container.visible = true;
-    this.dungeonRoom.loadRoom(run.rooms.hub, this.player);
-    this.dungeonRoom.syncCameraTransform(
+    dungeonRoom.container.visible = true;
+    dungeonRoom.loadRoom(run.rooms.hub, this.player);
+    dungeonRoom.syncCameraTransform(
       this.app.screen.width,
       this.app.screen.height,
       this.player.x,
@@ -3416,11 +3580,16 @@ export class WorldScene {
     this.playPressSfx();
     this.emitDungeonState();
     this.callbacks.onRequestSave?.(true);
-    return { ok: true, message: "Đã bước vào Sảnh Địa Đạo Hoàng Thành Thăng Long!" };
+    return {
+      ok: true,
+      message: isBarge
+        ? "Đã trèo lên Boong Chính Tàu Khai Thác Cát Sông Hồng!"
+        : "Đã bước vào Sảnh Địa Đạo Hoàng Thành Thăng Long!",
+    };
   }
 
   public switchDungeonRoom(targetRoomId: DungeonRoomId): void {
-    if (!this.isInDungeon || !this.activeDungeonRun) return;
+    if (!this.isInDungeon || !this.activeDungeonRun || !this.dungeonRoom) return;
     const prevRoomId = this.activeDungeonRun.activeRoomId;
     const nextRoom: DungeonRoomLayout | undefined = this.activeDungeonRun.rooms[targetRoomId];
     if (!nextRoom) return;
@@ -3444,19 +3613,21 @@ export class WorldScene {
     // When returning to Hub from a room, spawn directly inside that directional corridor
     if (targetRoomId === "hub" && prevRoomId !== "hub") {
       const prevDir = this.activeDungeonRun.roomDirections[prevRoomId];
-      const returnSpawns: Record<
-        DungeonDirection,
-        { x: number; y: number; facing: FacingDir }
-      > = {
-        north: { x: 11 * TILE_SIZE, y: 4.4 * TILE_SIZE, facing: "down" },
-        south: { x: 11 * TILE_SIZE, y: 10.5 * TILE_SIZE, facing: "up" },
-        west: { x: 4.4 * TILE_SIZE, y: 7.4 * TILE_SIZE, facing: "right" },
-        east: { x: 17.6 * TILE_SIZE, y: 7.4 * TILE_SIZE, facing: "left" },
-      };
-      const pt = returnSpawns[prevDir];
-      this.player.position.set(pt.x, pt.y);
-      this.player.zIndex = pt.y;
-      this.player.setFacing(pt.facing);
+      if (prevDir) {
+        const returnSpawns: Record<
+          DungeonDirection,
+          { x: number; y: number; facing: FacingDir }
+        > = {
+          north: { x: 11 * TILE_SIZE, y: 4.4 * TILE_SIZE, facing: "down" },
+          south: { x: 11 * TILE_SIZE, y: 10.5 * TILE_SIZE, facing: "up" },
+          west: { x: 4.4 * TILE_SIZE, y: 7.4 * TILE_SIZE, facing: "right" },
+          east: { x: 17.6 * TILE_SIZE, y: 7.4 * TILE_SIZE, facing: "left" },
+        };
+        const pt = returnSpawns[prevDir];
+        this.player.position.set(pt.x, pt.y);
+        this.player.zIndex = pt.y;
+        this.player.setFacing(pt.facing);
+      }
     }
 
     this.dungeonRoom.syncCameraTransform(
@@ -3474,13 +3645,14 @@ export class WorldScene {
     if (!this.isInDungeon) {
       return { chestsOpened: 0, roomsCleared: 0 };
     }
+    const exitingDungeonId = this.activeDungeonRun?.dungeonId ?? "hoang_thanh";
     const chestsOpened = this.activeDungeonRun?.chestsOpenedCount ?? 0;
     const roomsCleared = this.activeDungeonRun?.roomsClearedCount ?? 0;
 
     this.isPointerDown = false;
     this.mazeStraightTarget = null;
-    this.dungeonRoom.disposeCurrentRoom(this.player);
-    this.dungeonRoom.container.visible = false;
+    this.dungeonRoom?.destroy(this.player);
+    this.dungeonRoom = null;
     this.isInDungeon = false;
     this.activeDungeonRun = null;
     this.activeDungeonStationId = null;
@@ -3488,8 +3660,8 @@ export class WorldScene {
     this.inventory.clearTransientContainers();
 
     this.entityLayer.addChild(this.player);
-    let outX = 58.5 * TILE_SIZE;
-    let outY = 36.2 * TILE_SIZE;
+    let outX = exitingDungeonId === "sand_barge" ? 91.5 * TILE_SIZE : 58.5 * TILE_SIZE;
+    let outY = exitingDungeonId === "sand_barge" ? 56.8 * TILE_SIZE : 36.2 * TILE_SIZE;
     if (!this.pathfinder.isWalkableWorld(outX, outY)) {
       outX = this.data.spawn.x;
       outY = this.data.spawn.y;
@@ -3511,13 +3683,22 @@ export class WorldScene {
     this.syncCameraTransform();
 
     if (died || chestsOpened > 0 || roomsCleared > 0) {
-      this.dungeonCooldownUntil = Date.now() + 15 * 60_000;
+      if (exitingDungeonId === "sand_barge") {
+        this.bargeCooldownUntil = Date.now() + 15 * 60_000;
+      } else {
+        this.dungeonCooldownUntil = Date.now() + 15 * 60_000;
+      }
     }
     if (!died && (chestsOpened > 0 || roomsCleared > 0)) {
-      this.dungeonTotalClears += 1;
+      if (exitingDungeonId === "sand_barge") {
+        this.bargeTotalClears += 1;
+      } else {
+        this.dungeonTotalClears += 1;
+      }
     }
 
     this.emitDungeonState();
+    this.callbacks.onDungeonExited?.();
     this.callbacks.onRequestSave?.(true);
     return { chestsOpened, roomsCleared };
   }
@@ -3537,6 +3718,9 @@ export class WorldScene {
     }
 
     const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+    if (!room) {
+      return { hpAfter: this.survival.hp, fainted: false };
+    }
     if (room.station && room.station.id === stationId) {
       room.station.attempted = true;
     }
@@ -3550,20 +3734,25 @@ export class WorldScene {
         room.chests[i].revealedInRoom = i < revealCount;
       }
       this.activeDungeonRun.roomsClearedCount += 1;
-      this.dungeonRoom.refreshRoomObjects(room);
+      this.dungeonRoom?.refreshRoomObjects(room);
       this.advanceMinigameQuests(1);
       this.playPressSfx();
 
       let bonusMessage = `Đã mở khóa ${revealCount} rương báu trong phòng!`;
-      if (kind === "peanut_steal") {
-        this.survival.hunger = Math.min(100, this.survival.hunger + 25);
+      if (kind === "peanut_steal" || kind === "beer_boss") {
         const maxStam = getActiveStaminaMax(
           this.survival,
           Date.now(),
           this.getTotalPermanentStaminaBonusPct(),
         );
-        this.survival.stamina = Math.min(maxStam, this.survival.stamina + 20);
-        bonusMessage = `Ăn no (+25 Đói, +20 Thể lực) & mở khóa ${revealCount} rương báu!`;
+        if (kind === "peanut_steal") {
+          this.survival.hunger = Math.min(100, this.survival.hunger + 25);
+          this.survival.stamina = Math.min(maxStam, this.survival.stamina + 20);
+          bonusMessage = `Ăn no (+25 Đói, +20 Thể lực) & mở khóa ${revealCount} rương báu!`;
+        } else {
+          this.survival.stamina = Math.min(maxStam, this.survival.stamina + 15);
+          bonusMessage = `Giải khát bia hơi (+15 Thể lực) & mở khóa ${revealCount} rương báu!`;
+        }
       }
 
       this.emitDungeonState();
@@ -3571,15 +3760,21 @@ export class WorldScene {
       return { hpAfter: this.survival.hp, fainted: false, bonusMessage };
     }
 
+    const FAINT_REASONS: Record<DungeonMinigameKind, string> = {
+      peanut_steal: "bị Quan Lớn gõ đầu ngất xỉu",
+      coin_sort: "kiệt sức trong Xưởng Sàng Lọc Xu",
+      beer_boss: "quá chén trên Tàu Khai Thác Cát",
+      boat_row: "lật thuyền trôi dạt giữa dòng Sông Hồng",
+      raft_signs: "bước hụt bè phao rơi xuống sông sâu",
+    };
+
     const dmg = Math.max(0, Math.round(hpDamage));
     if (dmg > 0) {
       this.survival.hp = Math.max(0, this.survival.hp - dmg);
       if (this.survival.hp <= 0) {
         this.exitDungeonToOverworld(true);
         this.triggerHospitalFaint(
-          kind === "peanut_steal"
-            ? "bị Quan Lớn gõ đầu ngất xỉu"
-            : "kiệt sức trong Xưởng Sàng Lọc Xu",
+          FAINT_REASONS[kind],
           this.weatherService.getEnvironmentState(),
           true,
         );
@@ -3587,7 +3782,7 @@ export class WorldScene {
       }
     }
 
-    this.dungeonRoom.refreshRoomObjects(room);
+    this.dungeonRoom?.refreshRoomObjects(room);
     this.callbacks.onRequestSave?.(true);
     return { hpAfter: this.survival.hp, fainted: false };
   }
@@ -3863,6 +4058,7 @@ export class WorldScene {
 
     if (v.containerId.startsWith("dungeon_") && this.isInDungeon && this.activeDungeonRun) {
       const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+      if (!room) return;
       const ch = room.chests.find((c) => c.id === v.containerId);
       const container = this.inventory.openOrGenerateDungeonContainer(
         v.containerId,
@@ -3875,7 +4071,7 @@ export class WorldScene {
         }
         ch.locked = false;
         ch.opened = true;
-        this.dungeonRoom.refreshRoomObjects(room);
+        this.dungeonRoom?.refreshRoomObjects(room);
       }
       this.playPressSfx();
       this.advanceMinigameQuests(1);
@@ -4066,7 +4262,7 @@ export class WorldScene {
       };
     }
 
-    if (this.isInDungeon && this.activeDungeonRun) {
+    if (this.isInDungeon && this.activeDungeonRun && this.dungeonRoom) {
       const hit = this.dungeonRoom.getNearbyInteractable(this.player.x, this.player.y);
       if (!hit) return null;
       if (hit.type === "station") {
@@ -4095,6 +4291,7 @@ export class WorldScene {
         };
       }
       const activeRoom = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+      if (!activeRoom) return null;
       const portalLabel =
         activeRoom.station && !activeRoom.station.cleared && !activeRoom.station.attempted && hit.portal.targetRoom === "hub"
           ? "🩸 Phá Phong Ấn Quay Lại (-60 HP) [E]"
@@ -4316,6 +4513,7 @@ export class WorldScene {
         return {
           type: "dungeon_entrance",
           name: meta.name,
+          dungeonId: kind === "vn_dungeon_sand_barge" ? "sand_barge" : "hoang_thanh",
         };
       }
 
@@ -4360,9 +4558,10 @@ export class WorldScene {
 
     if (this.isInJail) return false;
 
-    if (this.isInDungeon && this.activeDungeonRun) {
+    if (this.isInDungeon && this.activeDungeonRun && this.dungeonRoom) {
       if (target.type === "dungeon_portal") {
         const activeRoom = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+        if (!activeRoom) return false;
         if (activeRoom.station && !activeRoom.station.cleared && !activeRoom.station.attempted && target.targetRoom === "hub") {
           this.mazeStraightTarget = null;
           this.player.clearPath();
@@ -4384,7 +4583,7 @@ export class WorldScene {
       }
       if (target.type === "dungeon_station") {
         const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
-        if (!room.station || room.station.cleared || room.station.attempted) return false;
+        if (!room || !room.station || room.station.cleared || room.station.attempted) return false;
         this.activeDungeonStationId = target.stationId;
         this.activeDungeonMinigameKind = target.kind;
         this.player.clearPath();
@@ -4399,6 +4598,7 @@ export class WorldScene {
       }
       if (target.type === "dungeon_chest") {
         const room = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+        if (!room) return false;
         const ch = room.chests.find((c) => c.id === target.chestId);
         if (!ch || !ch.revealedInRoom) return false;
         if (ch.locked && !ch.opened) {
@@ -4427,7 +4627,7 @@ export class WorldScene {
         if (!ch.opened) {
           ch.opened = true;
           this.activeDungeonRun.chestsOpenedCount += 1;
-          this.dungeonRoom.refreshRoomObjects(room);
+          this.dungeonRoom?.refreshRoomObjects(room);
           this.emitDungeonState();
           this.callbacks.onRequestSave?.(false);
         }
@@ -4450,7 +4650,8 @@ export class WorldScene {
       this.player.clearPath();
       this.player.setManualDirection(0, 0);
       this.playPressSfx();
-      this.callbacks.onOpenDungeonLobby?.();
+      void this.preloadDungeonModules();
+      this.callbacks.onOpenDungeonLobby?.(target.dungeonId);
       return true;
     }
 
@@ -4668,7 +4869,7 @@ export class WorldScene {
       this.mazeStraightTarget = null;
       this.mazeLookAngle = Math.atan2(ky, kx);
       this.player.setManualDirection(kx, ky);
-    } else if (this.isInDungeonMaze() && this.mazeStraightTarget) {
+    } else if (this.isInDungeonMaze() && this.mazeStraightTarget && this.dungeonRoom) {
       const dx = this.mazeStraightTarget.x - this.player.x;
       const dy = this.mazeStraightTarget.y - this.player.y;
       const dist = Math.hypot(dx, dy);
@@ -4727,8 +4928,9 @@ export class WorldScene {
       return;
     }
 
-    if (this.isInDungeon && this.activeDungeonRun) {
+    if (this.isInDungeon && this.activeDungeonRun && this.dungeonRoom) {
       const activeDungeonRoom = this.activeDungeonRun.rooms[this.activeDungeonRun.activeRoomId];
+      if (!activeDungeonRoom) return;
       const hadStraightTarget = activeDungeonRoom.isMaze && this.mazeStraightTarget !== null;
       const prevPx = this.player.x;
       const prevPy = this.player.y;
@@ -4767,19 +4969,20 @@ export class WorldScene {
         }
       }
 
+      const isSandBarge = this.activeDungeonRun.dungeonId === "sand_barge";
       const undergroundEnv: EnvironmentState = {
         ...baseEnv,
-        temperatureC: 19,
-        sunIntensity: 0,
+        temperatureC: isSandBarge ? Math.round(baseEnv.temperatureC) : 19,
+        sunIntensity: isSandBarge ? 0.35 : 0,
         rainIntensity: 0,
         snowIntensity: 0,
         dustIntensity: 0,
-        windSpeedKmh: 2,
-        windIntensity: 0.1,
-        humidityPct: 68,
-        nightFactor: 0.9,
+        windSpeedKmh: isSandBarge ? Math.max(8, baseEnv.windSpeedKmh) : 2,
+        windIntensity: isSandBarge ? Math.max(0.35, baseEnv.windIntensity) : 0.1,
+        humidityPct: isSandBarge ? 78 : 68,
+        nightFactor: isSandBarge ? baseEnv.nightFactor * 0.45 : 0.9,
         condition: "cloudy",
-        conditionLabel: "Địa Đạo Cổ",
+        conditionLabel: isSandBarge ? "Giữa Sông Hồng" : "Địa Đạo Cổ",
       };
       if (!this.isMovementLocked() && !this.isLootingContainerOpen) {
         this.stepPendingConsume(dt);
@@ -5052,8 +5255,12 @@ export class WorldScene {
 
     this.atmosphere.update(dt, env, this.player.x, this.player.y, this.camX, this.worldContainer, viewBounds);
     this.weatherParticles.update(dt, env, viewBounds);
-    this.streamNextTerrainChunks(2);
-    this.streamNextProps(24);
+    this.mapUnloadAccum += dt;
+    if (this.mapUnloadAccum >= 1.5) {
+      this.mapUnloadAccum = 0;
+      this.unloadDistantMapResources();
+      this.prewarmNearbyDungeonIfClose();
+    }
     this.updateCollectionOrbit();
     this.updatePetFollower(dt);
   }
@@ -5137,10 +5344,6 @@ export class WorldScene {
   }
 
   public destroy(): void {
-    if (this.prewarmTimerId !== null) {
-      window.clearTimeout(this.prewarmTimerId);
-      this.prewarmTimerId = null;
-    }
     this.weatherService.stop();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
@@ -5356,24 +5559,77 @@ export class WorldScene {
     }
   }
 
-  private streamNextTerrainChunks(budget = 2): void {
-    let remaining = budget;
-    while (remaining > 0) {
-      let bestChunk: (typeof this.terrainChunks)[number] | null = null;
-      let bestDistSq = Number.POSITIVE_INFINITY;
-      for (const ch of this.terrainChunks) {
-        if (ch.built) continue;
-        const cx = (ch.minX + ch.maxX) * 0.5;
-        const cy = (ch.minY + ch.maxY) * 0.5;
-        const dSq = (cx - this.camX) ** 2 + (cy - this.camY) ** 2;
-        if (dSq < bestDistSq) {
-          bestDistSq = dSq;
-          bestChunk = ch;
+  private prewarmNearbyDungeonIfClose(): void {
+    if (this.activeMapId !== "vietnam" || this.isInDungeon || this.isInJail) return;
+    const dHoangThanh = Math.hypot(
+      this.player.x - 58.5 * TILE_SIZE,
+      this.player.y - 36.2 * TILE_SIZE,
+    );
+    const dSandBarge = Math.hypot(
+      this.player.x - 91.5 * TILE_SIZE,
+      this.player.y - 56.8 * TILE_SIZE,
+    );
+    if (dHoangThanh <= 900 || dSandBarge <= 900) {
+      void this.preloadDungeonModules();
+      if (dHoangThanh <= 900) {
+        void this.atlas.ensureBuildingTexture("vn_dungeon_hoang_thanh");
+      }
+      if (dSandBarge <= 900) {
+        void this.atlas.ensureBuildingTexture("vn_dungeon_sand_barge");
+      }
+    }
+  }
+
+  private unloadDistantMapResources(): void {
+    const chunkMaxDistSq = 2200 * 2200;
+    for (const ch of this.terrainChunks) {
+      if (!ch.built || ch.node.visible) continue;
+      const cx = (ch.minX + ch.maxX) * 0.5;
+      const cy = (ch.minY + ch.maxY) * 0.5;
+      const dSq = (cx - this.camX) ** 2 + (cy - this.camY) ** 2;
+      if (dSq > chunkMaxDistSq) {
+        const oldChildren = ch.node.removeChildren();
+        for (const child of oldChildren) {
+          child.destroy({ children: true });
+        }
+        ch.built = false;
+      }
+    }
+
+    const propMaxDistSq = 2400 * 2400;
+    for (let i = this.propNodes.length - 1; i >= 0; i--) {
+      const pn = this.propNodes[i];
+      if (pn.node.visible) continue;
+      if (
+        pn.node === this.estateHouseContainer ||
+        pn.node === this.homeHousePropContainer ||
+        pn.node === this.collectionHallPropContainer
+      ) {
+        continue;
+      }
+      const dSq = (pn.x - this.camX) ** 2 + (pn.y - this.camY) ** 2;
+      if (dSq <= propMaxDistSq) continue;
+
+      if (pn.occludable) {
+        const occIdx = this.occludableProps.indexOf(pn.occludable);
+        if (occIdx !== -1) {
+          this.occludableProps.splice(occIdx, 1);
+        }
+        const bldIdx = this.buildingOccludables.indexOf(pn.occludable);
+        if (bldIdx !== -1) {
+          this.buildingOccludables.splice(bldIdx, 1);
         }
       }
-      if (!bestChunk) break;
-      this.populateTerrainChunk(bestChunk);
-      remaining--;
+      pn.node.removeFromParent();
+      pn.node.destroy({ children: true });
+      const lastIdx = this.propNodes.length - 1;
+      this.propNodes[i] = this.propNodes[lastIdx];
+      this.propNodes.pop();
+      this.pendingProps.push(pn.prop);
+
+      if (isBuildingProp(pn.prop.kind) && isDungeonPropKind(pn.prop.kind) && !this.isInDungeon) {
+        void this.atlas.unloadLazyAlias(getBuildingAssetAlias(pn.prop.kind));
+      }
     }
   }
 
@@ -5972,25 +6228,25 @@ export class WorldScene {
   }
 
   private mountPropNode(prop: WorldProp): void {
-    const node = this.createPropSprite(prop);
+    const { container, occludable } = this.createPropSprite(prop);
     const halfW = this.app.screen.width / (2 * Math.max(0.6, this.zoom));
     const halfH = this.app.screen.height / (2 * Math.max(0.6, this.zoom));
-    node.visible =
+    container.visible =
       prop.x >= this.camX - halfW - TILE_SIZE - 240 &&
       prop.x <= this.camX + halfW + TILE_SIZE + 240 &&
       prop.y >= this.camY - halfH - TILE_SIZE - 80 &&
       prop.y <= this.camY + halfH + TILE_SIZE + 380;
-    this.entityLayer.addChild(node);
-    this.propNodes.push({ node, x: prop.x, y: prop.y });
+    this.entityLayer.addChild(container);
+    this.propNodes.push({ node: container, prop, x: prop.x, y: prop.y, occludable });
   }
 
   private buildPropsAndBuildings(): void {
     const halfViewW = this.app.screen.width / (2 * Math.max(0.6, this.zoom));
     const halfViewH = this.app.screen.height / (2 * Math.max(0.6, this.zoom));
-    const minX = this.camX - halfViewW - 360;
-    const maxX = this.camX + halfViewW + 360;
-    const minY = this.camY - halfViewH - 360;
-    const maxY = this.camY + halfViewH + 360;
+    const minX = this.camX - halfViewW - 420;
+    const maxX = this.camX + halfViewW + 420;
+    const minY = this.camY - halfViewH - 280;
+    const maxY = this.camY + halfViewH + 460;
 
     this.pendingProps = [];
     for (const prop of this.data.props) {
@@ -6000,34 +6256,18 @@ export class WorldScene {
       const inInitialView = prop.x >= minX && prop.x <= maxX && prop.y >= minY && prop.y <= maxY;
       if (
         inInitialView ||
-        isBuildingProp(prop.kind) ||
-        prop.kind === "food_cart" ||
-        prop.kind === "jp_vending_machine"
+        prop.kind === "city_home_house" ||
+        prop.kind === "city_collection_hall" ||
+        prop.kind === "city_player_estate"
       ) {
         this.mountPropNode(prop);
       } else {
         this.pendingProps.push(prop);
       }
     }
-
-    // Sort descending by squared distance so .pop() yields nearest prop in O(1)
-    this.pendingProps.sort((a, b) => {
-      const da = (a.x - this.camX) ** 2 + (a.y - this.camY) ** 2;
-      const db = (b.x - this.camX) ** 2 + (b.y - this.camY) ** 2;
-      return db - da;
-    });
   }
 
-  private streamNextProps(budget = 24): void {
-    let count = budget;
-    while (count > 0 && this.pendingProps.length > 0) {
-      const prop = this.pendingProps.pop()!;
-      this.mountPropNode(prop);
-      count--;
-    }
-  }
-
-  private createPropSprite(prop: WorldProp): Container {
+  private createPropSprite(prop: WorldProp): { container: Container; occludable: OccludableProp | null } {
     const container = new Container();
     container.x = prop.x;
     container.y = prop.y;
@@ -6069,8 +6309,6 @@ export class WorldScene {
       sprite.tint = 0xff784f;
     }
 
-    // Buildings include a flat oval courtyard at the bottom ~22% of the sprite;
-    // lift zIndex to the actual wall line so player stands cleanly on top of the front lawn!
     const depthY = isBld ? prop.y - sprite.height * 0.22 : prop.y;
     container.zIndex = depthY;
 
@@ -6104,6 +6342,7 @@ export class WorldScene {
       city_hospital: { text: "🏥 BỆNH VIỆN", color: 0xfecdd3 },
       city_police_station: { text: "🚓 CÔNG AN PHƯỜNG", color: 0x93c5fd },
       vn_dungeon_hoang_thanh: { text: "🏯 ĐỊA ĐẠO HOÀNG THÀNH", color: 0xfbbf24 },
+      vn_dungeon_sand_barge: { text: "🚢 TÀU CÁT SÔNG HỒNG (3.000🪙)", color: 0x38bdf8 },
     };
 
     const JP_SERVICE_SIGNS: Partial<Record<PropKind, { text: string; color: number }>> = {
@@ -6127,9 +6366,10 @@ export class WorldScene {
       city_police_station: { text: "🚓 ĐỒN CẢNH SÁT KOBAN", color: 0x93c5fd },
     };
 
+    let tag: Text | null = null;
     const signMeta = (isJapan ? JP_SERVICE_SIGNS[prop.kind] : undefined) ?? SERVICE_SIGNS[prop.kind];
     if (signMeta) {
-      const tag = new Text({
+      tag = new Text({
         text: signMeta.text,
         style: {
           fontFamily: "system-ui, -apple-system, sans-serif",
@@ -6221,7 +6461,40 @@ export class WorldScene {
       this.syncEstateAndCollectionDisplay();
     }
 
-    return container;
+    if (!tex || tex === Texture.EMPTY) {
+      const loader = overrideKind
+        ? this.atlas.ensureBuildingTexture(overrideKind)
+        : this.atlas.ensurePropTexture(prop.kind);
+      void loader.then((loaded) => {
+        if (container.destroyed || sprite.destroyed || !loaded || loaded === Texture.EMPTY) return;
+        sprite.texture = loaded;
+        const nextDepthY = isBld ? prop.y - sprite.height * 0.22 : prop.y;
+        container.zIndex = nextDepthY;
+        const nextShadowW = Math.max(18, sprite.width * 0.42);
+        shadow.width = nextShadowW * 2;
+        shadow.height = Math.max(7, nextShadowW * 0.25) * 2;
+        if (tag && prop.kind !== "city_player_estate") {
+          tag.position.set(0, -sprite.height * 0.94 - 4);
+        }
+        if (entry) {
+          entry.depthY = nextDepthY;
+          if (prop.kind !== "city_player_estate") {
+            entry.topY = prop.y - sprite.height * 0.94;
+            entry.halfW = sprite.width * 0.44;
+          }
+        }
+        if (prop.kind === "city_collection_hall" && !this.estate.houseId) {
+          this.collectionOrbitHost = {
+            x: prop.x,
+            y: prop.y,
+            height: sprite.height,
+            depthY: nextDepthY,
+          };
+        }
+      });
+    }
+
+    return { container, occludable: entry };
   }
 
   private getOrbitTexture(src: string): Promise<Texture> {
@@ -6686,11 +6959,12 @@ export class WorldScene {
       const rawW = tex.width || 100;
       this.estateGhostSprite.scale.set(Math.min(1.0, maxLotW / rawW));
     };
-    const cachedTex = Assets.get<Texture>("estate-" + model.id);
+    const estateAlias = "estate-" + model.id;
+    const cachedTex = Assets.cache.has(estateAlias) ? Assets.get<Texture>(estateAlias) : null;
     if (cachedTex) {
       applyGhostTex(cachedTex);
     } else {
-      void Assets.load<Texture>(assetHashed).then(applyGhostTex);
+      void Assets.load<Texture>({ alias: estateAlias, src: assetHashed }).then(applyGhostTex);
     }
 
     this.refreshEstateOverlays();
@@ -7230,11 +7504,12 @@ export class WorldScene {
         };
 
         const assetHashed = withAssetHash(houseModel.assetSrc);
-        const cachedTex = Assets.get<Texture>("estate-" + houseModel.id);
+        const estateAlias = "estate-" + houseModel.id;
+        const cachedTex = Assets.cache.has(estateAlias) ? Assets.get<Texture>(estateAlias) : null;
         if (cachedTex) {
           applySpriteTextureAndScale(cachedTex);
         } else {
-          void Assets.load<Texture>(assetHashed).then((tex) => {
+          void Assets.load<Texture>({ alias: estateAlias, src: assetHashed }).then((tex) => {
             applySpriteTextureAndScale(tex);
           });
         }
@@ -8178,9 +8453,13 @@ export class WorldScene {
     const propMaxY = maxVisibleY + 380;
 
     if (this.pendingProps.length > 0) {
+      const mountMinX = propMinX - 180;
+      const mountMaxX = propMaxX + 180;
+      const mountMinY = propMinY - 140;
+      const mountMaxY = propMaxY + 180;
       for (let i = this.pendingProps.length - 1; i >= 0; i--) {
         const p = this.pendingProps[i];
-        if (p.x >= propMinX && p.x <= propMaxX && p.y >= propMinY && p.y <= propMaxY) {
+        if (p.x >= mountMinX && p.x <= mountMaxX && p.y >= mountMinY && p.y <= mountMaxY) {
           const lastIdx = this.pendingProps.length - 1;
           this.pendingProps[i] = this.pendingProps[lastIdx];
           this.pendingProps.pop();
@@ -8256,7 +8535,7 @@ export class WorldScene {
       const res = this.app.renderer.resolution || 1;
       if (this.isInJail) {
         this.jailRoom.syncCameraTransform(width, height, this.player.x, this.player.y, res);
-      } else if (this.isInDungeon) {
+      } else if (this.isInDungeon && this.dungeonRoom) {
         this.dungeonRoom.syncCameraTransform(width, height, this.player.x, this.player.y, res);
       }
     });
@@ -8267,11 +8546,12 @@ export class WorldScene {
   }
 
   private readonly onPointerDown = (e: FederatedPointerEvent): void => {
-    const targetContainer = this.isInDungeon
-      ? this.dungeonRoom.container
-      : this.isInJail
-        ? this.jailRoom.container
-        : this.worldContainer;
+    const targetContainer =
+      this.isInDungeon && this.dungeonRoom
+        ? this.dungeonRoom.container
+        : this.isInJail
+          ? this.jailRoom.container
+          : this.worldContainer;
     const worldPos = targetContainer.toLocal(e.global);
 
     if (!this.isInJail && !this.isInDungeon && this.estateInteractMode !== "none") {
@@ -8301,7 +8581,7 @@ export class WorldScene {
         return;
       }
     }
-    if (this.isInDungeon && !this.isMovementLocked()) {
+    if (this.isInDungeon && this.dungeonRoom && !this.isMovementLocked()) {
       const hit = this.dungeonRoom.getInteractableAtPoint(worldPos.x, worldPos.y);
       if (this.isInDungeonMaze() && this.activeDungeonRun) {
         if (hit) {
@@ -8317,6 +8597,7 @@ export class WorldScene {
           }
         }
         const mazeRoom = this.activeDungeonRun.rooms.room_maze;
+        if (!mazeRoom) return;
         const clampedX = Math.max(TILE_SIZE, Math.min(mazeRoom.cols * TILE_SIZE - TILE_SIZE, worldPos.x));
         const clampedY = Math.max(TILE_SIZE, Math.min(mazeRoom.rows * TILE_SIZE - TILE_SIZE, worldPos.y));
         this.mazeStraightTarget = { x: clampedX, y: clampedY };
@@ -8343,11 +8624,12 @@ export class WorldScene {
   };
 
   private readonly onPointerMove = (e: FederatedPointerEvent): void => {
-    const targetContainer = this.isInDungeon
-      ? this.dungeonRoom.container
-      : this.isInJail
-        ? this.jailRoom.container
-        : this.worldContainer;
+    const targetContainer =
+      this.isInDungeon && this.dungeonRoom
+        ? this.dungeonRoom.container
+        : this.isInJail
+          ? this.jailRoom.container
+          : this.worldContainer;
     const worldPos = targetContainer.toLocal(e.global);
 
     if (!this.isInJail && !this.isInDungeon && this.estateInteractMode !== "none") {
@@ -8382,6 +8664,7 @@ export class WorldScene {
     if (!this.isPointerDown) return;
     if (this.isInDungeonMaze() && this.activeDungeonRun) {
       const mazeRoom = this.activeDungeonRun.rooms.room_maze;
+      if (!mazeRoom) return;
       const clampedX = Math.max(TILE_SIZE, Math.min(mazeRoom.cols * TILE_SIZE - TILE_SIZE, worldPos.x));
       const clampedY = Math.max(TILE_SIZE, Math.min(mazeRoom.rows * TILE_SIZE - TILE_SIZE, worldPos.y));
       this.mazeStraightTarget = { x: clampedX, y: clampedY };

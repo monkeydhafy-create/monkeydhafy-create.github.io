@@ -102,6 +102,10 @@ export class ArcadeMinigameController {
     this.timeoutIds = [];
     this.triggerActionFn = null;
     this.actionBtn = null;
+    for (const cv of this.opts.boardEl.querySelectorAll("canvas")) {
+      cv.width = 0;
+      cv.height = 0;
+    }
     this.opts.boardEl.replaceChildren();
   }
 
