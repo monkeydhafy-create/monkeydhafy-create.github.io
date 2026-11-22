@@ -1415,6 +1415,10 @@ export class WorldScene {
     this.callbacks.onRequestSave?.(true);
   }
 
+  private getPlayerLabelOffsetY(surface: SurfaceState): number {
+    return surface === "swim" ? 62 : surface === "wade" ? 69 : 72;
+  }
+
   public syncRemotePlayers(
     appearances: Map<string, RemotePlayerAppearance>,
     moves: Map<string, RemotePlayerMovePacket>,
@@ -1459,7 +1463,15 @@ export class WorldScene {
         const initY = move?.y ?? appData.y ?? this.player.y;
         const actor = new Player(initX, initY, this.atlas, {
           getSurfaceAt: (wx, wy) => this.getSurfaceAt(wx, wy),
-          onWaterStep: () => {},
+          onWaterStep: (wx, wy, mode) => {
+            if (
+              !this.isInJail &&
+              !this.isInDungeon &&
+              Math.hypot(wx - this.camX, wy - this.camY) <= 760
+            ) {
+              this.spawnWaterStepEffect(wx, wy, mode);
+            }
+          },
         });
         actor.alpha = 0.92;
         const label = new Text({
@@ -1472,7 +1484,7 @@ export class WorldScene {
           },
         });
         label.anchor.set(0.5, 1);
-        label.position.set(initX, initY - 72);
+        label.position.set(initX, initY - this.getPlayerLabelOffsetY(actor.getSurfaceState()));
         label.zIndex = initY + 1;
         this.entityLayer.addChild(actor);
         this.entityLayer.addChild(label);
@@ -1870,7 +1882,10 @@ export class WorldScene {
         rp.targetY += rp.vy * dt;
       }
       rp.actor.syncRemotePose(rp.targetX, rp.targetY, rp.facing, rp.isMoving, dt);
-      rp.label.position.set(rp.actor.x, rp.actor.y - 72);
+      rp.label.position.set(
+        rp.actor.x,
+        rp.actor.y - this.getPlayerLabelOffsetY(rp.actor.getSurfaceState()),
+      );
       rp.label.zIndex = rp.actor.y + 1;
 
       if (rp.petNode && rp.petSprite) {

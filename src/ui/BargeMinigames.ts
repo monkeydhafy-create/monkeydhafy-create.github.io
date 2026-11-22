@@ -1211,7 +1211,8 @@ export function mountBoatRowMinigame(host: DungeonMinigameMountHost): void {
     syncCueButtons();
   };
 
-  for (const act of ALL_ACTIONS) {
+  const BUTTON_ORDER: readonly RowAction[] = ["pull", "left", "brace", "right"];
+  for (const act of BUTTON_ORDER) {
     const m = ACTION_META[act];
     const btn = document.createElement("button");
     btn.type = "button";

@@ -8967,17 +8967,44 @@ button {
 }
 
 .dm-action-row.dm-quad-actions {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    ". up ."
+    "left down right";
+  gap: 7px;
+  max-width: 396px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .dm-action-row.dm-quad-actions .dm-action-btn {
-  min-height: 58px;
-  font-size: 11.5px;
-  padding: 6px 4px;
-  border-radius: 11px;
+  min-height: 54px;
+  font-size: 12px;
+  padding: 6px;
+  border-radius: 12px;
   text-align: center;
   line-height: 1.15;
+  box-shadow: 0 3px 0 rgba(2, 6, 23, 0.55);
+}
+
+.dm-action-row.dm-quad-actions .dm-action-btn:active:not(:disabled) {
+  transform: translateY(2px) scale(0.97);
+}
+
+.dm-action-row.dm-quad-actions .dm-action-btn.is-pull {
+  grid-area: up;
+}
+
+.dm-action-row.dm-quad-actions .dm-action-btn.is-primary {
+  grid-area: left;
+}
+
+.dm-action-row.dm-quad-actions .dm-action-btn.is-brace {
+  grid-area: down;
+}
+
+.dm-action-row.dm-quad-actions .dm-action-btn.is-accent {
+  grid-area: right;
 }
 
 .dm-action-btn.is-cue-active {

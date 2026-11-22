@@ -139,6 +139,8 @@ export class Player extends Container {
       this.statusGfx,
     );
 
+    this.surfaceState = this.callbacks.getSurfaceAt(startX, startY);
+    this.applySurfaceVisuals(false);
     this.refreshTexture();
   }
 
@@ -223,6 +225,36 @@ export class Player extends Container {
     );
   }
 
+  private updateSurfaceFromPosition(): void {
+    const nextSurface = this.callbacks.getSurfaceAt(this.x, this.y);
+    if (nextSurface !== this.surfaceState) {
+      this.surfaceState = nextSurface;
+      if (nextSurface === "wade" || nextSurface === "swim") {
+        this.callbacks.onWaterStep(this.x, this.y, nextSurface);
+        this.waterRippleTimer = 0;
+      }
+    }
+  }
+
+  private stepWaterRipples(dt: number, movingNow: boolean): void {
+    if (movingNow) {
+      if (this.surfaceState === "wade" || this.surfaceState === "swim") {
+        this.waterRippleTimer += dt;
+        const interval = this.surfaceState === "swim" ? 0.22 : 0.18;
+        if (this.waterRippleTimer >= interval) {
+          this.waterRippleTimer = 0;
+          this.callbacks.onWaterStep(this.x, this.y, this.surfaceState);
+        }
+      }
+    } else if (this.surfaceState === "swim") {
+      this.waterRippleTimer += dt;
+      if (this.waterRippleTimer >= 0.75) {
+        this.waterRippleTimer = 0;
+        this.callbacks.onWaterStep(this.x, this.y, "swim");
+      }
+    }
+  }
+
   public syncRemotePose(
     targetX: number,
     targetY: number,
@@ -243,8 +275,9 @@ export class Player extends Container {
     }
     this.zIndex = this.y;
     this.facing = facing;
-    this.surfaceState = this.callbacks.getSurfaceAt(this.x, this.y);
-    if (isMoving || dist > 2.5) {
+    const movingNow = isMoving || dist > 2.5;
+    this.updateSurfaceFromPosition();
+    if (movingNow) {
       this.animElapsed += dt;
       const cycleDur = this.surfaceState === "swim" ? 0.85 : 0.64;
       const step = Math.floor((this.animElapsed % cycleDur) / (cycleDur / 8));
@@ -253,6 +286,8 @@ export class Player extends Container {
       this.animElapsed = 0;
       this.animFrame = 0;
     }
+    this.stepWaterRipples(dt, movingNow);
+    this.applySurfaceVisuals(movingNow);
     this.refreshTexture();
   }
 
@@ -270,14 +305,7 @@ export class Player extends Container {
     const dt = Math.min(dtSeconds, 0.05);
     this.swimElapsed += dt;
 
-    const nextSurface = this.callbacks.getSurfaceAt(this.x, this.y);
-    if (nextSurface !== this.surfaceState) {
-      this.surfaceState = nextSurface;
-      if (nextSurface === "wade" || nextSurface === "swim") {
-        this.callbacks.onWaterStep(this.x, this.y, nextSurface);
-        this.waterRippleTimer = 0;
-      }
-    }
+    this.updateSurfaceFromPosition();
 
     const surfaceMultiplier =
       this.surfaceState === "swim" ? 0.38 : this.surfaceState === "wade" ? 0.86 : 1.0;
@@ -346,27 +374,12 @@ export class Player extends Container {
         // Columns 1..8 are the 8 LPC walk stride frames
         this.animFrame = this.animFrame === 0 ? 1 : (this.animFrame % 8) + 1;
       }
-
-      if (this.surfaceState === "wade" || this.surfaceState === "swim") {
-        this.waterRippleTimer += dt;
-        const interval = this.surfaceState === "swim" ? 0.22 : 0.18;
-        if (this.waterRippleTimer >= interval) {
-          this.waterRippleTimer = 0;
-          this.callbacks.onWaterStep(this.x, this.y, this.surfaceState);
-        }
-      }
     } else {
       this.animElapsed = 0;
       this.animFrame = 0;
-      if (this.surfaceState === "swim") {
-        this.waterRippleTimer += dt;
-        if (this.waterRippleTimer >= 0.75) {
-          this.waterRippleTimer = 0;
-          this.callbacks.onWaterStep(this.x, this.y, "swim");
-        }
-      }
     }
 
+    this.stepWaterRipples(dt, movingNow);
     this.applySurfaceVisuals(movingNow);
     this.renderThermalCues();
     this.refreshTexture();
